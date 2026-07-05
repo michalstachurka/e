@@ -1,5 +1,5 @@
 import { SmoothScroll } from "./components/SmoothScroll";
-import { Marquee } from "./components/Marquee";
+import { Statement } from "./components/Statement";
 import { Navbar } from "./components/Navbar";
 import { Hero } from "./components/Hero";
 import { Manifesto } from "./components/Manifesto";
@@ -21,7 +21,7 @@ export default function App() {
       <Navbar />
       <main>
         <Hero />
-        <Marquee />
+        <Statement />
         <Manifesto />
         <VisualSystem />
         <UseCases />
