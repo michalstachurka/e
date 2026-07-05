@@ -67,44 +67,45 @@ function CaseRow({ c, index }: { c: (typeof CASES)[number]; index: number }) {
   );
   const opacity = useTransform(scrollYProgress, [0, 0.55], [0, 1]);
 
-  const imageLeft = textFromLeft ? false : true; // image opposite the text origin? keep image aside text overlap
-
   return (
-    <article
-      ref={ref}
-      className="group/card relative grid items-center gap-6 md:grid-cols-12"
-    >
-      {/* Image */}
-      <div
-        className={`md:col-span-8 ${imageLeft ? "md:col-start-1" : "md:col-start-5"}`}
-      >
-        <Reveal y={44}>
-          <div className="frame-img aspect-[16/10]">
-            <Parallax amount={7}>
+    <article ref={ref} className="group/card relative">
+      {/* Full-bleed frame */}
+      <Reveal y={52}>
+        <div className="relative">
+          <div className="frame-img aspect-[16/10] max-h-[86vh] w-full md:aspect-[16/8.5]">
+            <Parallax amount={8}>
               <img src={asset(c.image)} alt={c.alt} loading="lazy" />
             </Parallax>
           </div>
-        </Reveal>
-      </div>
+          {/* Legibility gradient for the overlaid title */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_55%,rgba(14,11,11,0.55)_100%)]"
+          />
 
-      {/* Title sliding in from the side, overlapping the frame */}
-      <motion.div
-        style={reduce ? undefined : { x, opacity }}
-        className={`md:absolute md:top-1/2 md:z-10 md:w-[46%] md:-translate-y-1/2 md:will-change-transform ${
-          imageLeft ? "md:right-0 md:text-right" : "md:left-0"
+          {/* Title sliding in from alternating sides, over the image */}
+          <motion.div
+            style={reduce ? undefined : { x, opacity }}
+            className={`absolute bottom-6 z-10 max-w-[88%] will-change-transform md:bottom-10 md:max-w-[62%] ${
+              textFromLeft ? "left-5 md:left-10" : "right-5 text-right md:right-10"
+            }`}
+          >
+            <span className="spec text-vn-cream/70">{c.no}</span>
+            <h3 className="mt-2 font-display text-[clamp(1.9rem,4.4vw,4rem)] leading-[1.06] text-vn-cream [text-shadow:0_2px_34px_rgba(14,11,11,0.55)]">
+              {c.title}
+            </h3>
+          </motion.div>
+        </div>
+      </Reveal>
+
+      <div
+        className={`mt-4 flex flex-wrap items-baseline gap-4 ${
+          textFromLeft ? "" : "justify-end"
         }`}
       >
-        <span className="spec text-vn-burgundy">{c.no}</span>
-        <h3 className="mt-3 font-display text-[clamp(1.7rem,3.2vw,3rem)] leading-[1.08] text-vn-charcoal [text-shadow:0_0_18px_rgba(250,250,248,0.85),0_0_46px_rgba(250,250,248,0.6)]">
-          {c.title}
-        </h3>
-        <div
-          className={`mt-5 flex flex-wrap items-baseline gap-4 ${imageLeft ? "md:justify-end" : ""}`}
-        >
-          <span className="pill text-vn-charcoal/80">{c.industry}</span>
-          <span className="spec text-vn-muted-light">{c.spec}</span>
-        </div>
-      </motion.div>
+        <span className="pill text-vn-charcoal/80">{c.industry}</span>
+        <span className="spec text-vn-muted-light">{c.spec}</span>
+      </div>
     </article>
   );
 }

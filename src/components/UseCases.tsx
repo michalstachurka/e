@@ -19,8 +19,8 @@ const CASES = [
     image: "/images/use-kategorie.webp",
     alt: "Kuchnia z kamiennym blatem — wizualizacja kategorii produktowej",
     plate: ["kuchnie", "4:5 · ready"],
-    span: "md:col-span-5",
-    aspect: "aspect-[4/5]",
+    span: "md:col-span-7",
+    aspect: "aspect-[4/3] md:h-full",
   },
   {
     title: "Reklamy i social media",
@@ -28,8 +28,8 @@ const CASES = [
     image: "/images/use-social.webp",
     alt: "Piwnica win z czarnym kamiennym blatem — pionowy kadr do social media",
     plate: ["wnętrza premium", "9:16 · ready"],
-    span: "md:col-span-3",
-    aspect: "aspect-[4/5] md:aspect-[9/16]",
+    span: "md:col-span-5",
+    aspect: "aspect-[4/5] md:aspect-[3/4]",
   },
   {
     title: "Oferty i prezentacje",
@@ -37,8 +37,8 @@ const CASES = [
     image: "/images/use-oferty.webp",
     alt: "Sztukateria i listwy przysufitowe — obraz do oferty handlowej",
     plate: ["sztukateria", "4:5 · ready"],
-    span: "md:col-span-4",
-    aspect: "aspect-[4/5]",
+    span: "md:col-span-12",
+    aspect: "aspect-[16/9] md:aspect-[16/8]",
   },
 ];
 
