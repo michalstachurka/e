@@ -68,7 +68,7 @@ export function Statement() {
 
   if (reduce) {
     return (
-      <section className="relative overflow-hidden bg-vn-charcoal-soft text-vn-cream">
+      <section className="relative overflow-hidden bg-[#141112] text-vn-cream">
         <SilkCanvas />
         <div className="relative mx-auto max-w-[1400px] px-5 py-28 md:px-10">
           {LINES.map((l) => (
@@ -87,9 +87,13 @@ export function Statement() {
   }
 
   return (
-    <section ref={ref} className="relative h-[260vh] bg-vn-charcoal-soft">
+    <section ref={ref} className="relative h-[260vh] bg-[#141112]">
       <div className="sticky top-0 flex h-screen flex-col justify-center overflow-hidden">
         <SilkCanvas />
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 h-[22vh] bg-[linear-gradient(180deg,#141112,transparent)]"
+        />
         <div className="relative mx-auto w-full max-w-[1400px] px-5 md:px-10">
           <div className="space-y-2 md:space-y-3">
             {LINES.map((l, i) => (

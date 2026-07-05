@@ -55,7 +55,7 @@ export function Hero() {
 
       {/* Legibility overlays — tuned to keep the burgundy glow alive */}
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(14,11,11,0.9)_0%,rgba(14,11,11,0.55)_38%,rgba(14,11,11,0.08)_68%,rgba(14,11,11,0.25)_100%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,11,0.45)_0%,rgba(14,11,11,0)_28%,rgba(14,11,11,0)_55%,rgba(14,11,11,0.72)_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,11,0.45)_0%,rgba(14,11,11,0)_28%,rgba(14,11,11,0)_50%,rgba(20,17,18,0.55)_78%,rgba(20,17,18,0.92)_94%,#141112_100%)]" />
 
       <motion.div
         style={reduce ? undefined : { y: contentY, opacity: contentOpacity }}
