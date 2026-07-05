@@ -1,106 +1,49 @@
 import { useRef, useState } from "react";
 import {
+  AnimatePresence,
   motion,
   useMotionValueEvent,
   useReducedMotion,
   useScroll,
-  useTransform,
-  type MotionValue,
 } from "framer-motion";
-import { Reveal } from "./Reveal";
+import { Reveal, EASE } from "./Reveal";
 import { asset } from "../lib/asset";
+import { SpecPlate } from "./SpecPlate";
 
 const PILLARS = [
   {
     no: "01",
     title: "Kierunek wizualny",
     text: "Ustalamy styl, kategorię, zastosowanie i to, co obraz ma sprzedać.",
+    image: "/images/system-kierunek.webp",
+    alt: "Loftowa kuchnia w graficie, dębie i cegle",
+    plate: ["VN—SYS/01 · kuchnie", "4:5 · direction"] as [string, string],
   },
   {
     no: "02",
     title: "Prompt engineering",
     text: "Tworzymy precyzyjne prompty pod scenę, materiał, światło, kadr i produkt.",
+    image: "/images/system-prompt.webp",
+    alt: "Sztukateria LED w dwukondygnacyjnym holu",
+    plate: ["VN—SYS/02 · sztukateria LED", "4:5 · generated"] as [string, string],
   },
   {
     no: "03",
     title: "Selekcja",
     text: "Odrzucamy obrazy, które wyglądają sztucznie, generycznie albo nie pokazują oferty.",
+    image: "/images/system-selekcja.webp",
+    alt: "Drzwi przesuwne w nowoczesnym domu",
+    plate: ["VN—SYS/03 · drzwi", "16:9 · selected"] as [string, string],
   },
   {
     no: "04",
     title: "Korekty",
     text: "Dopracowujemy perspektywę, proporcje, kolor, światło i detale.",
-  },
-];
-
-// Mosaic tiles fly in from different directions and lock into one composition.
-const TILES = [
-  {
-    image: "/images/system-kierunek.webp",
-    alt: "Loftowa kuchnia w graficie, dębie i cegle",
-    cls: "col-span-2 row-span-2",
-    from: { x: -38, y: -26, r: -3 },
-    range: [0.04, 0.24] as [number, number],
-  },
-  {
-    image: "/images/system-prompt.webp",
-    alt: "Sztukateria LED w dwukondygnacyjnym holu",
-    cls: "col-span-2 row-span-3",
-    from: { x: 42, y: -18, r: 3 },
-    range: [0.27, 0.47] as [number, number],
-  },
-  {
-    image: "/images/system-selekcja.webp",
-    alt: "Drzwi przesuwne w nowoczesnym domu",
-    cls: "col-span-2 row-span-2",
-    from: { x: -42, y: 26, r: 3 },
-    range: [0.5, 0.7] as [number, number],
-  },
-  {
     image: "/images/system-korekty.webp",
     alt: "Podłoga w jodełkę w świetle dziennym",
-    cls: "col-span-1 row-span-1",
-    from: { x: 20, y: 48, r: -4 },
-    range: [0.73, 0.88] as [number, number],
-  },
-  {
-    image: "/images/detail-spiek.webp",
-    alt: "Spiek kwarcowy w pracowni artystycznej",
-    cls: "col-span-1 row-span-1",
-    from: { x: 48, y: 34, r: 4 },
-    range: [0.79, 0.94] as [number, number],
+    plate: ["VN—SYS/04 · podłogi", "16:9 · refined"] as [string, string],
   },
 ];
-
-function Tile({
-  progress,
-  tile,
-}: {
-  progress: MotionValue<number>;
-  tile: (typeof TILES)[number];
-}) {
-  const x = useTransform(progress, tile.range, [`${tile.from.x}%`, "0%"]);
-  const y = useTransform(progress, tile.range, [`${tile.from.y}%`, "0%"]);
-  const rotate = useTransform(progress, tile.range, [tile.from.r, 0]);
-  const opacity = useTransform(
-    progress,
-    [tile.range[0], tile.range[0] + 0.3 * (tile.range[1] - tile.range[0])],
-    [0, 1],
-  );
-  return (
-    <motion.div
-      style={{ x, y, rotate, opacity }}
-      className={`frame-img will-change-transform ${tile.cls}`}
-    >
-      <img
-        src={asset(tile.image)}
-        alt={tile.alt}
-        loading="lazy"
-        className="h-full w-full object-cover"
-      />
-    </motion.div>
-  );
-}
 
 export function VisualSystem() {
   const ref = useRef<HTMLDivElement>(null);
@@ -111,10 +54,12 @@ export function VisualSystem() {
     offset: ["start start", "end end"],
   });
   useMotionValueEvent(scrollYProgress, "change", (v) => {
-    setActive(v < 0.27 ? 0 : v < 0.5 ? 1 : v < 0.73 ? 2 : 3);
+    setActive(Math.min(3, Math.max(0, Math.floor(v * 4.35))));
   });
 
-  // Static fallback: plain mosaic + pillar list
+  const current = PILLARS[active];
+
+  // Static fallback for reduced motion: simple stacked stages
   if (reduce) {
     return (
       <section id="system" className="bg-vn-bg">
@@ -123,25 +68,21 @@ export function VisualSystem() {
           <h2 className="mt-8 max-w-[720px] text-[clamp(1.9rem,3.2vw,2.8rem)] leading-[1.14]">
             System, który pilnuje obrazu od briefu do finalnego pliku.
           </h2>
-          <div className="mt-12 grid gap-8 lg:grid-cols-2">
-            <ol className="space-y-8">
-              {PILLARS.map((p) => (
-                <li key={p.no}>
+          <div className="mt-14 grid gap-x-6 gap-y-12 sm:grid-cols-2">
+            {PILLARS.map((p) => (
+              <figure key={p.no}>
+                <div className="frame-img aspect-[4/3]">
+                  <img src={asset(p.image)} alt={p.alt} loading="lazy" />
+                </div>
+                <figcaption className="mt-4">
                   <div className="flex items-baseline gap-4">
                     <span className="spec text-vn-burgundy">{p.no}</span>
                     <h3 className="text-xl">{p.title}</h3>
                   </div>
                   <p className="mt-2 text-[0.9375rem] text-vn-muted">{p.text}</p>
-                </li>
-              ))}
-            </ol>
-            <div className="grid grid-cols-2 gap-2">
-              {TILES.slice(0, 4).map((t) => (
-                <div key={t.image} className="frame-img aspect-square">
-                  <img src={asset(t.image)} alt={t.alt} loading="lazy" />
-                </div>
-              ))}
-            </div>
+                </figcaption>
+              </figure>
+            ))}
           </div>
         </div>
       </section>
@@ -149,7 +90,7 @@ export function VisualSystem() {
   }
 
   return (
-    <section id="system" ref={ref} className="relative h-[320vh] bg-vn-bg">
+    <section id="system" ref={ref} className="relative h-[300vh] bg-vn-bg">
       <div className="sticky top-0 flex h-screen items-center overflow-hidden">
         <div className="mx-auto grid w-full max-w-[1400px] items-center gap-10 px-5 md:px-10 lg:grid-cols-12">
           {/* Rail */}
@@ -163,7 +104,7 @@ export function VisualSystem() {
               </h2>
             </Reveal>
 
-            <ol className="mt-8 hidden md:block" aria-label="Etapy systemu">
+            <ol className="mt-8" aria-label="Etapy systemu">
               {PILLARS.map((p, i) => (
                 <li
                   key={p.no}
@@ -181,28 +122,53 @@ export function VisualSystem() {
                     </span>
                     <h3 className="text-lg lg:text-xl">{p.title}</h3>
                   </div>
-                  <p className="mt-1.5 max-w-[44ch] text-[0.875rem] leading-relaxed text-vn-muted">
-                    {p.text}
-                  </p>
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity] duration-500 ${
+                      active === i
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <p className="max-w-[44ch] overflow-hidden text-[0.875rem] leading-relaxed text-vn-muted">
+                      {p.text}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ol>
-            {/* Compact pillar ticker on small screens */}
-            <p className="spec mt-6 text-vn-burgundy md:hidden">
-              {PILLARS[active].no} · {PILLARS[active].title}
-            </p>
+
+            {/* Stage progress */}
+            <div className="mt-8 hidden h-px w-full max-w-[280px] bg-vn-line md:block">
+              <motion.div
+                className="h-px origin-left bg-vn-burgundy"
+                style={{ scaleX: scrollYProgress }}
+              />
+            </div>
           </div>
 
-          {/* Assembling mosaic */}
-          <div className="lg:col-span-7">
-            <div className="grid aspect-[4/4.4] max-h-[74vh] w-full grid-cols-4 grid-rows-4 gap-2 sm:gap-3">
-              {TILES.map((t) => (
-                <Tile key={t.image} progress={scrollYProgress} tile={t} />
-              ))}
+          {/* Single frame with wipe transitions */}
+          <div className="lg:col-span-6 lg:col-start-7">
+            <div className="relative aspect-[4/5] max-h-[68vh] w-full overflow-hidden bg-vn-cream">
+              <AnimatePresence initial={false}>
+                <motion.img
+                  key={current.image}
+                  src={asset(current.image)}
+                  alt={current.alt}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  initial={{ clipPath: "inset(0 0 100% 0)", scale: 1.06 }}
+                  animate={{ clipPath: "inset(0 0 0% 0)", scale: 1 }}
+                  transition={{ duration: 0.9, ease: EASE }}
+                />
+              </AnimatePresence>
+              {/* Stage number stamped on the frame */}
+              <div className="absolute bottom-4 right-5">
+                <span className="font-display text-[clamp(3rem,6vw,5rem)] leading-none text-vn-cream/90 [text-shadow:0_2px_24px_rgba(14,11,11,0.5)]">
+                  {current.no}
+                </span>
+              </div>
             </div>
-            <div className="spec mt-4 flex justify-between text-vn-muted-light">
-              <span>VN—SYS · mozaika procesu</span>
-              <span>4 etapy · jedna całość</span>
+            <div className="mt-4">
+              <SpecPlate left={current.plate[0]} right={current.plate[1]} />
             </div>
           </div>
         </div>
