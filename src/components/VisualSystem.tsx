@@ -39,36 +39,36 @@ const TILES = [
     image: "/images/system-kierunek.webp",
     alt: "Loftowa kuchnia w graficie, dębie i cegle",
     cls: "col-span-2 row-span-2",
-    from: { x: -55, y: -35, r: -5 },
-    range: [0.06, 0.5] as [number, number],
+    from: { x: -38, y: -26, r: -3 },
+    range: [0.04, 0.24] as [number, number],
   },
   {
     image: "/images/system-prompt.webp",
     alt: "Sztukateria LED w dwukondygnacyjnym holu",
     cls: "col-span-2 row-span-3",
-    from: { x: 60, y: -25, r: 4 },
-    range: [0.14, 0.58] as [number, number],
+    from: { x: 42, y: -18, r: 3 },
+    range: [0.27, 0.47] as [number, number],
   },
   {
     image: "/images/system-selekcja.webp",
     alt: "Drzwi przesuwne w nowoczesnym domu",
     cls: "col-span-2 row-span-2",
-    from: { x: -60, y: 35, r: 4 },
-    range: [0.22, 0.66] as [number, number],
+    from: { x: -42, y: 26, r: 3 },
+    range: [0.5, 0.7] as [number, number],
   },
   {
     image: "/images/system-korekty.webp",
     alt: "Podłoga w jodełkę w świetle dziennym",
     cls: "col-span-1 row-span-1",
-    from: { x: 25, y: 60, r: -6 },
-    range: [0.3, 0.74] as [number, number],
+    from: { x: 20, y: 48, r: -4 },
+    range: [0.73, 0.88] as [number, number],
   },
   {
     image: "/images/detail-spiek.webp",
     alt: "Spiek kwarcowy w pracowni artystycznej",
     cls: "col-span-1 row-span-1",
-    from: { x: 65, y: 45, r: 6 },
-    range: [0.38, 0.82] as [number, number],
+    from: { x: 48, y: 34, r: 4 },
+    range: [0.79, 0.94] as [number, number],
   },
 ];
 
@@ -84,7 +84,7 @@ function Tile({
   const rotate = useTransform(progress, tile.range, [tile.from.r, 0]);
   const opacity = useTransform(
     progress,
-    [tile.range[0], tile.range[0] + 0.5 * (tile.range[1] - tile.range[0])],
+    [tile.range[0], tile.range[0] + 0.3 * (tile.range[1] - tile.range[0])],
     [0, 1],
   );
   return (
@@ -111,13 +111,13 @@ export function VisualSystem() {
     offset: ["start start", "end end"],
   });
   useMotionValueEvent(scrollYProgress, "change", (v) => {
-    setActive(Math.min(3, Math.max(0, Math.floor(v * 4.4))));
+    setActive(v < 0.27 ? 0 : v < 0.5 ? 1 : v < 0.73 ? 2 : 3);
   });
 
   // Static fallback: plain mosaic + pillar list
   if (reduce) {
     return (
-      <section id="system" className="bg-vn-bg-warm">
+      <section id="system" className="bg-vn-bg">
         <div className="mx-auto max-w-[1400px] px-5 py-28 md:px-10">
           <p className="eyebrow text-vn-muted">02 — System wizualizacji</p>
           <h2 className="mt-8 max-w-[720px] text-[clamp(1.9rem,3.2vw,2.8rem)] leading-[1.14]">
@@ -149,7 +149,7 @@ export function VisualSystem() {
   }
 
   return (
-    <section id="system" ref={ref} className="relative h-[340vh] bg-vn-bg-warm">
+    <section id="system" ref={ref} className="relative h-[320vh] bg-vn-bg">
       <div className="sticky top-0 flex h-screen items-center overflow-hidden">
         <div className="mx-auto grid w-full max-w-[1400px] items-center gap-10 px-5 md:px-10 lg:grid-cols-12">
           {/* Rail */}

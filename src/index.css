@@ -40,11 +40,13 @@
 
 @layer base {
   html {
+    overflow-x: clip;
     scroll-behavior: smooth;
   }
 
   body {
     overflow-x: clip;
+    touch-action: pan-y pinch-zoom;
     font-family: var(--font-body);
     background: var(--vn-bg);
     color: var(--vn-charcoal);
