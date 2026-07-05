@@ -1,5 +1,6 @@
 import { Reveal } from "./Reveal";
 import { SpecPlate } from "./SpecPlate";
+import { asset } from "../lib/asset";
 
 const CASES = [
   {
@@ -73,7 +74,7 @@ export function CaseStudies() {
             >
               <figure className="flex h-full flex-col">
                 <div className={`frame-img ${c.aspect}`}>
-                  <img src={c.image} alt={c.alt} loading="lazy" />
+                  <img src={asset(c.image)} alt={c.alt} loading="lazy" />
                 </div>
                 <figcaption className="flex flex-1 flex-col gap-3 border-x border-b hairline px-5 pb-5 pt-4">
                   <span className="spec text-vn-burgundy">{c.industry}</span>

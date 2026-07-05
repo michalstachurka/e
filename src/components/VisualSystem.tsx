@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Reveal } from "./Reveal";
 import { SpecPlate } from "./SpecPlate";
+import { asset } from "../lib/asset";
 
 const PILLARS = [
   {
@@ -123,7 +124,7 @@ export function VisualSystem() {
                 <Reveal y={40}>
                   <figure className="border hairline bg-vn-bg p-3">
                     <div className="frame-img aspect-[4/5]">
-                      <img src={p.image} alt={p.alt} loading="lazy" />
+                      <img src={asset(p.image)} alt={p.alt} loading="lazy" />
                     </div>
                     <figcaption className="px-1 pb-1 pt-3.5">
                       <SpecPlate left={p.plate[0]} right={p.plate[1]} />

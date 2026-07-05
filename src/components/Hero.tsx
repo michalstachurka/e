@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { EASE } from "./Reveal";
+import { asset } from "../lib/asset";
 
 export function Hero() {
   const reduce = useReducedMotion();
@@ -23,7 +24,7 @@ export function Hero() {
         transition={{ duration: 2.4, ease: EASE }}
       >
         <img
-          src="/images/hero-header.png"
+          src={asset("images/hero-header.png")}
           alt=""
           aria-hidden="true"
           className="h-full w-full object-cover object-[68%_center]"

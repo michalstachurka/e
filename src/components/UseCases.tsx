@@ -1,5 +1,6 @@
 import { Reveal } from "./Reveal";
 import { SpecPlate } from "./SpecPlate";
+import { asset } from "../lib/asset";
 
 const CASES = [
   {
@@ -64,7 +65,7 @@ export function UseCases() {
             >
               <div className="flex h-full flex-col">
                 <div className={`frame-img ${c.aspect}`}>
-                  <img src={c.image} alt={c.alt} loading="lazy" />
+                  <img src={asset(c.image)} alt={c.alt} loading="lazy" />
                 </div>
                 <div className="flex flex-1 flex-col border-x border-b hairline bg-vn-bg px-5 pb-5 pt-4">
                   <h3 className="text-xl">{c.title}</h3>
