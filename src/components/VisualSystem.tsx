@@ -1,14 +1,8 @@
-import { useRef, useState } from "react";
-import {
-  AnimatePresence,
-  motion,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-} from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Reveal, EASE } from "./Reveal";
 import { asset } from "../lib/asset";
 import { SpecPlate } from "./SpecPlate";
+import { Parallax } from "./Parallax";
 
 const PILLARS = [
   {
@@ -45,132 +39,105 @@ const PILLARS = [
   },
 ];
 
-export function VisualSystem() {
-  const ref = useRef<HTMLDivElement>(null);
+function PillarRow({
+  p,
+  index,
+}: {
+  p: (typeof PILLARS)[number];
+  index: number;
+}) {
   const reduce = useReducedMotion();
-  const [active, setActive] = useState(0);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-  useMotionValueEvent(scrollYProgress, "change", (v) => {
-    setActive(Math.min(3, Math.max(0, Math.floor(v * 4.35))));
-  });
-
-  const current = PILLARS[active];
-
-  // Static fallback for reduced motion: simple stacked stages
-  if (reduce) {
-    return (
-      <section id="system" className="bg-vn-bg">
-        <div className="mx-auto max-w-[1400px] px-5 py-28 md:px-10">
-          <p className="eyebrow text-vn-muted">02 — System wizualizacji</p>
-          <h2 className="mt-8 max-w-[720px] text-[clamp(1.9rem,3.2vw,2.8rem)] leading-[1.14]">
-            System, który pilnuje obrazu od briefu do finalnego pliku.
-          </h2>
-          <div className="mt-14 grid gap-x-6 gap-y-12 sm:grid-cols-2">
-            {PILLARS.map((p) => (
-              <figure key={p.no}>
-                <div className="frame-img aspect-[4/3]">
-                  <img src={asset(p.image)} alt={p.alt} loading="lazy" />
-                </div>
-                <figcaption className="mt-4">
-                  <div className="flex items-baseline gap-4">
-                    <span className="spec text-vn-burgundy">{p.no}</span>
-                    <h3 className="text-xl">{p.title}</h3>
-                  </div>
-                  <p className="mt-2 text-[0.9375rem] text-vn-muted">{p.text}</p>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
+  const imageLeft = index % 2 === 0;
 
   return (
-    <section id="system" ref={ref} className="relative h-[300vh] bg-vn-bg">
-      <div className="sticky top-0 flex h-screen items-center overflow-hidden">
-        <div className="mx-auto grid w-full max-w-[1400px] items-center gap-10 px-5 md:px-10 lg:grid-cols-12">
-          {/* Rail */}
-          <div className="lg:col-span-5">
-            <Reveal>
-              <p className="eyebrow text-vn-muted">02 — System wizualizacji</p>
-            </Reveal>
-            <Reveal delay={0.08} mask>
-              <h2 className="mt-6 text-[clamp(1.5rem,2.6vw,2.4rem)] leading-[1.14]">
-                System, który pilnuje obrazu od briefu do finalnego pliku.
-              </h2>
-            </Reveal>
-
-            <ol className="mt-8" aria-label="Etapy systemu">
-              {PILLARS.map((p, i) => (
-                <li
-                  key={p.no}
-                  className={`border-l-2 py-3.5 pl-6 transition-[border-color,opacity] duration-500 ${
-                    active === i
-                      ? "border-vn-burgundy opacity-100"
-                      : "border-vn-line opacity-40"
-                  }`}
-                >
-                  <div className="flex items-baseline gap-4">
-                    <span
-                      className={`spec ${active === i ? "text-vn-burgundy" : "text-vn-muted"}`}
-                    >
-                      {p.no}
-                    </span>
-                    <h3 className="text-lg lg:text-xl">{p.title}</h3>
-                  </div>
-                  <div
-                    className={`grid transition-[grid-template-rows,opacity] duration-500 ${
-                      active === i
-                        ? "grid-rows-[1fr] opacity-100"
-                        : "grid-rows-[0fr] opacity-0"
-                    }`}
-                  >
-                    <p className="max-w-[44ch] overflow-hidden text-[0.875rem] leading-relaxed text-vn-muted">
-                      {p.text}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-
-            {/* Stage progress */}
-            <div className="mt-8 hidden h-px w-full max-w-[280px] bg-vn-line md:block">
-              <motion.div
-                className="h-px origin-left bg-vn-burgundy"
-                style={{ scaleX: scrollYProgress }}
-              />
-            </div>
+    <article className="grid items-center gap-8 md:grid-cols-12 md:gap-0">
+      {/* Graphic — horizontal wipe from its outer edge */}
+      <div
+        className={`md:col-span-7 ${imageLeft ? "md:col-start-1" : "md:col-start-6"} md:row-start-1`}
+      >
+        <motion.div
+          initial={
+            reduce
+              ? { opacity: 0 }
+              : {
+                  clipPath: imageLeft
+                    ? "inset(0% 100% 0% 0%)"
+                    : "inset(0% 0% 0% 100%)",
+                }
+          }
+          whileInView={
+            reduce ? { opacity: 1 } : { clipPath: "inset(0% 0% 0% 0%)" }
+          }
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 1.1, ease: EASE }}
+        >
+          <div className="frame-img aspect-[4/3]">
+            <Parallax amount={6}>
+              <img src={asset(p.image)} alt={p.alt} loading="lazy" />
+            </Parallax>
           </div>
-
-          {/* Single frame with wipe transitions */}
-          <div className="lg:col-span-6 lg:col-start-7">
-            <div className="relative aspect-[4/5] max-h-[68vh] w-full overflow-hidden bg-vn-cream">
-              <AnimatePresence initial={false}>
-                <motion.img
-                  key={current.image}
-                  src={asset(current.image)}
-                  alt={current.alt}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  initial={{ clipPath: "inset(0 0 100% 0)", scale: 1.06 }}
-                  animate={{ clipPath: "inset(0 0 0% 0)", scale: 1 }}
-                  transition={{ duration: 0.9, ease: EASE }}
-                />
-              </AnimatePresence>
-              {/* Stage number stamped on the frame */}
-              <div className="absolute bottom-4 right-5">
-                <span className="font-display text-[clamp(3rem,6vw,5rem)] leading-none text-vn-cream/90 [text-shadow:0_2px_24px_rgba(14,11,11,0.5)]">
-                  {current.no}
-                </span>
-              </div>
-            </div>
-            <div className="mt-4">
-              <SpecPlate left={current.plate[0]} right={current.plate[1]} />
-            </div>
+          <div className="mt-3">
+            <SpecPlate left={p.plate[0]} right={p.plate[1]} />
           </div>
+        </motion.div>
+      </div>
+
+      {/* Text beside the graphic, sliding in from its own side */}
+      <Reveal
+        x={imageLeft ? 120 : -120}
+        className={`relative z-10 md:col-span-5 md:row-start-1 ${
+          imageLeft ? "md:col-start-8 md:pl-10" : "md:col-start-1 md:pr-10 md:text-right"
+        }`}
+      >
+        <div className="relative">
+          {/* Ghost stage number behind the text */}
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none absolute -top-16 font-display text-[clamp(7rem,12vw,11rem)] leading-none text-vn-bg-warm md:-top-24 ${
+              imageLeft ? "-left-2" : "-right-2"
+            }`}
+          >
+            {p.no}
+          </span>
+          <div className="relative">
+            <span className="spec text-vn-burgundy">
+              {p.no} / 04
+            </span>
+            <h3 className="mt-4 text-[clamp(1.6rem,2.8vw,2.4rem)] leading-[1.1]">
+              {p.title}
+            </h3>
+            <p
+              className={`mt-4 max-w-[40ch] text-[0.9375rem] leading-relaxed text-vn-muted ${
+                imageLeft ? "" : "md:ml-auto"
+              }`}
+            >
+              {p.text}
+            </p>
+          </div>
+        </div>
+      </Reveal>
+    </article>
+  );
+}
+
+export function VisualSystem() {
+  return (
+    <section id="system" className="overflow-hidden bg-vn-bg">
+      <div className="mx-auto max-w-[1400px] px-5 py-28 md:px-10 md:py-40">
+        <Reveal>
+          <p className="eyebrow text-vn-muted">02 — System wizualizacji</p>
+        </Reveal>
+        <Reveal delay={0.08} mask>
+          <h2 className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
+            System, który pilnuje obrazu{" "}
+            <em className="text-vn-burgundy">od briefu do finalnego pliku</em>.
+          </h2>
+        </Reveal>
+
+        <div className="mt-20 flex flex-col gap-24 md:gap-32">
+          {PILLARS.map((p, i) => (
+            <PillarRow key={p.no} p={p} index={i} />
+          ))}
         </div>
       </div>
     </section>
