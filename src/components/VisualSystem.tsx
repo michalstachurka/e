@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Reveal } from "./Reveal";
 import { SpecPlate } from "./SpecPlate";
 import { asset } from "../lib/asset";
+import { Parallax } from "./Parallax";
 
 const PILLARS = [
   {
@@ -68,7 +69,7 @@ export function VisualSystem() {
               <Reveal>
                 <p className="eyebrow text-vn-muted">02 — System wizualizacji</p>
               </Reveal>
-              <Reveal delay={0.08}>
+              <Reveal delay={0.08} mask>
                 <h2 className="mt-8 text-[clamp(1.9rem,3.2vw,2.8rem)] leading-[1.14]">
                   System, który pilnuje obrazu od briefu do finalnego pliku.
                 </h2>
@@ -124,7 +125,7 @@ export function VisualSystem() {
                 <Reveal y={40}>
                   <figure className="border hairline bg-vn-bg p-3">
                     <div className="frame-img aspect-[4/5]">
-                      <img src={asset(p.image)} alt={p.alt} loading="lazy" />
+                      <Parallax><img src={asset(p.image)} alt={p.alt} loading="lazy" /></Parallax>
                     </div>
                     <figcaption className="px-1 pb-1 pt-3.5">
                       <SpecPlate left={p.plate[0]} right={p.plate[1]} />

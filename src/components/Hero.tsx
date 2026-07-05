@@ -1,9 +1,23 @@
-import { motion, useReducedMotion } from "framer-motion";
+import { useRef } from "react";
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import { EASE } from "./Reveal";
 import { asset } from "../lib/asset";
 
 export function Hero() {
   const reduce = useReducedMotion();
+  const ref = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"],
+  });
+  const videoY = useTransform(scrollYProgress, [0, 1], ["0%", "18%"]);
+  const contentY = useTransform(scrollYProgress, [0, 1], [0, -90]);
+  const contentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
   const enter = (delay: number) => ({
     initial: reduce ? { opacity: 0 } : { opacity: 0, y: 32 },
@@ -14,28 +28,39 @@ export function Hero() {
   return (
     <section
       id="top"
+      ref={ref}
       className="relative flex min-h-[100svh] flex-col justify-end overflow-hidden bg-vn-ink text-vn-cream"
     >
-      {/* Header visual */}
+      {/* Header video */}
       <motion.div
         className="absolute inset-0"
-        initial={reduce ? undefined : { scale: 1.06 }}
+        style={reduce ? undefined : { y: videoY }}
+        initial={reduce ? undefined : { scale: 1.08 }}
         animate={reduce ? undefined : { scale: 1 }}
         transition={{ duration: 2.4, ease: EASE }}
       >
-        <img
-          src={asset("images/hero-header.png")}
-          alt=""
+        <video
+          className="h-full w-full object-cover"
+          poster={asset("images/hero-poster.jpg")}
+          autoPlay
+          muted
+          loop
+          playsInline
           aria-hidden="true"
-          className="h-full w-full object-cover object-[68%_center]"
-        />
+        >
+          <source src={asset("videos/hero.mp4")} type="video/mp4" />
+          <source src={asset("videos/hero.webm")} type="video/webm" />
+        </video>
       </motion.div>
 
       {/* Legibility overlays — tuned to keep the burgundy glow alive */}
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(14,11,11,0.9)_0%,rgba(14,11,11,0.55)_38%,rgba(14,11,11,0.08)_68%,rgba(14,11,11,0.25)_100%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,11,0.45)_0%,rgba(14,11,11,0)_28%,rgba(14,11,11,0)_55%,rgba(14,11,11,0.72)_100%)]" />
 
-      <div className="relative mx-auto w-full max-w-[1400px] px-5 pb-14 pt-40 md:px-10 md:pb-20">
+      <motion.div
+        style={reduce ? undefined : { y: contentY, opacity: contentOpacity }}
+        className="relative mx-auto w-full max-w-[1400px] px-5 pb-14 pt-40 md:px-10 md:pb-20"
+      >
         <motion.p {...enter(0.15)} className="eyebrow text-vn-cream/60">
           Ekspercka usługa wspierana AI
         </motion.p>
@@ -78,7 +103,7 @@ export function Hero() {
             VN—HERO/01 · 16:9 · status: ready
           </p>
         </motion.div>
-      </div>
+      </motion.div>
     </section>
   );
 }

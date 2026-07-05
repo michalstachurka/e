@@ -19,12 +19,11 @@ npm run build    # build produkcyjny do dist/
 npm run preview  # podgląd builda
 ```
 
-## Obraz hero
+## Hero
 
-Hero używa pliku `public/images/hero-header.png`. Obecnie jest to wygenerowany
-placeholder (charcoal + burgundowa poświata). Aby użyć docelowej grafiki,
-podmień ten plik na `header for claude.png` — layout i nakładki gradientowe są
-przygotowane pod szeroki, ciemny kadr z sylwetką po prawej stronie.
+Hero odtwarza wideo `public/videos/hero.mp4` (fallback `hero.webm`,
+poster `public/images/hero-poster.jpg`) pod stałymi nakładkami gradientowymi.
+Aby podmienić materiał, wystarczy zastąpić te pliki (H.264 MP4 + VP9 WebM, bez audio).
 
 ## Wizualizacje
 

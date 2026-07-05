@@ -30,7 +30,7 @@ export function Process() {
         <Reveal>
           <p className="eyebrow text-vn-muted">06 — Proces</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
             Proces prosty dla klienta.{" "}
             <em className="text-vn-burgundy">Precyzyjny po naszej stronie.</em>

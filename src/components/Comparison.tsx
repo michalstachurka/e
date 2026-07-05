@@ -33,7 +33,7 @@ export function Comparison() {
         <Reveal>
           <p className="eyebrow text-vn-cream/50">05 — Porównanie</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
             Różnica między generatorem a{" "}
             <em className="text-vn-burgundy-soft">usługą ekspercką</em>.

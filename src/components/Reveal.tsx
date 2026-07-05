@@ -8,13 +8,32 @@ export function Reveal({
   delay = 0,
   y = 28,
   className,
+  mask = false,
 }: {
   children: ReactNode;
   delay?: number;
   y?: number;
   className?: string;
+  /** Masked slide-up reveal (for display headings). */
+  mask?: boolean;
 }) {
   const reduce = useReducedMotion();
+
+  if (mask && !reduce) {
+    return (
+      <div className={`overflow-hidden ${className ?? ""}`}>
+        <motion.div
+          initial={{ y: "108%" }}
+          whileInView={{ y: "0%" }}
+          viewport={{ once: true, margin: "-72px" }}
+          transition={{ duration: 1.1, delay, ease: EASE }}
+        >
+          {children}
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <motion.div
       className={className}

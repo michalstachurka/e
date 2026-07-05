@@ -26,7 +26,7 @@ export function Audience() {
         <Reveal>
           <p className="eyebrow text-vn-muted">04 — Dla kogo</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
             Dla marek, które sprzedają produkt obrazem.
           </h2>

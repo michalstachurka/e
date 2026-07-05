@@ -76,7 +76,7 @@ export function Packages() {
         <Reveal>
           <p className="eyebrow text-vn-muted">07 — Pakiety</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
             Pakiety na start, stronę albo kampanię.
           </h2>

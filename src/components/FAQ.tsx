@@ -40,7 +40,7 @@ export function FAQ() {
             <Reveal>
               <p className="eyebrow text-vn-muted">09 — FAQ</p>
             </Reveal>
-            <Reveal delay={0.08}>
+            <Reveal delay={0.08} mask>
               <h2 className="mt-8 text-[clamp(1.9rem,3vw,2.6rem)] leading-[1.14]">
                 Realne pytania przed pierwszym pakietem.
               </h2>

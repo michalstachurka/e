@@ -1,6 +1,7 @@
 import { Reveal } from "./Reveal";
 import { SpecPlate } from "./SpecPlate";
 import { asset } from "../lib/asset";
+import { Parallax } from "./Parallax";
 
 const CASES = [
   {
@@ -57,7 +58,7 @@ export function CaseStudies() {
         <Reveal>
           <p className="eyebrow text-vn-muted">08 — Przykłady</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
             Serie wizualne zamiast{" "}
             <em className="text-vn-burgundy">pojedynczych obrazków</em>.
@@ -74,7 +75,7 @@ export function CaseStudies() {
             >
               <figure className="flex h-full flex-col">
                 <div className={`frame-img ${c.aspect}`}>
-                  <img src={asset(c.image)} alt={c.alt} loading="lazy" />
+                  <Parallax><img src={asset(c.image)} alt={c.alt} loading="lazy" /></Parallax>
                 </div>
                 <figcaption className="flex flex-1 flex-col gap-3 border-x border-b hairline px-5 pb-5 pt-4">
                   <span className="spec text-vn-burgundy">{c.industry}</span>

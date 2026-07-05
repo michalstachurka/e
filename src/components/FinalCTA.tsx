@@ -15,7 +15,7 @@ export function FinalCTA() {
         <Reveal>
           <p className="eyebrow text-vn-cream/55">10 — Kontakt</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[900px] text-[clamp(2.1rem,4.6vw,3.9rem)] leading-[1.08]">
             Potrzebujesz obrazów, które nie wyglądają jak{" "}
             <em>przypadkowe AI</em>?

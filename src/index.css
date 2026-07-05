@@ -211,6 +211,33 @@
   }
 }
 
+/* Editorial industries ticker */
+.marquee {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.marquee-track {
+  display: inline-flex;
+  gap: 3rem;
+  width: max-content;
+  animation: marquee 36s linear infinite;
+}
+.marquee-row {
+  display: inline-flex;
+  gap: 3rem;
+  align-items: center;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(calc(-50% - 1.5rem));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
+
 /* Film grain atmosphere over the whole page */
 .grain::after {
   content: "";

@@ -9,7 +9,7 @@ export function Manifesto() {
         </Reveal>
 
         <div className="mt-10 grid gap-14 lg:grid-cols-12 lg:gap-10">
-          <Reveal className="lg:col-span-7">
+          <Reveal className="lg:col-span-7" mask>
             <h2 className="text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
               Nie generujemy przypadkowych obrazów.{" "}
               <em className="text-vn-burgundy">

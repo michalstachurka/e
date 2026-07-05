@@ -1,6 +1,7 @@
 import { Reveal } from "./Reveal";
 import { SpecPlate } from "./SpecPlate";
 import { asset } from "../lib/asset";
+import { Parallax } from "./Parallax";
 
 const CASES = [
   {
@@ -48,7 +49,7 @@ export function UseCases() {
         <Reveal>
           <p className="eyebrow text-vn-muted">03 — Zastosowania</p>
         </Reveal>
-        <Reveal delay={0.08}>
+        <Reveal delay={0.08} mask>
           <h2 className="mt-8 max-w-[880px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
             Obrazy do miejsc, w których klient naprawdę{" "}
             <em className="text-vn-burgundy">podejmuje decyzję</em>.
@@ -65,7 +66,7 @@ export function UseCases() {
             >
               <div className="flex h-full flex-col">
                 <div className={`frame-img ${c.aspect}`}>
-                  <img src={asset(c.image)} alt={c.alt} loading="lazy" />
+                  <Parallax><img src={asset(c.image)} alt={c.alt} loading="lazy" /></Parallax>
                 </div>
                 <div className="flex flex-1 flex-col border-x border-b hairline bg-vn-bg px-5 pb-5 pt-4">
                   <h3 className="text-xl">{c.title}</h3>

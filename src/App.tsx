@@ -1,3 +1,5 @@
+import { SmoothScroll } from "./components/SmoothScroll";
+import { Marquee } from "./components/Marquee";
 import { Navbar } from "./components/Navbar";
 import { Hero } from "./components/Hero";
 import { Manifesto } from "./components/Manifesto";
@@ -15,9 +17,11 @@ import { Footer } from "./components/Footer";
 export default function App() {
   return (
     <div className="grain">
+      <SmoothScroll />
       <Navbar />
       <main>
         <Hero />
+        <Marquee />
         <Manifesto />
         <VisualSystem />
         <UseCases />
