@@ -19,14 +19,14 @@ export function Manifesto() {
           </Reveal>
 
           <div className="space-y-6 text-[1.0625rem] leading-relaxed text-vn-muted lg:col-span-4 lg:col-start-9">
-            <Reveal delay={0.1}>
+            <Reveal delay={0.1} x={90}>
               <p>
                 AI potrafi stworzyć ładny obraz. Problem zaczyna się wtedy, gdy
                 obraz ma pracować na stronie, w reklamie albo ofercie. Wtedy
                 liczy się kadr, produkt, światło, spójność, realizm i cel.
               </p>
             </Reveal>
-            <Reveal delay={0.18}>
+            <Reveal delay={0.18} x={90}>
               <p>
                 visNEX łączy prompt engineering, selekcję i kontrolę jakości,
                 żeby dostarczyć wizualizacje gotowe do użycia w komunikacji

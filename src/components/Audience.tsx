@@ -34,7 +34,7 @@ export function Audience() {
 
         <div className="mt-16 border-t hairline">
           {GROUPS.map((g, i) => (
-            <Reveal key={g.name} delay={0.05 * i} y={20}>
+            <Reveal key={g.name} delay={0.05 * i} x={i % 2 === 0 ? -120 : 120}>
               <div className="group grid gap-2 border-b hairline py-8 transition-colors duration-300 md:grid-cols-12 md:items-baseline md:py-10">
                 <span className="spec text-vn-muted-light md:col-span-1">
                   {String(i + 1).padStart(2, "0")}

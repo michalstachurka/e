@@ -1,4 +1,5 @@
 import { Reveal } from "./Reveal";
+import { SilkCanvas } from "./SilkCanvas";
 
 const GENERATOR = [
   "przypadkowe prompty",
@@ -24,9 +25,10 @@ export function Comparison() {
   return (
     <section className="relative overflow-hidden bg-vn-charcoal-soft text-vn-cream">
       {/* Quiet burgundy atmosphere */}
+      <SilkCanvas className="opacity-70" />
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-[radial-gradient(52%_65%_at_78%_20%,rgba(122,37,51,0.28),transparent_70%)]"
+        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(28,26,24,0.55),rgba(28,26,24,0.2)_40%,rgba(28,26,24,0.6))]"
       />
 
       <div className="relative mx-auto max-w-[1400px] px-5 py-28 md:px-10 md:py-40">
@@ -41,7 +43,7 @@ export function Comparison() {
         </Reveal>
 
         <div className="mt-16 grid gap-10 md:grid-cols-2 md:gap-6">
-          <Reveal delay={0.1} className="h-full">
+          <Reveal delay={0.1} x={-130} className="h-full">
             <div className="flex h-full flex-col border border-white/10 p-8 md:p-10">
               <p className="spec text-vn-cream/45">Zwykły generator AI</p>
               <ul className="mt-8 space-y-4">
@@ -60,7 +62,7 @@ export function Comparison() {
             </div>
           </Reveal>
 
-          <Reveal delay={0.2} className="h-full">
+          <Reveal delay={0.2} x={130} className="h-full">
             <div className="relative flex h-full flex-col border border-vn-burgundy-soft/40 bg-white/[0.035] p-8 md:p-10">
               <div className="absolute inset-x-0 top-0 h-[3px] bg-vn-burgundy" />
               <p className="wordmark text-[1.05rem] text-vn-cream">

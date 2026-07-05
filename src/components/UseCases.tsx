@@ -61,7 +61,7 @@ export function UseCases() {
             <Reveal
               key={c.title}
               delay={0.06 * i}
-              y={36}
+              x={i % 2 === 0 ? -110 : 110}
               className={`group/card ${c.span}`}
             >
               <div className="flex h-full flex-col">

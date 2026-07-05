@@ -84,7 +84,7 @@ export function Packages() {
 
         <div className="mt-16 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {PACKAGES.map((p, i) => (
-            <Reveal key={p.name} delay={0.06 * i} y={32} className="h-full">
+            <Reveal key={p.name} delay={0.06 * i} x={i % 2 === 0 ? -100 : 100} className="h-full">
               <article
                 className={`flex h-full flex-col p-8 ${
                   p.featured

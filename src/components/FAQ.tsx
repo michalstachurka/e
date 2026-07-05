@@ -48,7 +48,7 @@ export function FAQ() {
           </div>
 
           <div className="lg:col-span-7 lg:col-start-6">
-            <Reveal delay={0.1}>
+            <Reveal delay={0.1} x={110}>
               <div className="border-t hairline">
                 {ITEMS.map((item) => (
                   <details key={item.q} className="group border-b hairline">

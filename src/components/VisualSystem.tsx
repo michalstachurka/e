@@ -122,7 +122,7 @@ export function VisualSystem() {
                   </p>
                 </div>
 
-                <Reveal y={40}>
+                <Reveal x={i % 2 === 0 ? 120 : -120}>
                   <figure className="border hairline bg-vn-bg p-3">
                     <div className="frame-img aspect-[4/5]">
                       <Parallax><img src={asset(p.image)} alt={p.alt} loading="lazy" /></Parallax>

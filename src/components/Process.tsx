@@ -39,7 +39,7 @@ export function Process() {
 
         <div className="mt-16 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((s, i) => (
-            <Reveal key={s.no} delay={0.08 * i} y={28}>
+            <Reveal key={s.no} delay={0.08 * i} x={i % 2 === 0 ? -90 : 90}>
               <div className="border-t-2 border-vn-charcoal pt-6">
                 <span className="font-display text-[2.6rem] leading-none text-vn-burgundy">
                   {s.no}

@@ -44,6 +44,7 @@
   }
 
   body {
+    overflow-x: clip;
     font-family: var(--font-body);
     background: var(--vn-bg);
     color: var(--vn-charcoal);
