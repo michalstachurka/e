@@ -1,6 +1,5 @@
 import { Reveal, EASE } from "./Reveal";
 import { motion } from "framer-motion";
-import { FloatTitle } from "./FloatTitle";
 import { SilkCanvas } from "./SilkCanvas";
 
 const LINE = {
@@ -42,11 +41,12 @@ export function Comparison() {
         <Reveal>
           <p className="eyebrow text-vn-cream/50">05 — Porównanie</p>
         </Reveal>
-        <FloatTitle
-          text="Różnica między generatorem a *usługą ekspercką.*"
-          accentClass="italic text-vn-burgundy-soft"
-          className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]"
-        />
+        <Reveal delay={0.08} x={150}>
+          <h2 className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
+            Różnica między generatorem a{" "}
+            <em className="text-vn-burgundy-soft">usługą ekspercką</em>.
+          </h2>
+        </Reveal>
 
         <div className="mt-16 grid gap-10 md:grid-cols-2 md:gap-6">
           <Reveal delay={0.1} y={36} className="h-full">

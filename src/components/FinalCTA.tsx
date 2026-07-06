@@ -1,5 +1,4 @@
 import { Reveal } from "./Reveal";
-import { FloatTitle } from "./FloatTitle";
 import { asset } from "../lib/asset";
 
 export function FinalCTA() {
@@ -48,11 +47,12 @@ export function FinalCTA() {
           </Reveal>
         </div>
 
-        <FloatTitle
-          text="Potrzebujesz obrazów, które nie wyglądają jak *przypadkowe AI?*"
-          accentClass="italic"
-          className="mt-16 max-w-[1000px] text-[clamp(2.1rem,4.8vw,4.1rem)] leading-[1.1]"
-        />
+        <Reveal delay={0.12} y={-60}>
+          <h2 className="mt-16 max-w-[1000px] text-[clamp(2.1rem,4.8vw,4.1rem)] leading-[1.1]">
+            Potrzebujesz obrazów, które nie wyglądają jak{" "}
+            <em>przypadkowe AI</em>?
+          </h2>
+        </Reveal>
         <Reveal delay={0.28}>
           <p className="mt-7 max-w-[560px] text-[1.0625rem] leading-relaxed text-vn-cream/75">
             Opisz branżę, ofertę i zastosowanie. Przygotujemy kierunek wizualny

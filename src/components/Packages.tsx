@@ -1,5 +1,4 @@
 import { Reveal } from "./Reveal";
-import { FloatTitle } from "./FloatTitle";
 
 type Pack = {
   name: string;
@@ -77,10 +76,12 @@ export function Packages() {
         <Reveal>
           <p className="eyebrow text-vn-muted">07 — Pakiety</p>
         </Reveal>
-        <FloatTitle
-          text="Pakiety na start, *stronę albo kampanię.*"
-          className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]"
-        />
+        <Reveal delay={0.08} y={-70}>
+          <h2 className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
+            Pakiety na start,{" "}
+            <em className="text-vn-burgundy">stronę albo kampanię</em>.
+          </h2>
+        </Reveal>
 
         <div className="mt-16 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {PACKAGES.map((p, i) => (

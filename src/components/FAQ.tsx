@@ -1,5 +1,4 @@
 import { Reveal } from "./Reveal";
-import { FloatTitle } from "./FloatTitle";
 
 const ITEMS = [
   {
@@ -41,10 +40,12 @@ export function FAQ() {
             <Reveal>
               <p className="eyebrow text-vn-muted">09 — FAQ</p>
             </Reveal>
-            <FloatTitle
-              text="Realne pytania przed *pierwszym pakietem.*"
-              className="mt-8 text-[clamp(1.9rem,3vw,2.6rem)] leading-[1.14]"
-            />
+            <Reveal delay={0.08} x={-120}>
+              <h2 className="mt-8 text-[clamp(1.9rem,3vw,2.6rem)] leading-[1.14]">
+                Realne pytania przed{" "}
+                <em className="text-vn-burgundy">pierwszym pakietem</em>.
+              </h2>
+            </Reveal>
           </div>
 
           <div className="lg:col-span-7 lg:col-start-6">

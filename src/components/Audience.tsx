@@ -1,5 +1,4 @@
 import { Reveal } from "./Reveal";
-import { FloatTitle } from "./FloatTitle";
 
 const GROUPS = [
   {
@@ -27,10 +26,12 @@ export function Audience() {
         <Reveal>
           <p className="eyebrow text-vn-muted">04 — Dla kogo</p>
         </Reveal>
-        <FloatTitle
-          text="Dla marek, które sprzedają *produkt obrazem.*"
-          className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]"
-        />
+        <Reveal delay={0.08} y={-70}>
+          <h2 className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
+            Dla marek, które sprzedają{" "}
+            <em className="text-vn-burgundy">produkt obrazem</em>.
+          </h2>
+        </Reveal>
 
         <div className="mt-16 border-t hairline">
           {GROUPS.map((g, i) => (
