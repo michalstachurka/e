@@ -5,9 +5,11 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 
 export type PergolaParams = {
   width: number; // m
-  depth: number; // m
-  slatAngle: number; // deg, 0 = closed/flat
-  color: string;
+  depth: number; // m (wysięg)
+  height: number; // m
+  slatAngle: number; // deg, 0 = closed/flat, up to 120
+  frameColor: string;
+  slatColor: string;
 };
 
 /** Soft radial ground shadow texture. */
@@ -28,6 +30,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
   const stateRef = useRef<{
     group?: THREE.Group;
     material?: THREE.MeshStandardMaterial;
+    slatMaterial?: THREE.MeshStandardMaterial;
     rebuild?: (p: PergolaParams) => void;
   }>({});
 
@@ -72,6 +75,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       roughness: 0.55,
       metalness: 0.35,
     });
+    const slatMaterial = material.clone();
 
     let group = new THREE.Group();
     scene.add(group);
@@ -83,7 +87,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       });
       group = new THREE.Group();
 
-      const H = 2.6; // height, m
+      const H = p.height;
       const post = 0.14;
       const beam = 0.18;
       const { width: W, depth: D } = p;
@@ -111,7 +115,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       const span = W - 2 * post;
       for (let i = 0; i < n; i++) {
         const z = -(D - 2 * post) / 2 + (i + 0.5) * ((D - 2 * post) / n);
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, 0.015, slatW), material);
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, 0.015, slatW), slatMaterial);
         slat.position.set(0, H - beam / 2, z);
         slat.rotation.x = THREE.MathUtils.degToRad(p.slatAngle);
         group.add(slat);
@@ -121,9 +125,10 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       scene.add(group);
     };
 
-    stateRef.current = { group, material, rebuild };
+    stateRef.current = { group, material, slatMaterial, rebuild };
     rebuild(params);
-    material.color.set(params.color);
+    material.color.set(params.frameColor);
+    slatMaterial.color.set(params.slatColor);
 
     const resize = () => {
       const { clientWidth: w, clientHeight: h } = el;
@@ -166,7 +171,8 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
   // React to parameter changes without rebuilding the scene
   useEffect(() => {
     stateRef.current.rebuild?.(params);
-    stateRef.current.material?.color.set(params.color);
+    stateRef.current.material?.color.set(params.frameColor);
+    stateRef.current.slatMaterial?.color.set(params.slatColor);
   }, [params]);
 
   return (

@@ -100,7 +100,7 @@ function DoorDemo() {
     <section id="drzwi" className="bg-vn-bg">
       <div className="mx-auto max-w-[1400px] px-5 py-24 md:px-10 md:py-36">
         <div className="grid items-center gap-10 lg:grid-cols-12">
-          <div className="lg:col-span-8">
+          <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
               <VariantStack
                 images={DOOR_VARIANTS.map((v) => `images/konfigurator/door-${v.id}.webp`)}
@@ -116,7 +116,7 @@ function DoorDemo() {
             </Reveal>
           </div>
 
-          <div className="lg:col-span-4">
+          <div className="order-1 lg:order-2 lg:col-span-4">
             <Reveal x={120}>
               <p className="eyebrow text-vn-muted">K—01 · Warianty produktu</p>
               <h2 className="mt-6 text-[clamp(1.7rem,2.8vw,2.4rem)] leading-[1.12]">
@@ -127,7 +127,7 @@ function DoorDemo() {
                 tylko produkt. Seria powstaje z wizualizacji AI, bez modeli 3D
                 i bez sesji zdjęciowej.
               </p>
-              <div className="mt-8 flex flex-col gap-4">
+              <div className="mt-8 flex flex-wrap gap-x-7 gap-y-4 lg:flex-col">
                 {DOOR_VARIANTS.map((v, i) => (
                   <Swatch
                     key={v.id}
@@ -164,7 +164,7 @@ function LedDemo() {
       />
       <div className="relative mx-auto max-w-[1400px] px-5 py-24 md:px-10 md:py-36">
         <div className="grid items-center gap-10 lg:grid-cols-12">
-          <div className="order-2 lg:order-1 lg:col-span-4">
+          <div className="lg:order-1 lg:col-span-4">
             <Reveal x={-120}>
               <p className="eyebrow text-vn-cream/55">K—02 · Sterowanie światłem</p>
               <h2 className="mt-6 text-[clamp(1.7rem,2.8vw,2.4rem)] leading-[1.12]">
@@ -198,7 +198,7 @@ function LedDemo() {
             </Reveal>
           </div>
 
-          <div className="order-1 lg:order-2 lg:col-span-8">
+          <div className="lg:order-2 lg:col-span-8">
             <Reveal x={120}>
               <VariantStack
                 images={LED_VARIANTS.map((v) => `images/konfigurator/led-${v.id}.webp`)}
@@ -230,32 +230,42 @@ const PERGOLA_COLORS = [
 
 function PergolaDemo() {
   const [width, setWidth] = useState(4);
+  const [depth, setDepth] = useState(3.2);
+  const [height, setHeight] = useState(2.6);
   const [angle, setAngle] = useState(35);
-  const [color, setColor] = useState(PERGOLA_COLORS[0]);
+  const [frame, setFrame] = useState(PERGOLA_COLORS[0]);
+  const [slat, setSlat] = useState(PERGOLA_COLORS[0]);
   const params = useMemo<PergolaParams>(
-    () => ({ width, depth: 3.2, slatAngle: angle, color: color.value }),
-    [width, angle, color],
+    () => ({
+      width,
+      depth,
+      height,
+      slatAngle: angle,
+      frameColor: frame.value,
+      slatColor: slat.value,
+    }),
+    [width, depth, height, angle, frame, slat],
   );
 
   return (
     <section id="pergola" className="bg-vn-bg-warm">
       <div className="mx-auto max-w-[1400px] px-5 py-24 md:px-10 md:py-36">
         <div className="grid items-center gap-10 lg:grid-cols-12">
-          <div className="lg:col-span-8">
+          <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
-              <div className="aspect-[16/10] w-full border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)]">
+              <div className="aspect-[4/3] w-full border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
                 <PergolaCanvas params={params} />
               </div>
               <div className="mt-3">
                 <SpecPlate
-                  left={`VN—KONF/03 · pergola lamelowa · ${color.label}`}
-                  right={`${width.toFixed(1)} × 3,2 m · lamele ${angle}°`}
+                  left={`VN—KONF/03 · pergola · ${frame.label} / lamele ${slat.label}`}
+                  right={`${width.toFixed(1)} × ${depth.toFixed(1)} × ${height.toFixed(1)} m · ${angle}°`}
                 />
               </div>
             </Reveal>
           </div>
 
-          <div className="lg:col-span-4">
+          <div className="order-1 lg:order-2 lg:col-span-4">
             <Reveal x={120}>
               <p className="eyebrow text-vn-muted">K—03 · Parametryczne 3D</p>
               <h2 className="mt-6 text-[clamp(1.7rem,2.8vw,2.4rem)] leading-[1.12]">
@@ -267,45 +277,92 @@ function PergolaDemo() {
                 przeciągnięciem.
               </p>
 
-              <div className="mt-8 space-y-7">
-                <label className="block">
-                  <span className="spec text-vn-muted">
-                    Szerokość · {width.toFixed(1)} m
-                  </span>
-                  <input
-                    type="range"
-                    min={3}
-                    max={6}
-                    step={0.1}
-                    value={width}
-                    onChange={(e) => setWidth(Number(e.target.value))}
-                    className="range mt-3 w-full"
-                  />
-                </label>
-                <label className="block">
-                  <span className="spec text-vn-muted">
-                    Kąt lameli · {angle}°
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={85}
-                    step={1}
-                    value={angle}
-                    onChange={(e) => setAngle(Number(e.target.value))}
-                    className="range mt-3 w-full"
-                  />
-                </label>
-                <div className="flex flex-col gap-4">
-                  {PERGOLA_COLORS.map((c) => (
-                    <Swatch
-                      key={c.id}
-                      color={c.value}
-                      label={c.label}
-                      active={color.id === c.id}
-                      onClick={() => setColor(c)}
+              <div className="mt-8 space-y-6">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-1">
+                  <label className="block">
+                    <span className="spec text-vn-muted">
+                      Szerokość · {width.toFixed(1)} m
+                    </span>
+                    <input
+                      type="range"
+                      min={3}
+                      max={6}
+                      step={0.1}
+                      value={width}
+                      onChange={(e) => setWidth(Number(e.target.value))}
+                      className="range mt-3 w-full"
                     />
-                  ))}
+                  </label>
+                  <label className="block">
+                    <span className="spec text-vn-muted">
+                      Wysięg · {depth.toFixed(1)} m
+                    </span>
+                    <input
+                      type="range"
+                      min={2.5}
+                      max={4.5}
+                      step={0.1}
+                      value={depth}
+                      onChange={(e) => setDepth(Number(e.target.value))}
+                      className="range mt-3 w-full"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="spec text-vn-muted">
+                      Wysokość · {height.toFixed(1)} m
+                    </span>
+                    <input
+                      type="range"
+                      min={2.2}
+                      max={3.2}
+                      step={0.05}
+                      value={height}
+                      onChange={(e) => setHeight(Number(e.target.value))}
+                      className="range mt-3 w-full"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="spec text-vn-muted">
+                      Otwarcie lameli · {angle}°
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={120}
+                      step={1}
+                      value={angle}
+                      onChange={(e) => setAngle(Number(e.target.value))}
+                      className="range mt-3 w-full"
+                    />
+                  </label>
+                </div>
+                <div>
+                  <span className="spec text-vn-muted">Kolor konstrukcji</span>
+                  <div className="mt-3 flex flex-wrap gap-x-7 gap-y-3">
+                    {PERGOLA_COLORS.map((c) => (
+                      <Swatch
+                        key={c.id}
+                        color={c.value}
+                        label={c.label}
+                        active={frame.id === c.id}
+                        onClick={() => setFrame(c)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span className="spec text-vn-muted">Kolor lameli</span>
+                  <div className="mt-3 flex flex-wrap gap-x-7 gap-y-3">
+                    {PERGOLA_COLORS.map((c) => (
+                      <Swatch
+                        key={c.id}
+                        color={c.value}
+                        label={c.label}
+                        active={slat.id === c.id}
+                        onClick={() => setSlat(c)}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </Reveal>
