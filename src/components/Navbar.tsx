@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 
+const BASE = import.meta.env.BASE_URL;
+
 const LINKS = [
-  { label: "Oferta", href: "#oferta" },
-  { label: "Proces", href: "#proces" },
-  { label: "Zastosowania", href: "#zastosowania" },
-  { label: "Pakiety", href: "#pakiety" },
-  { label: "Kontakt", href: "#kontakt" },
+  { label: "Oferta", anchor: "#oferta" },
+  { label: "Proces", anchor: "#proces" },
+  { label: "Zastosowania", anchor: "#zastosowania" },
+  { label: "Konfigurator", page: "konfigurator.html" },
+  { label: "Pakiety", anchor: "#pakiety" },
+  { label: "Kontakt", anchor: "#kontakt" },
 ];
 
-export function Navbar() {
+export function Navbar({ home = true }: { home?: boolean }) {
+  const href = (l: (typeof LINKS)[number]) =>
+    l.page ? BASE + l.page : home ? l.anchor! : BASE + l.anchor!;
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -43,7 +48,7 @@ export function Navbar() {
         className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-5 md:h-[72px] md:px-10"
       >
         <a
-          href="#top"
+          href={home ? "#top" : BASE}
           aria-label="visNEX — początek strony"
           className={`wordmark text-[1.35rem] transition-colors duration-500 ${
             dark ? "text-vn-cream" : "text-vn-charcoal"
@@ -56,8 +61,8 @@ export function Navbar() {
         <div className="hidden items-center gap-9 lg:flex">
           {LINKS.map((l) => (
             <a
-              key={l.href}
-              href={l.href}
+              key={l.label}
+              href={href(l)}
               className={`spec transition-colors duration-300 ${
                 dark
                   ? "text-vn-cream/70 hover:text-vn-cream"
@@ -68,7 +73,7 @@ export function Navbar() {
             </a>
           ))}
           <a
-            href="#kontakt"
+            href={home ? "#kontakt" : BASE + "#kontakt"}
             className={`btn !px-5 !py-3 ${dark ? "btn-cream" : "btn-charcoal"}`}
           >
             Zamów wizualizacje
@@ -103,8 +108,8 @@ export function Navbar() {
           <div className="flex flex-col gap-2">
             {LINKS.map((l, i) => (
               <a
-                key={l.href}
-                href={l.href}
+                key={l.label}
+                href={href(l)}
                 onClick={() => setOpen(false)}
                 className="border-b border-white/10 py-4 font-display text-3xl text-vn-cream"
                 style={{ transitionDelay: `${i * 40}ms` }}
@@ -113,7 +118,7 @@ export function Navbar() {
               </a>
             ))}
           </div>
-          <a href="#kontakt" onClick={() => setOpen(false)} className="btn btn-cream w-full">
+          <a href={home ? "#kontakt" : BASE + "#kontakt"} onClick={() => setOpen(false)} className="btn btn-cream w-full">
             Zamów wizualizacje
           </a>
         </div>

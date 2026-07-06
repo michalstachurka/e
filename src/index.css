@@ -195,6 +195,32 @@
     line-height: 1;
   }
 
+  .range {
+    appearance: none;
+    height: 2px;
+    background: var(--vn-line);
+    outline-offset: 6px;
+  }
+  .range::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--vn-burgundy);
+    border: 3px solid var(--vn-bg);
+    box-shadow: 0 0 0 1px var(--vn-burgundy);
+    cursor: pointer;
+  }
+  .range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--vn-burgundy);
+    border: 3px solid var(--vn-bg);
+    box-shadow: 0 0 0 1px var(--vn-burgundy);
+    cursor: pointer;
+  }
+
   .hairline {
     border-color: var(--vn-line);
   }
