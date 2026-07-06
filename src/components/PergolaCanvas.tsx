@@ -251,11 +251,13 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
 
       // Reframe only when the structure's size actually changed, so colour
       // or lighting tweaks never reset the user's view
-      const dims = `${p.widths.join(",")}|${D}|${H}`;
+      // Height excluded: reframing on height made the whole model appear
+      // to change size. The radius floor keeps tall setups in frame.
+      const dims = `${p.widths.join(",")}|${D}`;
       if (stateRef.current.lastDims !== dims) {
         stateRef.current.lastDims = dims;
         controls.target.set(0, H * 0.55, 0);
-        const radius = Math.max(totalW * 1.3, D * 1.9, H * 3.2, 6.5);
+        const radius = Math.max(totalW * 1.3, D * 1.9, 7.2);
         const old = camera.position.clone().sub(controls.target);
         const az = Math.atan2(old.x, old.z);
         const elev = 0.2;
