@@ -38,6 +38,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     controls?: OrbitControls;
     slats?: THREE.Mesh[];
     lastDims?: string;
+    desiredRadius?: number;
   }>({});
   const paramsRef = useRef(params);
   paramsRef.current = params;
@@ -254,20 +255,20 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       // Reframe only when the structure's size actually changed, so colour
       // or lighting tweaks never reset the user's view
       // Height excluded: reframing on height made the whole model appear
-      // to change size. The radius floor keeps tall setups in frame.
+      // to change size. Distance changes are eased in the render loop and
+      // never touch the viewing direction, so nothing jumps.
+      controls.target.set(0, H * 0.55, 0);
       const dims = `${p.widths.join(",")}|${D}`;
       if (stateRef.current.lastDims !== dims) {
+        const first = stateRef.current.lastDims === undefined;
         stateRef.current.lastDims = dims;
-        controls.target.set(0, H * 0.55, 0);
-        const radius = Math.max(totalW * 1.3, D * 1.9, 7.2);
-        const old = camera.position.clone().sub(controls.target);
-        const az = Math.atan2(old.x, old.z);
-        const elev = 0.2;
-        camera.position.set(
-          controls.target.x + radius * Math.sin(az) * Math.cos(Math.asin(elev)),
-          controls.target.y + radius * elev,
-          controls.target.z + radius * Math.cos(az) * Math.cos(Math.asin(elev)),
-        );
+        const radius = Math.max(totalW * 1.15, D * 1.7, 7.2);
+        if (first) {
+          const dir = camera.position.clone().sub(controls.target).normalize();
+          camera.position.copy(controls.target).addScaledVector(dir, radius);
+        } else {
+          stateRef.current.desiredRadius = radius;
+        }
       }
     };
 
@@ -308,6 +309,15 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
         const cosMax = (0.25 - controls.target.y) / r;
         controls.maxPolarAngle = Math.acos(Math.max(-0.995, Math.min(0.995, cosMax)));
         controls.update();
+        // Ease the camera distance toward the frame that fits the structure
+        const des = stateRef.current.desiredRadius;
+        if (des !== undefined) {
+          const dir = camera.position.clone().sub(controls.target);
+          const cur = dir.length();
+          const next = cur + (des - cur) * 0.07;
+          camera.position.copy(controls.target).addScaledVector(dir.normalize(), next);
+          if (Math.abs(des - next) < 0.05) stateRef.current.desiredRadius = undefined;
+        }
         renderer.render(scene, camera);
       }
       raf = requestAnimationFrame(loop);
