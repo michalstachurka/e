@@ -1,4 +1,5 @@
-import { motion, useReducedMotion } from "framer-motion";
+import { useRef } from "react";
+import { motion, useInView, useReducedMotion } from "framer-motion";
 import { Reveal, EASE } from "./Reveal";
 import { asset } from "../lib/asset";
 import { SpecPlate } from "./SpecPlate";
@@ -48,27 +49,27 @@ function PillarRow({
 }) {
   const reduce = useReducedMotion();
   const imageLeft = index % 2 === 0;
+  const ref = useRef<HTMLElement>(null);
+  // Observe the unclipped row: IntersectionObserver never fires on an
+  // element whose own clip-path leaves zero visible area.
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+
+  const hidden = reduce
+    ? { opacity: 0 }
+    : {
+        clipPath: imageLeft ? "inset(0% 100% 0% 0%)" : "inset(0% 0% 0% 100%)",
+      };
+  const shown = reduce ? { opacity: 1 } : { clipPath: "inset(0% 0% 0% 0%)" };
 
   return (
-    <article className="grid items-center gap-8 md:grid-cols-12 md:gap-0">
+    <article ref={ref} className="grid items-center gap-8 md:grid-cols-12 md:gap-0">
       {/* Graphic — horizontal wipe from its outer edge */}
       <div
         className={`md:col-span-7 ${imageLeft ? "md:col-start-1" : "md:col-start-6"} md:row-start-1`}
       >
         <motion.div
-          initial={
-            reduce
-              ? { opacity: 0 }
-              : {
-                  clipPath: imageLeft
-                    ? "inset(0% 100% 0% 0%)"
-                    : "inset(0% 0% 0% 100%)",
-                }
-          }
-          whileInView={
-            reduce ? { opacity: 1 } : { clipPath: "inset(0% 0% 0% 0%)" }
-          }
-          viewport={{ once: true, margin: "-60px" }}
+          initial={hidden}
+          animate={inView ? shown : hidden}
           transition={{ duration: 1.1, ease: EASE }}
         >
           <div className="frame-img aspect-[4/3]">
@@ -93,7 +94,7 @@ function PillarRow({
           {/* Ghost stage number behind the text */}
           <span
             aria-hidden="true"
-            className={`pointer-events-none absolute -top-16 font-display text-[clamp(7rem,12vw,11rem)] leading-none text-vn-bg-warm md:-top-24 ${
+            className={`pointer-events-none absolute hidden font-display text-[clamp(7rem,12vw,11rem)] leading-none text-vn-bg-warm md:-top-24 md:block ${
               imageLeft ? "-left-2" : "-right-2"
             }`}
           >
