@@ -1,4 +1,5 @@
 import { Reveal } from "./Reveal";
+import { FloatTitle } from "./FloatTitle";
 
 const STEPS = [
   {
@@ -30,16 +31,14 @@ export function Process() {
         <Reveal>
           <p className="eyebrow text-vn-muted">06 — Proces</p>
         </Reveal>
-        <Reveal delay={0.08} mask>
-          <h2 className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
-            Proces prosty dla klienta.{" "}
-            <em className="text-vn-burgundy">Precyzyjny po naszej stronie.</em>
-          </h2>
-        </Reveal>
+        <FloatTitle
+          text="Proces prosty dla klienta. *Precyzyjny po naszej stronie.*"
+          className="mt-8 max-w-[860px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]"
+        />
 
         <div className="mt-16 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((s, i) => (
-            <Reveal key={s.no} delay={0.08 * i} x={i % 2 === 0 ? -90 : 90}>
+            <Reveal key={s.no} delay={0.12 * i} y={40}>
               <div className="border-t-2 border-vn-charcoal pt-6">
                 <span className="font-display text-[2.6rem] leading-none text-vn-burgundy">
                   {s.no}

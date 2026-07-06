@@ -1,4 +1,5 @@
 import { Reveal } from "./Reveal";
+import { FloatTitle } from "./FloatTitle";
 import { asset } from "../lib/asset";
 
 export function FinalCTA() {
@@ -20,7 +21,9 @@ export function FinalCTA() {
         <source src={asset("videos/hero.mp4")} type="video/mp4" />
         <source src={asset("videos/hero.webm")} type="video/webm" />
       </video>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,11,0.88)_0%,rgba(91,24,37,0.55)_55%,rgba(14,11,11,0.92)_100%)]" />
+      <div className="video-duotone" />
+      <div className="video-duotone-boost" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,11,0.82)_0%,rgba(14,11,11,0.35)_55%,rgba(14,11,11,0.9)_100%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(55%_60%_at_75%_35%,rgba(122,37,51,0.35),transparent_70%)]" />
 
       <div className="relative mx-auto w-full max-w-[1400px] px-5 py-24 md:px-10 md:py-32">
@@ -45,12 +48,11 @@ export function FinalCTA() {
           </Reveal>
         </div>
 
-        <Reveal delay={0.2} mask>
-          <h2 className="mt-16 max-w-[1000px] text-[clamp(2.1rem,4.8vw,4.1rem)] leading-[1.1]">
-            Potrzebujesz obrazów, które nie wyglądają jak{" "}
-            <em>przypadkowe AI</em>?
-          </h2>
-        </Reveal>
+        <FloatTitle
+          text="Potrzebujesz obrazów, które nie wyglądają jak *przypadkowe AI?*"
+          accentClass="italic"
+          className="mt-16 max-w-[1000px] text-[clamp(2.1rem,4.8vw,4.1rem)] leading-[1.1]"
+        />
         <Reveal delay={0.28}>
           <p className="mt-7 max-w-[560px] text-[1.0625rem] leading-relaxed text-vn-cream/75">
             Opisz branżę, ofertę i zastosowanie. Przygotujemy kierunek wizualny

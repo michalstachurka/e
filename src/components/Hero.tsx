@@ -8,6 +8,21 @@ import {
 import { EASE } from "./Reveal";
 import { asset } from "../lib/asset";
 
+// Pre-split headline words with running letter offsets for the float phases.
+const HERO_WORDS = (() => {
+  const parts: { word: string; italic: boolean }[] = [
+    ...["Wizualizacje", "AI,", "które", "wyglądają", "jak"].map((word) => ({ word, italic: false })),
+    ...["materiał", "dla", "marki"].map((word) => ({ word, italic: true })),
+    { word: "premium.", italic: true },
+  ];
+  let offset = 0;
+  return parts.map((p) => {
+    const r = { ...p, offset };
+    offset += p.word.length;
+    return r;
+  });
+})();
+
 export function Hero() {
   const reduce = useReducedMotion();
   const ref = useRef<HTMLElement>(null);
@@ -53,6 +68,10 @@ export function Hero() {
         </video>
       </motion.div>
 
+      {/* Duotone wash: burgundy -> petrol, slowly drifting */}
+      <div className="video-duotone" />
+      <div className="video-duotone-boost" />
+
       {/* Legibility overlays — tuned to keep the burgundy glow alive */}
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(14,11,11,0.9)_0%,rgba(14,11,11,0.55)_38%,rgba(14,11,11,0.08)_68%,rgba(14,11,11,0.25)_100%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,11,0.45)_0%,rgba(14,11,11,0)_28%,rgba(14,11,11,0)_50%,rgba(20,17,18,0.55)_78%,rgba(20,17,18,0.92)_94%,#141112_100%)]" />
@@ -67,10 +86,35 @@ export function Hero() {
 
         <motion.h1
           {...enter(0.3)}
-          className="mt-7 max-w-[1050px] text-[clamp(2.6rem,7vw,5.4rem)] leading-[1.04]"
+          aria-label="Wizualizacje AI, które wyglądają jak materiał dla marki premium."
+          className="mt-7 max-w-[1050px] text-[clamp(2.6rem,7vw,5.4rem)] leading-[1.04] text-white"
         >
-          Wizualizacje AI, które wyglądają jak{" "}
-          <em className="text-vn-burgundy-soft">materiał dla marki premium</em>.
+          {HERO_WORDS.map((w, wi) => (
+            <span key={wi} className="inline-block whitespace-nowrap">
+              {[...w.word].map((ch, ci) => {
+                const i = w.offset + ci;
+                return (
+                  <motion.span
+                    key={ci}
+                    className={`inline-block will-change-transform ${w.italic ? "italic" : ""}`}
+                    animate={
+                      reduce
+                        ? undefined
+                        : { y: [0, -3.5, 0, 2.5, 0] }
+                    }
+                    transition={{
+                      duration: 5.5 + ((i * 13) % 40) / 10,
+                      delay: 1.6 + (i % 9) * 0.22,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                  >
+                    {ch}
+                  </motion.span>
+                );
+              })}
+            </span>
+          )).flatMap((el) => [el, " "])}
         </motion.h1>
 
         <motion.p

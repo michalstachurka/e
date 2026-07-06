@@ -46,7 +46,7 @@ export function Footer() {
 
         <div className="mt-16 flex flex-col justify-between gap-3 border-t border-white/10 pt-6 sm:flex-row">
           <p className="spec text-vn-cream/35">
-            © {new Date().getFullYear()} visNEX. Wszelkie prawa zastrzeżone.
+            © {new Date().getFullYear()} <span className="normal-case">visNEX</span>. Wszelkie prawa zastrzeżone.
           </p>
           <p className="spec text-vn-cream/35">
             wizualizacje sprzedażowe · realizm · kontrola jakości

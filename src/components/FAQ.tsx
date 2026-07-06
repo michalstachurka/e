@@ -1,4 +1,5 @@
 import { Reveal } from "./Reveal";
+import { FloatTitle } from "./FloatTitle";
 
 const ITEMS = [
   {
@@ -40,18 +41,17 @@ export function FAQ() {
             <Reveal>
               <p className="eyebrow text-vn-muted">09 — FAQ</p>
             </Reveal>
-            <Reveal delay={0.08} mask>
-              <h2 className="mt-8 text-[clamp(1.9rem,3vw,2.6rem)] leading-[1.14]">
-                Realne pytania przed pierwszym pakietem.
-              </h2>
-            </Reveal>
+            <FloatTitle
+              text="Realne pytania przed *pierwszym pakietem.*"
+              className="mt-8 text-[clamp(1.9rem,3vw,2.6rem)] leading-[1.14]"
+            />
           </div>
 
           <div className="lg:col-span-7 lg:col-start-6">
-            <Reveal delay={0.1} x={110}>
-              <div className="border-t hairline">
-                {ITEMS.map((item) => (
-                  <details key={item.q} className="group border-b hairline">
+            <div className="border-t hairline">
+              {ITEMS.map((item, i) => (
+                <Reveal key={item.q} delay={0.06 * i} y={22}>
+                  <details className="group border-b hairline">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-6 [&::-webkit-details-marker]:hidden">
                       <h3 className="text-[1.15rem] leading-snug">{item.q}</h3>
                       <span
@@ -66,9 +66,9 @@ export function FAQ() {
                       {item.a}
                     </p>
                   </details>
-                ))}
-              </div>
-            </Reveal>
+                </Reveal>
+              ))}
+            </div>
           </div>
         </div>
       </div>

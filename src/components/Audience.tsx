@@ -1,4 +1,5 @@
 import { Reveal } from "./Reveal";
+import { FloatTitle } from "./FloatTitle";
 
 const GROUPS = [
   {
@@ -26,15 +27,14 @@ export function Audience() {
         <Reveal>
           <p className="eyebrow text-vn-muted">04 — Dla kogo</p>
         </Reveal>
-        <Reveal delay={0.08} mask>
-          <h2 className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
-            Dla marek, które sprzedają produkt obrazem.
-          </h2>
-        </Reveal>
+        <FloatTitle
+          text="Dla marek, które sprzedają *produkt obrazem.*"
+          className="mt-8 max-w-[820px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]"
+        />
 
         <div className="mt-16 border-t hairline">
           {GROUPS.map((g, i) => (
-            <Reveal key={g.name} delay={0.05 * i} x={i % 2 === 0 ? -120 : 120}>
+            <Reveal key={g.name} delay={0.09 * i} y={26}>
               <div className="group grid gap-2 border-b hairline py-8 transition-colors duration-300 md:grid-cols-12 md:items-baseline md:py-10">
                 <span className="spec text-vn-muted-light md:col-span-1">
                   {String(i + 1).padStart(2, "0")}

@@ -1,4 +1,5 @@
 import { Reveal } from "./Reveal";
+import { FloatTitle } from "./FloatTitle";
 import { SpecPlate } from "./SpecPlate";
 import { asset } from "../lib/asset";
 import { Parallax } from "./Parallax";
@@ -49,19 +50,17 @@ export function UseCases() {
         <Reveal>
           <p className="eyebrow text-vn-muted">03 — Zastosowania</p>
         </Reveal>
-        <Reveal delay={0.08} mask>
-          <h2 className="mt-8 max-w-[880px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]">
-            Obrazy do miejsc, w których klient naprawdę{" "}
-            <em className="text-vn-burgundy">podejmuje decyzję</em>.
-          </h2>
-        </Reveal>
+        <FloatTitle
+          text="Obrazy do miejsc, w których klient naprawdę *podejmuje decyzję.*"
+          className="mt-8 max-w-[880px] text-[clamp(1.9rem,3.6vw,3.1rem)] leading-[1.14]"
+        />
 
         <div className="mt-16 grid gap-5 md:grid-cols-12 md:gap-6">
           {CASES.map((c, i) => (
             <Reveal
               key={c.title}
-              delay={0.06 * i}
-              x={i % 2 === 0 ? -110 : 110}
+              delay={0.09 * i}
+              y={56}
               className={`group/card ${c.span}`}
             >
               <div className="flex h-full flex-col">
