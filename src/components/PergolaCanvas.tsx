@@ -36,7 +36,11 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     slatMaterial?: THREE.MeshStandardMaterial;
     rebuild?: (p: PergolaParams) => void;
     controls?: OrbitControls;
+    slats?: THREE.Mesh[];
+    lastDims?: string;
   }>({});
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
 
   useEffect(() => {
     const el = mount.current;
@@ -66,15 +70,34 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     const disarmZoom = () => (controls.enableZoom = false);
     el.addEventListener("pointerdown", armZoom);
     el.addEventListener("pointerleave", disarmZoom);
-    controls.maxPolarAngle = Math.PI / 2.05;
+    // Allow tilting up to look under the roof; the render loop keeps the
+    // camera above the ground plane.
+    controls.maxPolarAngle = Math.PI * 0.62;
     controls.target.set(0, 1.3, 0);
     controls.autoRotate = false;
     controls.autoRotateSpeed = 0.55;
 
     // Ground plane (receives the LED light pools) + soft contact shadow
+    const alphaC = document.createElement("canvas");
+    alphaC.width = alphaC.height = 256;
+    {
+      const cctx = alphaC.getContext("2d")!;
+      const g = cctx.createRadialGradient(128, 128, 30, 128, 128, 128);
+      g.addColorStop(0, "#fff");
+      g.addColorStop(0.75, "#fff");
+      g.addColorStop(1, "#000");
+      cctx.fillStyle = g;
+      cctx.fillRect(0, 0, 256, 256);
+    }
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(1, 64),
-      new THREE.MeshStandardMaterial({ color: "#e9e4da", roughness: 0.96, metalness: 0 }),
+      new THREE.MeshStandardMaterial({
+        color: "#f1ede5", // matches the section backdrop, so no visible disc
+        roughness: 0.96,
+        metalness: 0,
+        transparent: true,
+        alphaMap: new THREE.CanvasTexture(alphaC),
+      }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0.002;
@@ -108,6 +131,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
         if (o instanceof THREE.Light) o.dispose();
       });
       group = new THREE.Group();
+      const slats: THREE.Mesh[] = [];
 
       const H = p.height;
       const post = 0.14;
@@ -172,6 +196,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
           slat.position.set(cx, H - beam / 2, z);
           slat.rotation.x = THREE.MathUtils.degToRad(p.slatAngle);
           group.add(slat);
+          slats.push(slat);
 
           if (spotSlats.has(i)) {
             const margin = 0.4;
@@ -179,11 +204,11 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
             for (let k = 0; k < spotsPerSlat; k++) {
               const x = -usable / 2 + (spotsPerSlat === 1 ? usable / 2 : (k * usable) / (spotsPerSlat - 1));
               const dot = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.028, 0.028, 0.012, 14),
+                new THREE.CylinderGeometry(0.0224, 0.0224, 0.01, 14),
                 glowMaterial,
               );
               // Child of the slat so spots tilt with the louvre (flush mount)
-              dot.position.set(x, -0.012, 0);
+              dot.position.set(x, -0.01, 0);
               slat.add(dot);
             }
           }
@@ -200,9 +225,9 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
 
       // LEDs actually cast light: a soft pool on the ground under each module
       if (p.ledLinear || p.ledSpots) {
-        const strength = (p.ledLinear ? 26 : 0) + (p.ledSpots ? 22 : 0);
+        const strength = (p.ledLinear ? 65 : 0) + (p.ledSpots ? 55 : 0);
         for (const cx of centers) {
-          const sp = new THREE.SpotLight("#f2f6ff", strength, H * 4, 1.05, 0.65, 1.4);
+          const sp = new THREE.SpotLight("#f2f6ff", strength, H * 5, 1.15, 0.7, 1.3);
           sp.position.set(cx, H - beam, 0);
           sp.target.position.set(cx, 0, 0);
           group.add(sp);
@@ -210,21 +235,27 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
         }
       }
 
-      ground.scale.setScalar(Math.max(totalW, D) * 1.5);
+      ground.scale.setScalar(Math.max(totalW, D) * 1.9);
       shadow.scale.set(totalW * 1.6, D * 1.7, 1);
       scene.add(group);
+      stateRef.current.slats = slats;
 
-      // Keep the whole structure in frame when dimensions/modules change
-      controls.target.set(0, H * 0.55, 0);
-      const radius = Math.max(totalW * 1.3, D * 1.9, H * 3.2, 6.5);
-      const old = camera.position.clone().sub(controls.target);
-      const az = Math.atan2(old.x, old.z);
-      const elev = 0.2;
-      camera.position.set(
-        controls.target.x + radius * Math.sin(az) * Math.cos(Math.asin(elev)),
-        controls.target.y + radius * elev,
-        controls.target.z + radius * Math.cos(az) * Math.cos(Math.asin(elev)),
-      );
+      // Reframe only when the structure's size actually changed, so colour
+      // or lighting tweaks never reset the user's view
+      const dims = `${p.widths.join(",")}|${D}|${H}`;
+      if (stateRef.current.lastDims !== dims) {
+        stateRef.current.lastDims = dims;
+        controls.target.set(0, H * 0.55, 0);
+        const radius = Math.max(totalW * 1.3, D * 1.9, H * 3.2, 6.5);
+        const old = camera.position.clone().sub(controls.target);
+        const az = Math.atan2(old.x, old.z);
+        const elev = 0.2;
+        camera.position.set(
+          controls.target.x + radius * Math.sin(az) * Math.cos(Math.asin(elev)),
+          controls.target.y + radius * elev,
+          controls.target.z + radius * Math.cos(az) * Math.cos(Math.asin(elev)),
+        );
+      }
     };
 
     stateRef.current = { group, material, slatMaterial, rebuild, controls };
@@ -251,7 +282,15 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
 
     const loop = () => {
       if (visible) {
+        const p = paramsRef.current;
+        if (p.spin && stateRef.current.slats) {
+          const t = performance.now() / 1000;
+          const osc = ((Math.sin(t * 0.4) + 1) / 2) * 100; // 0..100 deg sweep
+          const rot = THREE.MathUtils.degToRad(osc);
+          for (const sl of stateRef.current.slats) sl.rotation.x = rot;
+        }
         controls.update();
+        if (camera.position.y < 0.25) camera.position.y = 0.25;
         renderer.render(scene, camera);
       }
       raf = requestAnimationFrame(loop);
@@ -278,6 +317,10 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     stateRef.current.material?.color.set(params.frameColor);
     stateRef.current.slatMaterial?.color.set(params.slatColor);
     if (stateRef.current.controls) stateRef.current.controls.autoRotate = params.spin;
+    if (!params.spin && stateRef.current.slats) {
+      const rot = THREE.MathUtils.degToRad(params.slatAngle);
+      for (const sl of stateRef.current.slats) sl.rotation.x = rot;
+    }
   }, [params]);
 
   return (

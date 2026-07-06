@@ -110,26 +110,31 @@ function OptionsSheet({
   open,
   onClose,
   title,
+  anchorId,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  anchorId?: string;
   children: React.ReactNode;
 }) {
   useEffect(() => {
     document.documentElement.style.overflow = open ? "hidden" : "";
+    if (open && anchorId) {
+      document.getElementById(anchorId)?.scrollIntoView({ behavior: "auto", block: "start" });
+    }
     return () => {
       document.documentElement.style.overflow = "";
     };
-  }, [open]);
+  }, [open, anchorId]);
 
   return (
     <div className={`lg:hidden ${open ? "" : "pointer-events-none"}`}>
       <div
         aria-hidden="true"
         onClick={onClose}
-        className={`fixed inset-0 z-[70] bg-vn-ink/55 transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[70] bg-vn-ink/15 transition-opacity duration-300 ${
           open ? "opacity-100" : "opacity-0"
         }`}
       />
@@ -138,7 +143,7 @@ function OptionsSheet({
         aria-modal="true"
         aria-label={title}
         data-lenis-prevent
-        className={`fixed inset-x-0 bottom-0 z-[80] max-h-[78dvh] overflow-y-auto border-t-[3px] border-vn-burgundy bg-vn-bg px-5 pb-10 pt-5 text-vn-charcoal transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed inset-x-0 bottom-0 z-[80] max-h-[46dvh] overflow-y-auto border-t-[3px] border-vn-burgundy bg-vn-bg px-5 pb-10 pt-5 text-vn-charcoal transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           open ? "translate-y-0" : "translate-y-full"
         }`}
       >
@@ -192,7 +197,7 @@ function DoorDemo() {
         <div className="grid items-center gap-10 lg:grid-cols-12">
           <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
-              <div className="relative">
+              <div id="k1-frame" className="relative scroll-mt-20">
                 <SheetButton onClick={() => setSheet(true)} />
                 <VariantStack
                 images={DOOR_VARIANTS.map((v) => `images/konfigurator/door-${v.id}.webp`)}
@@ -229,6 +234,7 @@ function DoorDemo() {
         open={sheet}
         onClose={() => setSheet(false)}
         title="K—01 · Kolor skrzydła"
+        anchorId="k1-frame"
       >
         {controls}
       </OptionsSheet>
@@ -294,7 +300,7 @@ function LedDemo() {
 
           <div className="lg:order-2 lg:col-span-8">
             <Reveal x={120}>
-              <div className="relative">
+              <div id="k2-frame" className="relative scroll-mt-20">
                 <SheetButton onClick={() => setSheet(true)} />
                 <VariantStack
                 images={LED_VARIANTS.map((v) => `images/konfigurator/led-${v.id}.webp`)}
@@ -317,6 +323,7 @@ function LedDemo() {
         open={sheet}
         onClose={() => setSheet(false)}
         title="K—02 · Barwa światła"
+        anchorId="k2-frame"
       >
         {controls}
       </OptionsSheet>
@@ -454,7 +461,7 @@ function PergolaDemo() {
         <div className="grid items-center gap-10 lg:grid-cols-12">
           <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
-              <div data-lenis-prevent className="relative aspect-[4/3] w-full border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
+              <div id="k3-frame" data-lenis-prevent className="relative aspect-[4/3] w-full scroll-mt-20 border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
                 <SheetButton onClick={() => setSheet(true)} />
                 <PergolaCanvas params={params} />
               </div>
@@ -500,6 +507,7 @@ function PergolaDemo() {
         open={sheet}
         onClose={() => setSheet(false)}
         title="K—03 · Parametry pergoli"
+        anchorId="k3-frame"
       >
         {controls}
       </OptionsSheet>
