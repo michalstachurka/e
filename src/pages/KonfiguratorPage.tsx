@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SmoothScroll } from "../components/SmoothScroll";
 import { Navbar } from "../components/Navbar";
 import { Footer } from "../components/Footer";
@@ -84,6 +84,82 @@ function Swatch({
   );
 }
 
+/* ---------- mobile options sheet ---------- */
+
+function SheetButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="btn btn-charcoal absolute bottom-3 right-3 z-10 !px-4 !py-3 shadow-lg lg:hidden"
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <line x1="1" y1="3.2" x2="13" y2="3.2" />
+          <line x1="1" y1="10.8" x2="13" y2="10.8" />
+          <circle cx="9.4" cy="3.2" r="1.9" fill="var(--vn-charcoal)" />
+          <circle cx="4.6" cy="10.8" r="1.9" fill="var(--vn-charcoal)" />
+        </g>
+      </svg>
+      Opcje
+    </button>
+  );
+}
+
+function OptionsSheet({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    document.documentElement.style.overflow = open ? "hidden" : "";
+    return () => {
+      document.documentElement.style.overflow = "";
+    };
+  }, [open]);
+
+  return (
+    <div className={`lg:hidden ${open ? "" : "pointer-events-none"}`}>
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className={`fixed inset-0 z-[70] bg-vn-ink/55 transition-opacity duration-300 ${
+          open ? "opacity-100" : "opacity-0"
+        }`}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        data-lenis-prevent
+        className={`fixed inset-x-0 bottom-0 z-[80] max-h-[78dvh] overflow-y-auto border-t-[3px] border-vn-burgundy bg-vn-bg px-5 pb-10 pt-5 text-vn-charcoal transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          open ? "translate-y-0" : "translate-y-full"
+        }`}
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <span className="spec text-vn-muted">{title}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Zamknij opcje"
+            className="relative block h-9 w-9"
+          >
+            <span className="absolute left-1/2 top-1/2 h-px w-5 -translate-x-1/2 rotate-45 bg-vn-charcoal" />
+            <span className="absolute left-1/2 top-1/2 h-px w-5 -translate-x-1/2 -rotate-45 bg-vn-charcoal" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- 01: door colour (AI variant series) ---------- */
 
 const DOOR_VARIANTS = [
@@ -96,17 +172,34 @@ const DOOR_VARIANTS = [
 
 function DoorDemo() {
   const [active, setActive] = useState(0);
+  const [sheet, setSheet] = useState(false);
+  const controls = (
+    <div className="flex flex-wrap gap-x-7 gap-y-4 lg:flex-col">
+      {DOOR_VARIANTS.map((v, i) => (
+        <Swatch
+          key={v.id}
+          color={v.chip}
+          label={v.label}
+          active={i === active}
+          onClick={() => setActive(i)}
+        />
+      ))}
+    </div>
+  );
   return (
     <section id="drzwi" className="bg-vn-bg">
       <div className="mx-auto max-w-[1400px] px-5 py-24 md:px-10 md:py-36">
         <div className="grid items-center gap-10 lg:grid-cols-12">
           <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
-              <VariantStack
+              <div className="relative">
+                <SheetButton onClick={() => setSheet(true)} />
+                <VariantStack
                 images={DOOR_VARIANTS.map((v) => `images/konfigurator/door-${v.id}.webp`)}
                 active={active}
                 alt={`Drzwi ukryte w kolorze: ${DOOR_VARIANTS[active].label}`}
-              />
+                />
+              </div>
               <div className="mt-3">
                 <SpecPlate
                   left={`VN—KONF/01 · drzwi ukryte · ${DOOR_VARIANTS[active].label}`}
@@ -127,21 +220,18 @@ function DoorDemo() {
                 tylko produkt. Seria powstaje z wizualizacji AI, bez modeli 3D
                 i bez sesji zdjęciowej.
               </p>
-              <div className="mt-8 flex flex-wrap gap-x-7 gap-y-4 lg:flex-col">
-                {DOOR_VARIANTS.map((v, i) => (
-                  <Swatch
-                    key={v.id}
-                    color={v.chip}
-                    label={v.label}
-                    active={i === active}
-                    onClick={() => setActive(i)}
-                  />
-                ))}
-              </div>
+              <div className="mt-8 hidden lg:block">{controls}</div>
             </Reveal>
           </div>
         </div>
       </div>
+      <OptionsSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        title="K—01 · Kolor skrzydła"
+      >
+        {controls}
+      </OptionsSheet>
     </section>
   );
 }
@@ -156,6 +246,30 @@ const LED_VARIANTS = [
 
 function LedDemo() {
   const [active, setActive] = useState(0);
+  const [sheet, setSheet] = useState(false);
+  const controls = (
+    <div className="flex flex-wrap gap-3">
+      {LED_VARIANTS.map((v, i) => (
+        <button
+          key={v.id}
+          type="button"
+          onClick={() => setActive(i)}
+          aria-pressed={i === active}
+          className={`pill transition-colors duration-300 ${
+            i === active
+              ? "border-vn-burgundy text-current"
+              : "opacity-55 hover:opacity-90"
+          }`}
+        >
+          <span
+            style={{ background: v.chip }}
+            className="mr-2.5 inline-block h-3 w-3 rounded-full"
+          />
+          {v.label} · {v.temp}
+        </button>
+      ))}
+    </div>
+  );
   return (
     <section id="led" className="relative overflow-hidden bg-vn-charcoal-soft text-vn-cream">
       <div
@@ -174,37 +288,20 @@ function LedDemo() {
                 Klient wybiera temperaturę barwową, a scena reaguje — od
                 ciepłego wieczornego światła po chłodną, galeryjną biel.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                {LED_VARIANTS.map((v, i) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setActive(i)}
-                    aria-pressed={i === active}
-                    className={`pill transition-colors duration-300 ${
-                      i === active
-                        ? "border-vn-burgundy-soft text-vn-cream"
-                        : "text-vn-cream/50 hover:text-vn-cream/80"
-                    }`}
-                  >
-                    <span
-                      style={{ background: v.chip }}
-                      className="mr-2.5 inline-block h-3 w-3 rounded-full"
-                    />
-                    {v.label} · {v.temp}
-                  </button>
-                ))}
-              </div>
+              <div className="mt-8 hidden lg:block">{controls}</div>
             </Reveal>
           </div>
 
           <div className="lg:order-2 lg:col-span-8">
             <Reveal x={120}>
-              <VariantStack
+              <div className="relative">
+                <SheetButton onClick={() => setSheet(true)} />
+                <VariantStack
                 images={LED_VARIANTS.map((v) => `images/konfigurator/led-${v.id}.webp`)}
                 active={active}
                 alt={`Sztukateria LED — barwa ${LED_VARIANTS[active].label.toLowerCase()} (${LED_VARIANTS[active].temp})`}
-              />
+                />
+              </div>
               <div className="mt-3">
                 <SpecPlate
                   tone="dark"
@@ -216,6 +313,13 @@ function LedDemo() {
           </div>
         </div>
       </div>
+      <OptionsSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        title="K—02 · Barwa światła"
+      >
+        {controls}
+      </OptionsSheet>
     </section>
   );
 }
@@ -246,6 +350,52 @@ function PergolaDemo() {
     }),
     [width, depth, height, angle, frame, slat],
   );
+  const [sheet, setSheet] = useState(false);
+
+  const controls = (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-1">
+        <label className="block">
+          <span className="spec text-vn-muted">Szerokość · {width.toFixed(1)} m</span>
+          <input type="range" min={3} max={6} step={0.1} value={width}
+            onChange={(e) => setWidth(Number(e.target.value))} className="range mt-3 w-full" />
+        </label>
+        <label className="block">
+          <span className="spec text-vn-muted">Wysięg · {depth.toFixed(1)} m</span>
+          <input type="range" min={2.5} max={4.5} step={0.1} value={depth}
+            onChange={(e) => setDepth(Number(e.target.value))} className="range mt-3 w-full" />
+        </label>
+        <label className="block">
+          <span className="spec text-vn-muted">Wysokość · {height.toFixed(1)} m</span>
+          <input type="range" min={2.2} max={3.2} step={0.05} value={height}
+            onChange={(e) => setHeight(Number(e.target.value))} className="range mt-3 w-full" />
+        </label>
+        <label className="block">
+          <span className="spec text-vn-muted">Otwarcie lameli · {angle}°</span>
+          <input type="range" min={0} max={120} step={1} value={angle}
+            onChange={(e) => setAngle(Number(e.target.value))} className="range mt-3 w-full" />
+        </label>
+      </div>
+      <div>
+        <span className="spec text-vn-muted">Kolor konstrukcji</span>
+        <div className="mt-3 flex flex-wrap gap-x-7 gap-y-3">
+          {PERGOLA_COLORS.map((c) => (
+            <Swatch key={c.id} color={c.value} label={c.label}
+              active={frame.id === c.id} onClick={() => setFrame(c)} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <span className="spec text-vn-muted">Kolor lameli</span>
+        <div className="mt-3 flex flex-wrap gap-x-7 gap-y-3">
+          {PERGOLA_COLORS.map((c) => (
+            <Swatch key={c.id} color={c.value} label={c.label}
+              active={slat.id === c.id} onClick={() => setSlat(c)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <section id="pergola" className="bg-vn-bg-warm">
@@ -253,7 +403,8 @@ function PergolaDemo() {
         <div className="grid items-center gap-10 lg:grid-cols-12">
           <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
-              <div className="aspect-[4/3] w-full border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
+              <div className="relative aspect-[4/3] w-full border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
+                <SheetButton onClick={() => setSheet(true)} />
                 <PergolaCanvas params={params} />
               </div>
               <div className="mt-3">
@@ -277,98 +428,18 @@ function PergolaDemo() {
                 przeciągnięciem.
               </p>
 
-              <div className="mt-8 space-y-6">
-                <div className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-1">
-                  <label className="block">
-                    <span className="spec text-vn-muted">
-                      Szerokość · {width.toFixed(1)} m
-                    </span>
-                    <input
-                      type="range"
-                      min={3}
-                      max={6}
-                      step={0.1}
-                      value={width}
-                      onChange={(e) => setWidth(Number(e.target.value))}
-                      className="range mt-3 w-full"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="spec text-vn-muted">
-                      Wysięg · {depth.toFixed(1)} m
-                    </span>
-                    <input
-                      type="range"
-                      min={2.5}
-                      max={4.5}
-                      step={0.1}
-                      value={depth}
-                      onChange={(e) => setDepth(Number(e.target.value))}
-                      className="range mt-3 w-full"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="spec text-vn-muted">
-                      Wysokość · {height.toFixed(1)} m
-                    </span>
-                    <input
-                      type="range"
-                      min={2.2}
-                      max={3.2}
-                      step={0.05}
-                      value={height}
-                      onChange={(e) => setHeight(Number(e.target.value))}
-                      className="range mt-3 w-full"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="spec text-vn-muted">
-                      Otwarcie lameli · {angle}°
-                    </span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={120}
-                      step={1}
-                      value={angle}
-                      onChange={(e) => setAngle(Number(e.target.value))}
-                      className="range mt-3 w-full"
-                    />
-                  </label>
-                </div>
-                <div>
-                  <span className="spec text-vn-muted">Kolor konstrukcji</span>
-                  <div className="mt-3 flex flex-wrap gap-x-7 gap-y-3">
-                    {PERGOLA_COLORS.map((c) => (
-                      <Swatch
-                        key={c.id}
-                        color={c.value}
-                        label={c.label}
-                        active={frame.id === c.id}
-                        onClick={() => setFrame(c)}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <span className="spec text-vn-muted">Kolor lameli</span>
-                  <div className="mt-3 flex flex-wrap gap-x-7 gap-y-3">
-                    {PERGOLA_COLORS.map((c) => (
-                      <Swatch
-                        key={c.id}
-                        color={c.value}
-                        label={c.label}
-                        active={slat.id === c.id}
-                        onClick={() => setSlat(c)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <div className="mt-8 hidden lg:block">{controls}</div>
             </Reveal>
           </div>
         </div>
       </div>
+      <OptionsSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        title="K—03 · Parametry pergoli"
+      >
+        {controls}
+      </OptionsSheet>
     </section>
   );
 }
