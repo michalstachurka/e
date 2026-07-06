@@ -351,7 +351,7 @@ function PergolaDemo() {
   const [slat, setSlat] = useState(PERGOLA_COLORS[0]);
   const [ledLinear, setLedLinear] = useState(false);
   const [ledSpots, setLedSpots] = useState(false);
-  const [spin, setSpin] = useState(false);
+  const [spin, setSpin] = useState(true);
   const modules = widths.length;
   const setModules = (m: number) =>
     setWidths((w) => (m === w.length ? w : m > w.length ? [...w, 4] : w.slice(0, m)));
@@ -461,7 +461,7 @@ function PergolaDemo() {
         <div className="grid items-center gap-10 lg:grid-cols-12">
           <div className="order-2 lg:order-1 lg:col-span-8">
             <Reveal x={-120}>
-              <div id="k3-frame" data-lenis-prevent className="relative aspect-[4/3] w-full scroll-mt-20 border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
+              <div id="k3-frame" className="relative aspect-[4/3] w-full scroll-mt-20 border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
                 <SheetButton onClick={() => setSheet(true)} />
                 <PergolaCanvas params={params} />
               </div>

@@ -38,8 +38,8 @@ Załączam gotowy, samodzielny konfigurator 3D pergoli lamelowej
      kolor lameli → oświetlenie LED (liniowe i punktowe można łączyć),
    - kolory w kolejności: Antracyt, Biały, Czarny, Brąz,
    - pod kadrem przełącznik „Animacja ruchu" (wolny obrót + cykliczne
-     otwieranie/zamykanie lameli) oraz linia spec z aktualną konfiguracją,
-     np. „4.0 + 5.5 × 3.2 × 2.6 m · 35°".
+     otwieranie/zamykanie lameli), DOMYŚLNIE WŁĄCZONY, oraz linia spec
+     z aktualną konfiguracją, np. „4.0 + 5.5 × 3.2 × 2.6 m · 35°".
 
 5. Sprawdź po integracji: scroll strony nad canvasem działa płynnie,
    obrót przeciągnięciem działa na desktopie i dotyku, zmiana koloru nie

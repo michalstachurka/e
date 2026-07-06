@@ -32,7 +32,7 @@ export function PergolaConfigurator({
   const [slat, setSlat] = useState(COLORS[0]);
   const [ledLinear, setLedLinear] = useState(false);
   const [ledSpots, setLedSpots] = useState(false);
-  const [spin, setSpin] = useState(false);
+  const [spin, setSpin] = useState(true);
 
   const modules = widths.length;
   const setModules = (m: number) =>

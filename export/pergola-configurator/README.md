@@ -62,8 +62,11 @@ const params: PergolaParams = {
 
 ## Zachowania wbudowane
 
-- obrót przeciągnięciem; zoom kółkiem dopiero po kliknięciu modelu
-  (scroll strony nigdy nie jest przechwytywany w przelocie),
+- obrót przeciągnięciem (na dotyku przyspieszony); zoom kółkiem dopiero
+  po kliknięciu modelu — scroll strony nad kadrem działa normalnie
+  (przy smooth-scrollu typu Lenis komponent sam przełącza atrybut
+  `data-lenis-prevent` w momencie uzbrojenia zoomu),
+- animacja ruchu (`spin`) domyślnie włączona,
 - kamera nie schodzi pod ziemię, można zajrzeć pod dach,
 - kamera przekadrowuje się tylko przy zmianie wymiarów/modułów,
 - lamele stykają się przy 0°, a przy 90° wystają ponad kołnierz,

@@ -63,13 +63,22 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     controls.enablePan = false;
     controls.minDistance = 4.5;
     controls.maxDistance = 20;
-    // Wheel zoom only after the user grabs the model, so page scroll is
-    // never hijacked while passing over the canvas.
+    // Wheel zoom only after the user grabs the model. The lenis-prevent
+    // attribute is toggled together with it: unarmed, wheel events scroll
+    // the page normally; armed, they zoom the model (and only the model).
     controls.enableZoom = false;
-    const armZoom = () => (controls.enableZoom = true);
-    const disarmZoom = () => (controls.enableZoom = false);
+    const armZoom = () => {
+      controls.enableZoom = true;
+      el.setAttribute("data-lenis-prevent", "true");
+    };
+    const disarmZoom = () => {
+      controls.enableZoom = false;
+      el.removeAttribute("data-lenis-prevent");
+    };
     el.addEventListener("pointerdown", armZoom);
     el.addEventListener("pointerleave", disarmZoom);
+    // Faster orbit on touch screens
+    if (window.matchMedia("(pointer: coarse)").matches) controls.rotateSpeed = 1.8;
     // maxPolarAngle is managed per-frame in the render loop
     controls.target.set(0, 1.3, 0);
     controls.autoRotate = false;
