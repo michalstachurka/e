@@ -54,6 +54,8 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.enablePan = false;
+    // Wheel zoom fights the page scroll (Lenis) — rotate-only feels right here
+    controls.enableZoom = false;
     controls.minDistance = 5;
     controls.maxDistance = 14;
     controls.maxPolarAngle = Math.PI / 2.05;
