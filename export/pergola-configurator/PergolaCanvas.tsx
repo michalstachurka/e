@@ -49,6 +49,8 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -332,7 +334,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       ref={mount}
       aria-label="Interaktywny model 3D pergoli — przeciągnij, aby obrócić"
       role="img"
-      className="h-full w-full cursor-grab active:cursor-grabbing [&>canvas]:h-full [&>canvas]:w-full"
+      style={{ width: "100%", height: "100%", cursor: "grab" }}
     />
   );
 }
