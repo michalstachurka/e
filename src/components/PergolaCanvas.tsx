@@ -4,12 +4,14 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 export type PergolaParams = {
-  width: number; // m
+  width: number; // m (single module)
   depth: number; // m (wysięg)
   height: number; // m
   slatAngle: number; // deg, 0 = closed/flat, up to 120
   frameColor: string;
   slatColor: string;
+  modules: 1 | 2;
+  lighting: "none" | "linear" | "spots";
 };
 
 /** Soft radial ground shadow texture. */
@@ -54,10 +56,15 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.enablePan = false;
-    // Wheel zoom fights the page scroll (Lenis) — rotate-only feels right here
+    controls.minDistance = 4.5;
+    controls.maxDistance = 20;
+    // Wheel zoom only after the user grabs the model, so page scroll is
+    // never hijacked while passing over the canvas.
     controls.enableZoom = false;
-    controls.minDistance = 5;
-    controls.maxDistance = 14;
+    const armZoom = () => (controls.enableZoom = true);
+    const disarmZoom = () => (controls.enableZoom = false);
+    el.addEventListener("pointerdown", armZoom);
+    el.addEventListener("pointerleave", disarmZoom);
     controls.maxPolarAngle = Math.PI / 2.05;
     controls.target.set(0, 1.3, 0);
     controls.autoRotate = !reduce;
@@ -78,6 +85,8 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       metalness: 0.35,
     });
     const slatMaterial = material.clone();
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: "#ffc98f" });
+    glowMaterial.toneMapped = false;
 
     let group = new THREE.Group();
     scene.add(group);
@@ -86,6 +95,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       scene.remove(group);
       group.traverse((o) => {
         if (o instanceof THREE.Mesh) o.geometry.dispose();
+        if (o instanceof THREE.Light) o.dispose();
       });
       group = new THREE.Group();
 
@@ -93,38 +103,114 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       const post = 0.14;
       const beam = 0.18;
       const { width: W, depth: D } = p;
+      const totalW = W * p.modules;
 
-      const box = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-        m.position.set(x, y, z);
-        group.add(m);
+      const buildModule = (cx: number) => {
+        const box = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+          m.position.set(cx + x, y, z);
+          group.add(m);
+        };
+
+        // Posts
+        for (const sx of [-1, 1])
+          for (const sz of [-1, 1])
+            box(post, H, post, (sx * (W - post)) / 2, H / 2, (sz * (D - post)) / 2);
+        // Top frame
+        box(W, beam, post, 0, H - beam / 2, -(D - post) / 2);
+        box(W, beam, post, 0, H - beam / 2, (D - post) / 2);
+        box(post, beam, D - 2 * post, -(W - post) / 2, H - beam / 2, 0);
+        box(post, beam, D - 2 * post, (W - post) / 2, H - beam / 2, 0);
+
+        // Linear LED strip in the gutters: inner face of the top frame
+        if (p.lighting === "linear") {
+          const strip = 0.02;
+          const y = H - beam + strip;
+          const mk = (w: number, d: number, x: number, z: number) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, strip, d), glowMaterial);
+            m.position.set(cx + x, y, z);
+            group.add(m);
+          };
+          mk(W - 2 * post, strip, 0, -(D - post) / 2 + post * 0.8);
+          mk(W - 2 * post, strip, 0, (D - post) / 2 - post * 0.8);
+          mk(strip, D - 2 * post, -(W - post) / 2 + post * 0.8, 0);
+          mk(strip, D - 2 * post, (W - post) / 2 - post * 0.8, 0);
+          // Underside wash strips along the outer beams
+          const under = H - beam - strip;
+          const mkU = (w: number, d: number, x: number, z: number) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, strip, d), glowMaterial);
+            m.position.set(cx + x, under, z);
+            group.add(m);
+          };
+          mkU(W - 2 * post, 0.05, 0, -(D - post) / 2);
+          mkU(W - 2 * post, 0.05, 0, (D - post) / 2);
+          mkU(0.05, D - 2 * post, -(W - post) / 2, 0);
+          mkU(0.05, D - 2 * post, (W - post) / 2, 0);
+        }
+
+        // Louvres (+ optional spots, ~1 per 1.5 m2)
+        const slatW = 0.16;
+        const gap = 0.05;
+        const n = Math.floor((D - 2 * post) / (slatW + gap));
+        const span = W - 2 * post;
+
+        let spotSlats = new Set<number>();
+        let spotsPerSlat = 0;
+        if (p.lighting === "spots") {
+          const target = Math.max(2, Math.round((W * D) / 1.5));
+          const rows = Math.max(1, Math.round(Math.sqrt(target * (D / W))));
+          spotsPerSlat = Math.max(1, Math.round(target / rows));
+          const every = Math.max(1, Math.floor(n / rows));
+          for (let i = Math.floor(every / 2); i < n; i += every) spotSlats.add(i);
+        }
+
+        for (let i = 0; i < n; i++) {
+          const z = -(D - 2 * post) / 2 + (i + 0.5) * ((D - 2 * post) / n);
+          const slat = new THREE.Mesh(new THREE.BoxGeometry(span, 0.015, slatW), slatMaterial);
+          slat.position.set(cx, H - beam / 2, z);
+          slat.rotation.x = THREE.MathUtils.degToRad(p.slatAngle);
+          group.add(slat);
+
+          if (spotSlats.has(i)) {
+            for (let k = 0; k < spotsPerSlat; k++) {
+              const x = -span / 2 + ((k + 0.5) * span) / spotsPerSlat;
+              const dot = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16),
+                glowMaterial,
+              );
+              // Child of the slat so spots tilt with the louvre
+              dot.position.set(x, -0.045, 0);
+              slat.add(dot);
+            }
+          }
+        }
       };
 
-      // Posts
-      for (const sx of [-1, 1])
-        for (const sz of [-1, 1])
-          box(post, H, post, (sx * (W - post)) / 2, H / 2, (sz * (D - post)) / 2);
-      // Top frame
-      box(W, beam, post, 0, H - beam / 2, -(D - post) / 2);
-      box(W, beam, post, 0, H - beam / 2, (D - post) / 2);
-      box(post, beam, D - 2 * post, -(W - post) / 2, H - beam / 2, 0);
-      box(post, beam, D - 2 * post, (W - post) / 2, H - beam / 2, 0);
-
-      // Louvres
-      const slatW = 0.16;
-      const gap = 0.05;
-      const n = Math.floor((D - 2 * post) / (slatW + gap));
-      const span = W - 2 * post;
-      for (let i = 0; i < n; i++) {
-        const z = -(D - 2 * post) / 2 + (i + 0.5) * ((D - 2 * post) / n);
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, 0.015, slatW), slatMaterial);
-        slat.position.set(0, H - beam / 2, z);
-        slat.rotation.x = THREE.MathUtils.degToRad(p.slatAngle);
-        group.add(slat);
+      for (let m = 0; m < p.modules; m++) {
+        buildModule((m - (p.modules - 1) / 2) * W);
       }
 
-      shadow.scale.set(W * 1.7, D * 1.7, 1);
+      // Warm fill light under the roof when any lighting is on
+      if (p.lighting !== "none") {
+        const pt = new THREE.PointLight("#ffc98f", 32, Math.max(totalW, D) * 2.4, 1.5);
+        pt.position.set(0, H - 0.4, 0);
+        group.add(pt);
+      }
+
+      shadow.scale.set(totalW * 1.6, D * 1.7, 1);
       scene.add(group);
+
+      // Keep the whole structure in frame when dimensions/modules change
+      controls.target.set(0, H * 0.55, 0);
+      const radius = Math.max(totalW * 1.3, D * 1.9, H * 3.2, 6.5);
+      const old = camera.position.clone().sub(controls.target);
+      const az = Math.atan2(old.x, old.z);
+      const elev = 0.2;
+      camera.position.set(
+        controls.target.x + radius * Math.sin(az) * Math.cos(Math.asin(elev)),
+        controls.target.y + radius * elev,
+        controls.target.z + radius * Math.cos(az) * Math.cos(Math.asin(elev)),
+      );
     };
 
     stateRef.current = { group, material, slatMaterial, rebuild };
@@ -165,6 +251,8 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       controls.dispose();
       pmrem.dispose();
       renderer.dispose();
+      el.removeEventListener("pointerdown", armZoom);
+      el.removeEventListener("pointerleave", disarmZoom);
       el.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
