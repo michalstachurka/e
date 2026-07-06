@@ -4,13 +4,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 export type PergolaParams = {
-  width: number; // m (single module)
+  widths: number[]; // m, one entry per module (total up to 12)
   depth: number; // m (wysięg)
   height: number; // m
   slatAngle: number; // deg, 0 = closed/flat, up to 120
   frameColor: string;
   slatColor: string;
-  modules: 1 | 2;
   lighting: "none" | "linear" | "spots";
 };
 
@@ -85,7 +84,8 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       metalness: 0.35,
     });
     const slatMaterial = material.clone();
-    const glowMaterial = new THREE.MeshBasicMaterial({ color: "#ffc98f" });
+    // Crisp cool-white LED, like real pergola strips
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: "#f2f6ff" });
     glowMaterial.toneMapped = false;
 
     let group = new THREE.Group();
@@ -102,10 +102,10 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       const H = p.height;
       const post = 0.14;
       const beam = 0.18;
-      const { width: W, depth: D } = p;
-      const totalW = W * p.modules;
+      const D = p.depth;
+      const totalW = p.widths.reduce((a, b) => a + b, 0);
 
-      const buildModule = (cx: number) => {
+      const buildModule = (cx: number, W: number) => {
         const box = (w: number, h: number, d: number, x: number, y: number, z: number) => {
           const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
           m.position.set(cx + x, y, z);
@@ -122,30 +122,20 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
         box(post, beam, D - 2 * post, -(W - post) / 2, H - beam / 2, 0);
         box(post, beam, D - 2 * post, (W - post) / 2, H - beam / 2, 0);
 
-        // Linear LED strip in the gutters: inner face of the top frame
+        // Linear LED: hairline strip along the inner bottom edge of the frame
         if (p.lighting === "linear") {
-          const strip = 0.02;
-          const y = H - beam + strip;
+          const t = 0.012; // strip thickness — thin, crisp line
+          const y = H - beam + t / 2;
+          const inset = post * 0.55;
           const mk = (w: number, d: number, x: number, z: number) => {
-            const m = new THREE.Mesh(new THREE.BoxGeometry(w, strip, d), glowMaterial);
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, t, d), glowMaterial);
             m.position.set(cx + x, y, z);
             group.add(m);
           };
-          mk(W - 2 * post, strip, 0, -(D - post) / 2 + post * 0.8);
-          mk(W - 2 * post, strip, 0, (D - post) / 2 - post * 0.8);
-          mk(strip, D - 2 * post, -(W - post) / 2 + post * 0.8, 0);
-          mk(strip, D - 2 * post, (W - post) / 2 - post * 0.8, 0);
-          // Underside wash strips along the outer beams
-          const under = H - beam - strip;
-          const mkU = (w: number, d: number, x: number, z: number) => {
-            const m = new THREE.Mesh(new THREE.BoxGeometry(w, strip, d), glowMaterial);
-            m.position.set(cx + x, under, z);
-            group.add(m);
-          };
-          mkU(W - 2 * post, 0.05, 0, -(D - post) / 2);
-          mkU(W - 2 * post, 0.05, 0, (D - post) / 2);
-          mkU(0.05, D - 2 * post, -(W - post) / 2, 0);
-          mkU(0.05, D - 2 * post, (W - post) / 2, 0);
+          mk(W - 2 * post, t, 0, -(D - post) / 2 + inset);
+          mk(W - 2 * post, t, 0, (D - post) / 2 - inset);
+          mk(t, D - 2 * post, -(W - post) / 2 + inset, 0);
+          mk(t, D - 2 * post, (W - post) / 2 - inset, 0);
         }
 
         // Louvres (+ optional spots, ~1 per 1.5 m2)
@@ -175,25 +165,27 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
             for (let k = 0; k < spotsPerSlat; k++) {
               const x = -span / 2 + ((k + 0.5) * span) / spotsPerSlat;
               const dot = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16),
+                new THREE.CylinderGeometry(0.028, 0.028, 0.012, 14),
                 glowMaterial,
               );
-              // Child of the slat so spots tilt with the louvre
-              dot.position.set(x, -0.045, 0);
+              // Child of the slat so spots tilt with the louvre (flush mount)
+              dot.position.set(x, -0.012, 0);
               slat.add(dot);
             }
           }
         }
       };
 
-      for (let m = 0; m < p.modules; m++) {
-        buildModule((m - (p.modules - 1) / 2) * W);
+      let acc = -totalW / 2;
+      for (const w of p.widths) {
+        buildModule(acc + w / 2, w);
+        acc += w;
       }
 
-      // Warm fill light under the roof when any lighting is on
+      // Subtle neutral fill so lit variants read without an orange cast
       if (p.lighting !== "none") {
-        const pt = new THREE.PointLight("#ffc98f", 32, Math.max(totalW, D) * 2.4, 1.5);
-        pt.position.set(0, H - 0.4, 0);
+        const pt = new THREE.PointLight("#eef2f8", 6, Math.max(totalW, D) * 2.2, 1.8);
+        pt.position.set(0, H - 0.3, 0);
         group.add(pt);
       }
 

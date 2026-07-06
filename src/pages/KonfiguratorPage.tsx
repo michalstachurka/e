@@ -327,9 +327,9 @@ function LedDemo() {
 /* ---------- 03: parametric 3D pergola ---------- */
 
 const PERGOLA_COLORS = [
-  { id: "czern", label: "Czerń", value: "#0e0f10" },
   { id: "antracyt", label: "Antracyt", value: "#2b2d2e" },
-  { id: "biel", label: "Biel", value: "#e8e6e0" },
+  { id: "bialy", label: "Biały", value: "#e8e6e0" },
+  { id: "czarny", label: "Czarny", value: "#0e0f10" },
   { id: "braz", label: "Brąz", value: "#4a3527" },
 ];
 
@@ -340,37 +340,58 @@ const LIGHTING = [
 ] as const;
 
 function PergolaDemo() {
-  const [width, setWidth] = useState(4);
+  const [widths, setWidths] = useState<number[]>([4]);
   const [depth, setDepth] = useState(3.2);
   const [height, setHeight] = useState(2.6);
   const [angle, setAngle] = useState(35);
   const [frame, setFrame] = useState(PERGOLA_COLORS[0]);
   const [slat, setSlat] = useState(PERGOLA_COLORS[0]);
-  const [modules, setModules] = useState<1 | 2>(1);
   const [lighting, setLighting] = useState<(typeof LIGHTING)[number]["id"]>("none");
+  const modules = widths.length;
+  const setModules = (m: number) =>
+    setWidths((w) => (m === w.length ? w : m > w.length ? [...w, 4] : w.slice(0, m)));
+  const setWidthAt = (i: number, v: number) =>
+    setWidths((w) => w.map((x, j) => (j === i ? v : x)));
   const params = useMemo<PergolaParams>(
     () => ({
-      width,
+      widths,
       depth,
       height,
       slatAngle: angle,
       frameColor: frame.value,
       slatColor: slat.value,
-      modules,
       lighting,
     }),
-    [width, depth, height, angle, frame, slat, modules, lighting],
+    [widths, depth, height, angle, frame, slat, lighting],
   );
   const [sheet, setSheet] = useState(false);
 
   const controls = (
     <div className="space-y-6">
+      <div>
+        <span className="spec text-vn-muted">Moduły</span>
+        <div className="mt-3 flex gap-3">
+          {[1, 2].map((m) => (
+            <button key={m} type="button" onClick={() => setModules(m)}
+              aria-pressed={modules === m}
+              className={`pill transition-colors duration-300 ${
+                modules === m ? "border-vn-burgundy text-vn-burgundy" : "text-vn-muted hover:text-vn-charcoal"
+              }`}>
+              {m} {m === 1 ? "moduł" : "moduły"}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-1">
-        <label className="block">
-          <span className="spec text-vn-muted">Szerokość · {width.toFixed(1)} m</span>
-          <input type="range" min={3} max={6} step={0.1} value={width}
-            onChange={(e) => setWidth(Number(e.target.value))} className="range mt-3 w-full" />
-        </label>
+        {widths.map((w, i) => (
+          <label key={i} className="block">
+            <span className="spec text-vn-muted">
+              {modules === 1 ? "Szerokość" : `Moduł ${i + 1} · szerokość`} · {w.toFixed(1)} m
+            </span>
+            <input type="range" min={2} max={6} step={0.1} value={w}
+              onChange={(e) => setWidthAt(i, Number(e.target.value))} className="range mt-3 w-full" />
+          </label>
+        ))}
         <label className="block">
           <span className="spec text-vn-muted">Wysięg · {depth.toFixed(1)} m</span>
           <input type="range" min={2.5} max={4.5} step={0.1} value={depth}
@@ -406,20 +427,6 @@ function PergolaDemo() {
         </div>
       </div>
       <div>
-        <span className="spec text-vn-muted">Moduły</span>
-        <div className="mt-3 flex gap-3">
-          {([1, 2] as const).map((m) => (
-            <button key={m} type="button" onClick={() => setModules(m)}
-              aria-pressed={modules === m}
-              className={`pill transition-colors duration-300 ${
-                modules === m ? "border-vn-burgundy text-vn-burgundy" : "text-vn-muted hover:text-vn-charcoal"
-              }`}>
-              {m} {m === 1 ? "moduł" : "moduły"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div>
         <span className="spec text-vn-muted">Oświetlenie LED</span>
         <div className="mt-3 flex flex-wrap gap-3">
           {LIGHTING.map((l) => (
@@ -449,7 +456,7 @@ function PergolaDemo() {
               <div className="mt-3">
                 <SpecPlate
                   left={`VN—KONF/03 · pergola · ${frame.label} / lamele ${slat.label}`}
-                  right={`${modules} × ${width.toFixed(1)} × ${depth.toFixed(1)} × ${height.toFixed(1)} m · ${angle}°`}
+                  right={`${widths.map((w) => w.toFixed(1)).join(" + ")} × ${depth.toFixed(1)} × ${height.toFixed(1)} m · ${angle}°`}
                 />
               </div>
             </Reveal>
