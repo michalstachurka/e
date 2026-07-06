@@ -333,11 +333,7 @@ const PERGOLA_COLORS = [
   { id: "braz", label: "Brąz", value: "#4a3527" },
 ];
 
-const LIGHTING = [
-  { id: "none", label: "Brak" },
-  { id: "linear", label: "Liniowe · rynny" },
-  { id: "spots", label: "Punktowe · lamele" },
-] as const;
+
 
 function PergolaDemo() {
   const [widths, setWidths] = useState<number[]>([4]);
@@ -346,7 +342,9 @@ function PergolaDemo() {
   const [angle, setAngle] = useState(35);
   const [frame, setFrame] = useState(PERGOLA_COLORS[0]);
   const [slat, setSlat] = useState(PERGOLA_COLORS[0]);
-  const [lighting, setLighting] = useState<(typeof LIGHTING)[number]["id"]>("none");
+  const [ledLinear, setLedLinear] = useState(false);
+  const [ledSpots, setLedSpots] = useState(false);
+  const [spin, setSpin] = useState(false);
   const modules = widths.length;
   const setModules = (m: number) =>
     setWidths((w) => (m === w.length ? w : m > w.length ? [...w, 4] : w.slice(0, m)));
@@ -360,9 +358,11 @@ function PergolaDemo() {
       slatAngle: angle,
       frameColor: frame.value,
       slatColor: slat.value,
-      lighting,
+      ledLinear,
+      ledSpots,
+      spin,
     }),
-    [widths, depth, height, angle, frame, slat, lighting],
+    [widths, depth, height, angle, frame, slat, ledLinear, ledSpots, spin],
   );
   const [sheet, setSheet] = useState(false);
 
@@ -427,17 +427,22 @@ function PergolaDemo() {
         </div>
       </div>
       <div>
-        <span className="spec text-vn-muted">Oświetlenie LED</span>
+        <span className="spec text-vn-muted">Oświetlenie LED · można łączyć</span>
         <div className="mt-3 flex flex-wrap gap-3">
-          {LIGHTING.map((l) => (
-            <button key={l.id} type="button" onClick={() => setLighting(l.id)}
-              aria-pressed={lighting === l.id}
-              className={`pill transition-colors duration-300 ${
-                lighting === l.id ? "border-vn-burgundy text-vn-burgundy" : "text-vn-muted hover:text-vn-charcoal"
-              }`}>
-              {l.label}
-            </button>
-          ))}
+          <button type="button" onClick={() => setLedLinear(!ledLinear)}
+            aria-pressed={ledLinear}
+            className={`pill transition-colors duration-300 ${
+              ledLinear ? "border-vn-burgundy text-vn-burgundy" : "text-vn-muted hover:text-vn-charcoal"
+            }`}>
+            {ledLinear ? "✓ " : ""}Liniowe · rynny
+          </button>
+          <button type="button" onClick={() => setLedSpots(!ledSpots)}
+            aria-pressed={ledSpots}
+            className={`pill transition-colors duration-300 ${
+              ledSpots ? "border-vn-burgundy text-vn-burgundy" : "text-vn-muted hover:text-vn-charcoal"
+            }`}>
+            {ledSpots ? "✓ " : ""}Punktowe · lamele
+          </button>
         </div>
       </div>
     </div>
@@ -452,6 +457,18 @@ function PergolaDemo() {
               <div data-lenis-prevent className="relative aspect-[4/3] w-full border hairline bg-[linear-gradient(180deg,#f6f3ee_0%,#e9e3d9_100%)] md:aspect-[16/10]">
                 <SheetButton onClick={() => setSheet(true)} />
                 <PergolaCanvas params={params} />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSpin(!spin)}
+                  aria-pressed={spin}
+                  className={`pill transition-colors duration-300 ${
+                    spin ? "border-vn-burgundy text-vn-burgundy" : "text-vn-muted hover:text-vn-charcoal"
+                  }`}
+                >
+                  {spin ? "✓ " : ""}Animacja ruchu
+                </button>
               </div>
               <div className="mt-3">
                 <SpecPlate

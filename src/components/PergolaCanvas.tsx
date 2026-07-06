@@ -10,7 +10,9 @@ export type PergolaParams = {
   slatAngle: number; // deg, 0 = closed/flat, up to 120
   frameColor: string;
   slatColor: string;
-  lighting: "none" | "linear" | "spots";
+  ledLinear: boolean;
+  ledSpots: boolean;
+  spin: boolean;
 };
 
 /** Soft radial ground shadow texture. */
@@ -33,13 +35,13 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     material?: THREE.MeshStandardMaterial;
     slatMaterial?: THREE.MeshStandardMaterial;
     rebuild?: (p: PergolaParams) => void;
+    controls?: OrbitControls;
   }>({});
 
   useEffect(() => {
     const el = mount.current;
     if (!el) return;
 
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -66,10 +68,18 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     el.addEventListener("pointerleave", disarmZoom);
     controls.maxPolarAngle = Math.PI / 2.05;
     controls.target.set(0, 1.3, 0);
-    controls.autoRotate = !reduce;
+    controls.autoRotate = false;
     controls.autoRotateSpeed = 0.55;
 
-    // Ground shadow
+    // Ground plane (receives the LED light pools) + soft contact shadow
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 64),
+      new THREE.MeshStandardMaterial({ color: "#e9e4da", roughness: 0.96, metalness: 0 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.002;
+    scene.add(ground);
+
     const shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false }),
@@ -123,7 +133,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
         box(post, beam, D - 2 * post, (W - post) / 2, H - beam / 2, 0);
 
         // Linear LED: hairline strip along the inner bottom edge of the frame
-        if (p.lighting === "linear") {
+        if (p.ledLinear) {
           const t = 0.012; // strip thickness — thin, crisp line
           const y = H - beam + t / 2;
           const inset = post * 0.55;
@@ -146,12 +156,14 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
 
         let spotSlats = new Set<number>();
         let spotsPerSlat = 0;
-        if (p.lighting === "spots") {
+        if (p.ledSpots) {
           const target = Math.max(2, Math.round((W * D) / 1.5));
           const rows = Math.max(1, Math.round(Math.sqrt(target * (D / W))));
           spotsPerSlat = Math.max(1, Math.round(target / rows));
           const every = Math.max(1, Math.floor(n / rows));
-          for (let i = Math.floor(every / 2); i < n; i += every) spotSlats.add(i);
+          // skip the first/last louvre so spots never touch the frame
+          for (let i = Math.max(1, Math.floor(every / 2)); i < n - 1; i += every)
+            spotSlats.add(i);
         }
 
         for (let i = 0; i < n; i++) {
@@ -162,8 +174,10 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
           group.add(slat);
 
           if (spotSlats.has(i)) {
+            const margin = 0.4;
+            const usable = span - 2 * margin;
             for (let k = 0; k < spotsPerSlat; k++) {
-              const x = -span / 2 + ((k + 0.5) * span) / spotsPerSlat;
+              const x = -usable / 2 + (spotsPerSlat === 1 ? usable / 2 : (k * usable) / (spotsPerSlat - 1));
               const dot = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.028, 0.028, 0.012, 14),
                 glowMaterial,
@@ -177,18 +191,26 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       };
 
       let acc = -totalW / 2;
+      const centers: number[] = [];
       for (const w of p.widths) {
+        centers.push(acc + w / 2);
         buildModule(acc + w / 2, w);
         acc += w;
       }
 
-      // Subtle neutral fill so lit variants read without an orange cast
-      if (p.lighting !== "none") {
-        const pt = new THREE.PointLight("#eef2f8", 6, Math.max(totalW, D) * 2.2, 1.8);
-        pt.position.set(0, H - 0.3, 0);
-        group.add(pt);
+      // LEDs actually cast light: a soft pool on the ground under each module
+      if (p.ledLinear || p.ledSpots) {
+        const strength = (p.ledLinear ? 26 : 0) + (p.ledSpots ? 22 : 0);
+        for (const cx of centers) {
+          const sp = new THREE.SpotLight("#f2f6ff", strength, H * 4, 1.05, 0.65, 1.4);
+          sp.position.set(cx, H - beam, 0);
+          sp.target.position.set(cx, 0, 0);
+          group.add(sp);
+          group.add(sp.target);
+        }
       }
 
+      ground.scale.setScalar(Math.max(totalW, D) * 1.5);
       shadow.scale.set(totalW * 1.6, D * 1.7, 1);
       scene.add(group);
 
@@ -205,7 +227,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
       );
     };
 
-    stateRef.current = { group, material, slatMaterial, rebuild };
+    stateRef.current = { group, material, slatMaterial, rebuild, controls };
     rebuild(params);
     material.color.set(params.frameColor);
     slatMaterial.color.set(params.slatColor);
@@ -255,6 +277,7 @@ export function PergolaCanvas({ params }: { params: PergolaParams }) {
     stateRef.current.rebuild?.(params);
     stateRef.current.material?.color.set(params.frameColor);
     stateRef.current.slatMaterial?.color.set(params.slatColor);
+    if (stateRef.current.controls) stateRef.current.controls.autoRotate = params.spin;
   }, [params]);
 
   return (
