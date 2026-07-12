@@ -1,0 +1,66 @@
+const colors = [
+  { id: "anthracite", label: "Antracyt", value: "#2B2D2E", demoOnly: false },
+  { id: "warm-white", label: "Ciepła biel", value: "#E8E6E0", demoOnly: true },
+  { id: "black", label: "Czerń", value: "#0E0F10", demoOnly: true },
+  { id: "bronze", label: "Brąz", value: "#4A3527", demoOnly: true },
+];
+
+export const fallbackCatalog = Object.freeze({
+  tenant: {
+    slug: "visnex",
+    name: "visNEX",
+    branding: {
+      companyName: "visNEX",
+      logoText: "visNEX",
+      contactEmail: "kontakt@example.invalid",
+      primaryColor: "#171411",
+      accentColor: "#C36E3D",
+      backgroundColor: "#F1EBE0",
+      fontHeading: "Big Shoulders Display",
+      fontBody: "Hanken Grotesk",
+      pdfFooter: "Projekt koncepcyjny wymaga weryfikacji technicznej.",
+    },
+  },
+  products: [
+    {
+      id: "product-bioclimatic-pergola",
+      productType: "bioclimatic-pergola",
+      name: "Pergola bioklimatyczna",
+      description: "Parametryczna pergola z lamelami i wyposażeniem bocznym.",
+      enabled: true,
+      order: 10,
+      version: { id: "visnex-bioclimatic-v1", number: 1, status: "published" },
+      steps: [],
+      parameters: [
+        { key: "moduleWidths", label: "Szerokość modułu", section: "dimensions", type: "range", unit: "m", min: 2, max: 6, step: 0.1, defaultValue: [4] },
+        { key: "depth", label: "Wysięg", section: "dimensions", type: "range", unit: "m", min: 2.5, max: 4.5, step: 0.1, defaultValue: 3.2 },
+        { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 2.2, max: 3.2, step: 0.05, defaultValue: 2.6 },
+        { key: "slatAngle", label: "Otwarcie lameli", section: "structure", type: "range", unit: "°", min: 0, max: 120, step: 1, defaultValue: 35 },
+      ],
+      colors,
+      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, demoOnly: true },
+    },
+    {
+      id: "product-veranda",
+      productType: "veranda",
+      name: "Weranda",
+      description: "Parametryczne zadaszenie przyścienne z demonstracyjnymi wypełnieniami.",
+      enabled: true,
+      order: 20,
+      version: { id: "visnex-veranda-v1", number: 1, status: "published" },
+      steps: [],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 2.5, max: 8, step: 0.1, defaultValue: 4.5, demoOnly: true },
+        { key: "depth", label: "Głębokość", section: "dimensions", type: "range", unit: "m", min: 2, max: 5, step: 0.1, defaultValue: 3.2, demoOnly: true },
+        { key: "backHeight", label: "Wysokość przy ścianie", section: "dimensions", type: "range", unit: "m", min: 2.4, max: 3.6, step: 0.05, defaultValue: 2.95, demoOnly: true },
+        { key: "frontHeight", label: "Wysokość z przodu", section: "dimensions", type: "range", unit: "m", min: 2.1, max: 3.2, step: 0.05, defaultValue: 2.56, demoOnly: true },
+        { key: "roofAngle", label: "Kąt nachylenia", section: "roof", type: "range", unit: "°", min: 3, max: 15, step: 0.5, defaultValue: 7, demoOnly: true },
+        { key: "roofFields", label: "Liczba pól", section: "roof", type: "range", min: 2, max: 8, step: 1, defaultValue: 4, demoOnly: true },
+        { key: "rafterCount", label: "Liczba krokwi", section: "roof", type: "range", min: 3, max: 9, step: 1, defaultValue: 5, demoOnly: true },
+        { key: "postCount", label: "Liczba słupów", section: "structure", type: "range", min: 2, max: 6, step: 1, defaultValue: 3, demoOnly: true },
+      ],
+      colors,
+      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, roofThickness: 0.018, demoOnly: true },
+    },
+  ],
+});

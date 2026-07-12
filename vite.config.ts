@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: "index.html",
         konfigurator: "konfigurator.html",
+        admin: "admin.html",
       },
     },
   },

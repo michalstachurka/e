@@ -9,6 +9,8 @@ dla firm z branży wnętrzarskiej, budowlanej i home improvement.
 - Tailwind CSS 4
 - Framer Motion
 - Fonty: Fraunces (display), Manrope (body), Space Grotesk (etykiety) — self-hosted przez Fontsource
+- Modułowy konfigurator: vanilla ES modules + Three.js
+- API konfiguratora: Fastify + Zod + SQLite (`node:sqlite`)
 
 ## Uruchomienie
 
@@ -18,6 +20,21 @@ npm run dev      # serwer deweloperski
 npm run build    # build produkcyjny do dist/
 npm run preview  # podgląd builda
 ```
+
+## Konfigurator, API i panel
+
+Skopiuj `.env.example` do `.env`, ustaw własne `ADMIN_SEED_PASSWORD`, a następnie uruchom w dwóch terminalach:
+
+```bash
+npm run api:dev
+npm run dev
+```
+
+- konfigurator: `http://localhost:5173/konfigurator.html`
+- panel: `http://localhost:5173/admin.html`
+- API: `http://127.0.0.1:8787`
+
+Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`.
 
 ## Hero
 

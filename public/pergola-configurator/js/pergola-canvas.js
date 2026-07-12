@@ -5,6 +5,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { ProductRendererRegistry } from "./core/product-registry.js";
+import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
 
 /** Soft radial ground shadow texture. */
 function shadowTexture() {
@@ -93,6 +95,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     slats: undefined,
     lastDims: undefined,
     desiredRadius: undefined,
+    activeProductType: undefined,
   };
   let paramsRef = initialParams;
 
@@ -314,6 +317,15 @@ export function createPergolaCanvas(mountEl, initialParams) {
     depthWrite: false,
   });
   glassMaterial.envMapIntensity = 1.5;
+  const roofMaterial = new THREE.MeshPhysicalMaterial({
+    color: "#dce8e8",
+    roughness: 0.1,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   // Ściana (konstrukcja przyścienna) i opaska betonowa (moduł dachowy).
   const wallMaterial = new THREE.MeshStandardMaterial({ color: "#d9d3c7", roughness: 0.96, metalness: 0 });
   const concreteMaterial = new THREE.MeshStandardMaterial({ color: "#c4bfb5", roughness: 0.9, metalness: 0 });
@@ -325,14 +337,45 @@ export function createPergolaCanvas(mountEl, initialParams) {
   let group = new THREE.Group();
   scene.add(group);
 
-  const rebuild = (p) => {
+  const resetRoot = (name) => {
     scene.remove(group);
     group.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose();
       if (o instanceof THREE.Light) o.dispose();
     });
     group = new THREE.Group();
-    group.name = "PergolaVisualRoot";
+    group.name = name;
+    scene.add(group);
+    return group;
+  };
+
+  const frameScene = (totalW, depth, height) => {
+    controls.target.set(0, height * 0.5, 0);
+    const dims = `${paramsRef.productType}|${totalW}|${depth}`;
+    if (stateRef.lastDims === dims) return;
+    const first = stateRef.lastDims === undefined;
+    stateRef.lastDims = dims;
+    const radius = Math.max(totalW * 1.2, depth * 1.85, 8.7);
+    const dir = camera.position.clone().sub(controls.target);
+    if (first || radius > dir.length()) {
+      camera.position.copy(controls.target).addScaledVector(dir.normalize(), radius);
+      stateRef.desiredRadius = undefined;
+    } else {
+      stateRef.desiredRadius = radius;
+    }
+  };
+
+  const clearAnimationState = () => {
+    stateRef.slats = [];
+    stateRef.screens = { front: [], back: [], left: [], right: [] };
+    stateRef.screenBoxes = { front: [], back: [], left: [], right: [] };
+    stateRef.screenBars = { front: [], back: [], left: [], right: [] };
+    stateRef.screenGuides = { front: [], back: [], left: [], right: [] };
+    stateRef.glassPanes = [];
+  };
+
+  const rebuildPergola = (p) => {
+    resetRoot("PergolaVisualRoot");
     const slats = [];
 
     const H = p.height;
@@ -727,6 +770,45 @@ export function createPergolaCanvas(mountEl, initialParams) {
         }
       }
     }
+    return group;
+  };
+
+  const rendererRegistry = new ProductRendererRegistry();
+  const pergolaRenderer = {
+    productType: "bioclimatic-pergola",
+    createScene: rebuildPergola,
+    updateScene: (_scene, config) => rebuildPergola(config),
+    disposeScene: () => {},
+    getBounds: () => new THREE.Box3().setFromObject(group),
+  };
+  const verandaRenderer = createVerandaRenderer({
+    THREE,
+    resetRoot,
+    frameMaterial: material,
+    roofMaterial,
+    glassMaterial,
+    screenMaterial,
+    wallMaterial,
+    glowMaterial,
+    ground,
+    shadow,
+    frameScene,
+    clearAnimationState,
+  });
+  rendererRegistry.register(pergolaRenderer).register(verandaRenderer);
+  let activeRenderer = null;
+  let activeProductScene = null;
+  const rebuild = (p) => {
+    const rendererModule = rendererRegistry.require(p.productType || "bioclimatic-pergola");
+    if (rendererModule !== activeRenderer) {
+      activeRenderer?.disposeScene(activeProductScene);
+      activeRenderer = rendererModule;
+      activeProductScene = rendererModule.createScene(p);
+    } else {
+      activeProductScene = rendererModule.updateScene(activeProductScene, p);
+    }
+    stateRef.activeProductType = rendererModule.productType;
+    return activeProductScene;
   };
 
   stateRef.group = group;
@@ -758,13 +840,16 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   let raf = 0;
   let visible = true;
+  let documentVisible = !document.hidden;
+  const onVisibilityChange = () => { documentVisible = !document.hidden; };
+  document.addEventListener("visibilitychange", onVisibilityChange);
   const io = new IntersectionObserver(([e]) => {
     visible = e.isIntersecting;
   });
   io.observe(el);
 
   const loop = () => {
-    if (visible) {
+    if (visible && documentVisible) {
       const p = paramsRef;
       if (p.spin && stateRef.slats) {
         const t = performance.now() / 1000;
@@ -840,9 +925,38 @@ export function createPergolaCanvas(mountEl, initialParams) {
   };
   raf = requestAnimationFrame(loop);
 
+  const geometrySignature = (params) => JSON.stringify({
+    productType: params.productType,
+    construction: params.construction,
+    widths: params.widths,
+    depth: params.depth,
+    height: params.height,
+    ledLinear: params.ledLinear,
+    ledSpots: params.ledSpots,
+    glass: params.glass,
+    extraLegs: params.extraLegs,
+    width: params.width,
+    backHeight: params.backHeight,
+    frontHeight: params.frontHeight,
+    roofAngle: params.roofAngle,
+    roofFields: params.roofFields,
+    rafterCount: params.rafterCount,
+    postCount: params.postCount,
+    roofMaterial: params.roofMaterial,
+    leftWall: params.leftWall,
+    rightWall: params.rightWall,
+    frontWall: params.frontWall,
+    lighting: params.lighting,
+  });
+  let lastGeometrySignature = geometrySignature(initialParams);
+
   function update(params) {
     paramsRef = params;
-    stateRef.rebuild?.(params);
+    const nextSignature = geometrySignature(params);
+    if (nextSignature !== lastGeometrySignature) {
+      stateRef.rebuild?.(params);
+      lastGeometrySignature = nextSignature;
+    }
     stateRef.material?.color.set(params.frameColor);
     stateRef.slatMaterial?.color.set(params.slatColor);
     if (params.screenColor) applyScreenColor(params.screenColor);
@@ -857,8 +971,11 @@ export function createPergolaCanvas(mountEl, initialParams) {
     cancelAnimationFrame(raf);
     io.disconnect();
     ro.disconnect();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
     controls.dispose();
+    activeRenderer?.disposeScene(activeProductScene);
     pmrem.dispose();
+    roofMaterial.dispose();
     renderer.dispose();
     el.removeEventListener("pointerdown", armZoom);
     el.removeEventListener("pointerleave", disarmZoom);
@@ -936,7 +1053,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     };
 
     const root = cloneForExport(group) || new THREE.Group();
-    root.name = "PergolaRoot";
+    root.name = paramsRef.productType === "veranda" ? "VerandaRoot" : "PergolaRoot";
     root.visible = true;
     root.updateMatrixWorld(true);
 
@@ -971,5 +1088,27 @@ export function createPergolaCanvas(mountEl, initialParams) {
     return root;
   }
 
-  return { update, destroy, snapshot, createExportClone, setPlacement, getFacingSide, cameraDir, project, setSpinPaused, setOnFrame };
+  function setView(view) {
+    const bounds = new THREE.Box3().setFromObject(group);
+    if (bounds.isEmpty()) return;
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 1.65 + 1.8;
+    const directions = {
+      front: new THREE.Vector3(0, 0.22, 1),
+      back: new THREE.Vector3(0, 0.22, -1),
+      left: new THREE.Vector3(-1, 0.22, 0),
+      right: new THREE.Vector3(1, 0.22, 0),
+      top: new THREE.Vector3(0.001, 1, 0.001),
+      reset: new THREE.Vector3(0.66, 0.28, 0.76),
+    };
+    const direction = (directions[view] || directions.reset).normalize();
+    controls.target.copy(center);
+    camera.position.copy(center).addScaledVector(direction, radius);
+    camera.lookAt(center);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  return { update, destroy, snapshot, createExportClone, setPlacement, getFacingSide, cameraDir, project, setSpinPaused, setOnFrame, setView, registeredProducts: rendererRegistry.list() };
 }

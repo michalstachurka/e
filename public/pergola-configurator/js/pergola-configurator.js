@@ -3,15 +3,29 @@
 // wartości zgodne z dostarczoną specyfikacją (PergolaConfigurator.tsx).
 import { createPergolaCanvas } from "./pergola-canvas.js";
 import { setupPergolaAR } from "./ar-controller.js";
+import { ConfiguratorApi } from "./core/configurator-api.js";
+import { fallbackCatalog } from "./core/fallback-catalog.js";
 
 const mount = document.getElementById("pergolaMount");
 if (mount) {
-  const COLORS = [
-    { id: "antracyt", label: "Antracyt", value: "#2b2d2e" },
-    { id: "bialy", label: "Biały", value: "#e8e6e0" },
-    { id: "czarny", label: "Czarny", value: "#0e0f10" },
-    { id: "braz", label: "Brąz", value: "#4a3527" },
-  ];
+  void (async () => {
+  const runtimeConfig = window.__VISNEX_CONFIG__ || {};
+  const tenantSlug = runtimeConfig.tenantSlug || new URLSearchParams(window.location.search).get("tenant") || "visnex";
+  const api = new ConfiguratorApi({ baseUrl: runtimeConfig.apiBaseUrl, tenantSlug });
+  let catalog = fallbackCatalog;
+  let catalogSource = "fallback";
+  if (api.available) {
+    try {
+      catalog = await api.getCatalog();
+      catalogSource = "api";
+    } catch (error) {
+      console.warn("Configurator API catalog unavailable; using public demo definition.", error);
+    }
+  }
+  const products = [...catalog.products].filter((product) => product.enabled).sort((a, b) => a.order - b.order);
+  const productDefinitions = new Map(products.map((product) => [product.productType, product]));
+  const COLORS = (productDefinitions.get("bioclimatic-pergola")?.colors || fallbackCatalog.products[0].colors).map((color) => ({ ...color }));
+  const colorAliases = { antracyt: "anthracite", bialy: "warm-white", czarny: "black", braz: "bronze" };
 
   // Kolory tkaniny screen (osobna paleta — barwy techniczne).
   const SCREEN_COLORS = [
@@ -26,6 +40,7 @@ if (mount) {
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
   const state = {
+    productType: "bioclimatic-pergola",
     construction: "freestanding", // freestanding | wall | roof
     widths: [4],
     depth: 3.2,
@@ -40,7 +55,35 @@ if (mount) {
     glass: { front: false, back: false, left: false, right: false },
     extraLegs: [], // dodatkowe nogi: [{x, z}] w metrach
     spin: true,
+    veranda: {
+      width: 4.5,
+      depth: 3.2,
+      backHeight: 2.95,
+      frontHeight: 2.56,
+      roofAngle: 7,
+      roofFields: 4,
+      rafterCount: 5,
+      postCount: 3,
+      roofMaterial: "clear-glass",
+      leftWall: "none",
+      rightWall: "none",
+      frontWall: "none",
+      frameColor: COLORS[0],
+      lighting: false,
+    },
   };
+  let savedShareUrl = null;
+  let savedShareId = null;
+
+  const applyBranding = () => {
+    const branding = catalog.tenant?.branding;
+    if (!branding) return;
+    document.documentElement.style.setProperty("--tenant-primary", branding.primaryColor);
+    document.documentElement.style.setProperty("--tenant-accent", branding.accentColor);
+    document.documentElement.style.setProperty("--tenant-background", branding.backgroundColor);
+    document.querySelectorAll(".configurator-product__brand").forEach((node) => { node.textContent = branding.logoText; });
+  };
+  applyBranding();
 
   // Bok pergoli najbliższy danej pozycji (x,z) — do odtworzenia „side" nogi
   // ze starszych linków, które go nie zapisywały.
@@ -54,7 +97,7 @@ if (mount) {
   // Wczytanie konfiguracji z linku (?w=4-4&d=3.2&...&scr=bl&sf=grafit&gl=f).
   const applyFromURL = () => {
     const q = new URLSearchParams(window.location.search);
-    if (![...q.keys()].length) return;
+    if (![...q.keys()].length || q.has("project")) return;
     const ct = { f: "freestanding", w: "wall", r: "roof" }[q.get("ct")];
     if (ct) state.construction = ct;
     const w = (q.get("w") || "").split("-").map(Number).filter((n) => n >= 2 && n <= 6).slice(0, 2);
@@ -62,8 +105,8 @@ if (mount) {
     if (q.get("d")) state.depth = clamp(Number(q.get("d")), 2.5, 4.5);
     if (q.get("h")) state.height = clamp(Number(q.get("h")), 2.2, 3.2);
     if (q.get("a")) state.angle = clamp(Math.round(Number(q.get("a"))), 0, 120);
-    const fc = COLORS.find((c) => c.id === q.get("fc")); if (fc) state.frame = fc;
-    const sc = COLORS.find((c) => c.id === q.get("sc")); if (sc) state.slat = sc;
+    const fc = COLORS.find((c) => c.id === (colorAliases[q.get("fc")] || q.get("fc"))); if (fc) state.frame = fc;
+    const sc = COLORS.find((c) => c.id === (colorAliases[q.get("sc")] || q.get("sc"))); if (sc) state.slat = sc;
     const led = q.get("led") || "";
     state.ledLinear = led.includes("l"); state.ledSpots = led.includes("s");
     const scr = q.get("scr") || "";
@@ -84,7 +127,48 @@ if (mount) {
   };
   applyFromURL();
 
-  const params = () => ({
+  const hydrateConfiguration = (configuration) => {
+    if (!configuration || !productDefinitions.has(configuration.productType)) return false;
+    state.productType = configuration.productType;
+    if (configuration.productType === "bioclimatic-pergola") {
+      const values = configuration.values;
+      state.construction = values.construction;
+      state.widths = [...values.moduleWidths];
+      state.depth = values.depth;
+      state.height = values.height;
+      state.angle = values.slatAngle;
+      state.frame = COLORS.find((color) => color.id === values.frameColor) || COLORS[0];
+      state.slat = COLORS.find((color) => color.id === values.slatColor) || COLORS[0];
+      state.screenFabric = SCREEN_COLORS.find((color) => color.id === values.screenColor) || SCREEN_COLORS[0];
+      state.ledLinear = values.ledLinear;
+      state.ledSpots = values.ledSpots;
+      state.screens = { ...values.screens };
+      state.glass = { ...values.glass };
+      state.extraLegs = values.extraLegs.map((leg) => ({ ...leg }));
+    } else {
+      Object.assign(state.veranda, configuration.values);
+      state.veranda.frameColor = COLORS.find((color) => color.id === configuration.values.frameColor) || COLORS[0];
+    }
+    return true;
+  };
+
+  const requestedProject = new URLSearchParams(window.location.search).get("project");
+  if (requestedProject && api.available) {
+    try {
+      const saved = await api.load(requestedProject);
+      if (hydrateConfiguration(saved.configuration)) {
+        savedShareId = saved.shareId;
+        savedShareUrl = window.location.href;
+      }
+    } catch (error) {
+      console.error("Saved configuration could not be loaded.", error);
+    }
+  }
+
+  const activeDefinition = () => productDefinitions.get(state.productType);
+  const paramsBuilders = new Map();
+  paramsBuilders.set("bioclimatic-pergola", () => ({
+    productType: "bioclimatic-pergola",
     construction: state.construction,
     widths: state.widths,
     depth: state.depth,
@@ -99,84 +183,96 @@ if (mount) {
     glass: { ...state.glass },
     extraLegs: state.extraLegs.map((l) => ({ ...l })),
     spin: state.spin,
-  });
-
-  // Zbudowanie linku do bieżącej konfiguracji.
-  const encodeState = () => {
-    const q = new URLSearchParams();
-    q.set("ct", { freestanding: "f", wall: "w", roof: "r" }[state.construction]);
-    q.set("w", state.widths.map((v) => v.toFixed(1)).join("-"));
-    q.set("d", state.depth.toFixed(1));
-    q.set("h", state.height.toFixed(2));
-    q.set("a", String(state.angle));
-    q.set("fc", state.frame.id);
-    q.set("sc", state.slat.id);
-    const led = (state.ledLinear ? "l" : "") + (state.ledSpots ? "s" : "");
-    if (led) q.set("led", led);
-    const scr = SIDES.filter((s) => state.screens[s]).map((s) => s[0]).join("");
-    if (scr) { q.set("scr", scr); q.set("sf", state.screenFabric.id); }
-    const gl = SIDES.filter((s) => state.glass[s]).map((s) => s[0]).join("");
-    if (gl) q.set("gl", gl);
-    if (state.extraLegs.length) {
-      q.set("lg", state.extraLegs.map((l) => `${l.x.toFixed(2)}_${l.z.toFixed(2)}_${(l.side || "front")[0]}`).join(";"));
-    }
-    return `${window.location.origin}${window.location.pathname}?${q.toString()}#konfigurator-3d`;
-  };
+    visual: activeDefinition()?.visual,
+  }));
+  paramsBuilders.set("veranda", () => ({
+    productType: "veranda",
+    ...state.veranda,
+    frameColor: state.veranda.frameColor.value,
+    slatColor: state.veranda.frameColor.value,
+    screenColor: "#C9B79C",
+    screens: { front: false, back: false, left: false, right: false },
+    glass: { front: false, back: false, left: false, right: false },
+    spin: state.spin,
+    visual: activeDefinition()?.visual,
+  }));
+  const params = () => paramsBuilders.get(state.productType)();
 
   // Stabilny kontrakt danych dla przyszłego panelu wycen i integracji CRM.
   // Warstwa administracyjna nie musi znać wewnętrznej struktury renderera 3D.
-  const configurationPayload = () => ({
-    schemaVersion: "1.0",
-    product: "pergola-bioclimatic",
+  const configurationBuilders = new Map();
+  configurationBuilders.set("bioclimatic-pergola", () => ({
     construction: state.construction,
-    dimensions: {
-      moduleWidths: [...state.widths],
-      totalWidth: state.widths.reduce((sum, width) => sum + width, 0),
-      depth: state.depth,
-      height: state.height,
-      slatAngle: state.angle,
-    },
-    colors: {
-      frame: { id: state.frame.id, label: state.frame.label, value: state.frame.value },
-      slat: { id: state.slat.id, label: state.slat.label, value: state.slat.value },
-      screen: { id: state.screenFabric.id, label: state.screenFabric.label, value: state.screenFabric.value },
-    },
-    equipment: {
+    moduleWidths: [...state.widths],
+    depth: state.depth,
+    height: state.height,
+    slatAngle: state.angle,
+    frameColor: state.frame.id,
+    slatColor: state.slat.id,
+    screenColor: state.screenFabric.id,
       ledLinear: state.ledLinear,
       ledSpots: state.ledSpots,
       screens: { ...state.screens },
       glass: { ...state.glass },
       extraLegs: state.extraLegs.map((leg) => ({ ...leg })),
-    },
-    shareUrl: encodeState(),
+  }));
+  configurationBuilders.set("veranda", () => ({
+    width: state.veranda.width,
+    depth: state.veranda.depth,
+    backHeight: state.veranda.backHeight,
+    frontHeight: state.veranda.frontHeight,
+    roofAngle: state.veranda.roofAngle,
+    roofFields: state.veranda.roofFields,
+    rafterCount: state.veranda.rafterCount,
+    postCount: state.veranda.postCount,
+    roofMaterial: state.veranda.roofMaterial,
+    leftWall: state.veranda.leftWall,
+    rightWall: state.veranda.rightWall,
+    frontWall: state.veranda.frontWall,
+    frameColor: state.veranda.frameColor.id,
+    lighting: state.veranda.lighting,
+  }));
+  const configurationPayload = () => ({
+    schemaVersion: "2.0",
+    tenantSlug,
+    productType: state.productType,
+    productVersionId: activeDefinition().version.id,
+    values: configurationBuilders.get(state.productType)(),
   });
 
   const emitConfigurationChange = () => {
-    window.dispatchEvent(new CustomEvent("pergola:configuration-change", {
-      detail: configurationPayload(),
-    }));
+    const detail = configurationPayload();
+    window.dispatchEvent(new CustomEvent("configurator:configuration-change", { detail }));
+    if (state.productType === "bioclimatic-pergola") window.dispatchEvent(new CustomEvent("pergola:configuration-change", { detail }));
   };
 
-  window.pergolaConfigurator = Object.freeze({
-    version: "1.0.0",
+  const publicApi = Object.freeze({
+    version: "2.0.0",
     getConfiguration: configurationPayload,
-    getShareUrl: encodeState,
+    getShareUrl: () => savedShareUrl,
+    save: () => saveProject(),
+    getRegisteredProducts: () => canvas.registeredProducts,
   });
-
   const canvas = createPergolaCanvas(mount, params());
+  window.sunProtectionConfigurator = publicApi;
+  window.pergolaConfigurator = publicApi;
   mount.setAttribute("aria-busy", "false");
 
   const specEl = document.getElementById("pergolaSpec");
   const updateSpec = () => {
-    specEl.textContent =
-      `${state.widths.map((w) => w.toFixed(1)).join(" + ")} × ` +
-      `${state.depth.toFixed(1)} × ${state.height.toFixed(1)} m · ${state.angle}°`;
+    specEl.textContent = state.productType === "bioclimatic-pergola"
+      ? `${state.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.depth.toFixed(1)} × ${state.height.toFixed(1)} m · ${state.angle}°`
+      : `${state.veranda.width.toFixed(1)} × ${state.veranda.depth.toFixed(1)} m · ${state.veranda.backHeight.toFixed(2)} → ${state.veranda.frontHeight.toFixed(2)} m · ${state.veranda.roofAngle.toFixed(1)}°`;
   };
 
   const push = () => {
+    savedShareUrl = null;
+    savedShareId = null;
     canvas.update(params());
     updateSpec();
+    updateSummary();
     emitConfigurationChange();
+    scheduleValidation();
   };
 
   const CONSTRUCTION_LABELS = {
@@ -184,6 +280,72 @@ if (mount) {
     wall: "Przyścienna (montaż do ściany)",
     roof: "Moduł dachowy (kołnierz betonowy)",
   };
+  const PRODUCT_COPY = {
+    "bioclimatic-pergola": {
+      title: "Zaprojektuj<br><em>swoją pergolę.</em>",
+      lead: "Ustaw moduły, wymiary, kolory i wyposażenie. Każda zmiana pozostaje pod kontrolą wspólnego rdzenia konfiguratora.",
+      ar: "Twoja pergola<br><em>w prawdziwej skali.</em>",
+    },
+    veranda: {
+      title: "Zaprojektuj<br><em>swoją werandę.</em>",
+      lead: "Ustaw bryłę, spadek dachu i demonstracyjne wypełnienia. Ostateczne parametry wymagają zatwierdzenia technicznego.",
+      ar: "Twoja weranda<br><em>w prawdziwej skali.</em>",
+    },
+  };
+
+  const productSwitcher = document.querySelector("#productSwitcher .product-switcher__buttons");
+  const stepsHost = document.getElementById("configuratorSteps");
+  productSwitcher.innerHTML = products.map((product) => `<button type="button" data-product="${product.productType}" aria-pressed="${product.productType === state.productType}">${product.name}<small>${product.productType === "veranda" ? "definicja demo" : "wersja " + product.version.number}</small></button>`).join("");
+
+  const syncProductUi = () => {
+    const definition = activeDefinition();
+    document.getElementById("pergolaControls").hidden = state.productType !== "bioclimatic-pergola";
+    document.getElementById("verandaControls").hidden = state.productType !== "veranda";
+    productSwitcher.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.product === state.productType)));
+    const copy = PRODUCT_COPY[state.productType];
+    document.getElementById("configuratorTitle").innerHTML = copy.title;
+    document.getElementById("configuratorLead").textContent = copy.lead;
+    document.getElementById("arTitle").innerHTML = copy.ar;
+    stepsHost.innerHTML = [...definition.steps].sort((a, b) => a.order - b.order).map((step) => `<li>${step.label}</li>`).join("");
+    document.title = `${definition.name} 3D — visNEX`;
+    updateSpec();
+    updateSummary();
+  };
+
+  productSwitcher.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.product === state.productType) return;
+      state.productType = button.dataset.product;
+      syncProductUi();
+      push();
+    });
+  });
+
+  document.querySelectorAll("#cameraViews [data-view]").forEach((button) => {
+    button.addEventListener("click", () => canvas.setView(button.dataset.view));
+  });
+
+  const rangeControlIds = {
+    depth: "pergolaDepth",
+    height: "pergolaHeight",
+    slatAngle: "pergolaAngle",
+    width: "verandaWidth",
+    backHeight: "verandaBackHeight",
+    frontHeight: "verandaFrontHeight",
+    roofAngle: "verandaAngle",
+    roofFields: "verandaFields",
+    rafterCount: "verandaRafters",
+    postCount: "verandaPosts",
+  };
+  for (const definition of products) {
+    for (const parameter of definition.parameters) {
+      const input = document.getElementById(rangeControlIds[parameter.key]);
+      if (!input) continue;
+      if (parameter.min !== undefined) input.min = parameter.min;
+      if (parameter.max !== undefined) input.max = parameter.max;
+      if (parameter.step !== undefined) input.step = parameter.step;
+    }
+  }
 
   /* ---------- Rodzaj konstrukcji ---------- */
   const constructionGroup = document.getElementById("pergolaConstruction");
@@ -202,13 +364,14 @@ if (mount) {
 
   const renderWidths = () => {
     widthsHost.innerHTML = "";
+    const widthDefinition = productDefinitions.get("bioclimatic-pergola")?.parameters.find((parameter) => parameter.key === "moduleWidths");
     state.widths.forEach((w, i) => {
       const label = document.createElement("label");
       label.className = "pergola3d__slider";
       const labelText = state.widths.length === 1 ? "Szerokość" : `Moduł ${i + 1} · szerokość`;
       label.innerHTML = `
         <span class="pergola3d__label">${labelText} · <b>${w.toFixed(1)}</b> m</span>
-        <input type="range" min="2" max="6" step="0.1" value="${w}">
+        <input type="range" data-module-width="${i}" min="${widthDefinition?.min ?? 2}" max="${widthDefinition?.max ?? 6}" step="${widthDefinition?.step ?? 0.1}" value="${w}">
       `;
       const input = label.querySelector("input");
       const b = label.querySelector("b");
@@ -333,6 +496,96 @@ if (mount) {
   });
 
   updateSpec();
+
+  /* ---------- Weranda: działający moduł produktowy ---------- */
+  const verandaRangeBindings = [
+    ["verandaWidth", "verandaWidthVal", "width", 1],
+    ["verandaDepth", "verandaDepthVal", "depth", 1],
+    ["verandaBackHeight", "verandaBackHeightVal", "backHeight", 2],
+    ["verandaFrontHeight", "verandaFrontHeightVal", "frontHeight", 2],
+    ["verandaAngle", "verandaAngleVal", "roofAngle", 1],
+    ["verandaFields", "verandaFieldsVal", "roofFields", 0],
+    ["verandaRafters", "verandaRaftersVal", "rafterCount", 0],
+    ["verandaPosts", "verandaPostsVal", "postCount", 0],
+  ];
+  const syncVerandaRanges = () => {
+    verandaRangeBindings.forEach(([inputId, valueId, key, decimals]) => {
+      const input = document.getElementById(inputId);
+      const value = state.veranda[key];
+      input.value = value;
+      document.getElementById(valueId).textContent = decimals ? Number(value).toFixed(decimals) : String(Math.round(value));
+    });
+  };
+  const deriveVerandaFrontHeight = () => {
+    const front = state.veranda.backHeight - Math.tan(state.veranda.roofAngle * Math.PI / 180) * state.veranda.depth;
+    const input = document.getElementById("verandaFrontHeight");
+    state.veranda.frontHeight = clamp(front, Number(input.min), Number(input.max));
+  };
+  const deriveVerandaAngle = () => {
+    const input = document.getElementById("verandaAngle");
+    const raw = Math.atan((state.veranda.backHeight - state.veranda.frontHeight) / state.veranda.depth) * 180 / Math.PI;
+    const step = Number(input.step) || 0.5;
+    state.veranda.roofAngle = clamp(Math.round(raw / step) * step, Number(input.min), Number(input.max));
+    deriveVerandaFrontHeight();
+  };
+  verandaRangeBindings.forEach(([inputId, _valueId, key]) => {
+    const input = document.getElementById(inputId);
+    input.addEventListener("input", () => {
+      state.veranda[key] = ["roofFields", "rafterCount", "postCount"].includes(key) ? Math.round(Number(input.value)) : Number(input.value);
+      if (["depth", "backHeight", "roofAngle"].includes(key)) deriveVerandaFrontHeight();
+      if (key === "frontHeight") deriveVerandaAngle();
+      if (key === "roofFields") state.veranda.rafterCount = Math.max(state.veranda.rafterCount, state.veranda.roofFields + 1);
+      if (key === "rafterCount" && state.veranda.rafterCount < state.veranda.roofFields + 1) state.veranda.rafterCount = state.veranda.roofFields + 1;
+      syncVerandaRanges();
+      push();
+    });
+  });
+
+  const WALL_OPTIONS = [
+    ["none", "Brak"],
+    ["full-glass", "Przeszklenie pełne · demo"],
+    ["sliding-glass", "Przeszklenie przesuwne · demo"],
+    ["zip-screen", "Roleta ZIP · demo"],
+    ["solid", "Wypełnienie pełne · demo"],
+    ["top-wedge", "Klin górny · demo"],
+  ];
+  const bindWallSelect = (id, key, allowWedge) => {
+    const select = document.getElementById(id);
+    select.innerHTML = WALL_OPTIONS.filter(([value]) => allowWedge || value !== "top-wedge").map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    select.value = state.veranda[key];
+    select.addEventListener("change", () => { state.veranda[key] = select.value; push(); });
+  };
+  bindWallSelect("verandaLeftWall", "leftWall", true);
+  bindWallSelect("verandaRightWall", "rightWall", true);
+  bindWallSelect("verandaFrontWall", "frontWall", false);
+
+  const verandaRoofMaterial = document.getElementById("verandaRoofMaterial");
+  verandaRoofMaterial.querySelectorAll("button").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.value === state.veranda.roofMaterial));
+    button.addEventListener("click", () => {
+      state.veranda.roofMaterial = button.dataset.value;
+      verandaRoofMaterial.querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      push();
+    });
+  });
+
+  const verandaColorHost = document.getElementById("verandaFrameColor");
+  verandaColorHost.innerHTML = COLORS.map((color) => `<button type="button" data-id="${color.id}" aria-pressed="${state.veranda.frameColor.id === color.id}"><i style="--sw:${color.value}"></i><span>${color.label}</span></button>`).join("");
+  verandaColorHost.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.veranda.frameColor = COLORS.find((color) => color.id === button.dataset.id) || COLORS[0];
+      verandaColorHost.querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      push();
+    });
+  });
+  const verandaLighting = document.getElementById("verandaLighting");
+  verandaLighting.setAttribute("aria-pressed", String(state.veranda.lighting));
+  verandaLighting.addEventListener("click", () => {
+    state.veranda.lighting = !state.veranda.lighting;
+    verandaLighting.setAttribute("aria-pressed", String(state.veranda.lighting));
+    push();
+  });
+  syncVerandaRanges();
 
   /* ---------- Mobile: panel opcji jako NIE-modalny bottom sheet ----------
      Bez scrima i bez blokady strony: gdy panel jest otwarty, model nad nim
@@ -564,6 +817,95 @@ if (mount) {
     stopAdjust();
   });
 
+  /* ---------- Wspólne podsumowanie, walidacja i zapis ---------- */
+  const ROOF_LABELS = {
+    "clear-glass": "Szkło przejrzyste · demo",
+    "smoked-glass": "Szkło dymione · demo",
+    "clear-polycarbonate": "Poliwęglan przejrzysty · demo",
+    "opal-polycarbonate": "Poliwęglan mleczny · demo",
+  };
+  const WALL_LABELS = Object.fromEntries(WALL_OPTIONS);
+  const summaryHost = document.getElementById("configurationSummaryList");
+  const quotePreview = document.getElementById("quotePreview");
+  const notice = document.getElementById("configuratorNotice");
+  const noticeText = document.getElementById("configuratorNoticeText");
+  const saveButton = document.getElementById("configuratorSave");
+  const saveLabel = document.getElementById("configuratorSaveLabel");
+  let validationTimer = 0;
+
+  const summaryRows = () => state.productType === "bioclimatic-pergola" ? [
+    ["Produkt", "Pergola bioklimatyczna"],
+    ["Konstrukcja", CONSTRUCTION_LABELS[state.construction]],
+    ["Wymiary", `${state.widths.map((width) => width.toFixed(1)).join(" + ")} × ${state.depth.toFixed(1)} × ${state.height.toFixed(2)} m`],
+    ["Lamele", `${state.angle}°`],
+    ["Wyposażenie", `${Number(state.ledLinear) + Number(state.ledSpots) + SIDES.filter((side) => state.screens[side] || state.glass[side]).length} wybrane`],
+  ] : [
+    ["Produkt", "Weranda · demo"],
+    ["Wymiary", `${state.veranda.width.toFixed(1)} × ${state.veranda.depth.toFixed(1)} m`],
+    ["Spadek", `${state.veranda.backHeight.toFixed(2)} → ${state.veranda.frontHeight.toFixed(2)} m · ${state.veranda.roofAngle.toFixed(1)}°`],
+    ["Dach", `${ROOF_LABELS[state.veranda.roofMaterial]} · ${state.veranda.roofFields} pól`],
+    ["Zabudowy", `L: ${WALL_LABELS[state.veranda.leftWall]}, P: ${WALL_LABELS[state.veranda.rightWall]}, F: ${WALL_LABELS[state.veranda.frontWall]}`],
+  ];
+
+  const updateSummary = () => {
+    summaryHost.innerHTML = summaryRows().map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("");
+    if (!savedShareUrl) saveLabel.textContent = "Zapisz projekt";
+  };
+
+  const setNotice = (message, tone = "neutral") => {
+    noticeText.textContent = message;
+    notice.classList.toggle("is-valid", tone === "valid");
+    notice.classList.toggle("is-error", tone === "error");
+  };
+
+  async function validateCurrent() {
+    if (!api.available) {
+      setNotice("Tryb statyczny GitHub Pages · uruchom API, aby walidować, zapisywać i wyceniać.");
+      return { valid: true, offline: true };
+    }
+    try {
+      const result = await api.validate(configurationPayload());
+      if (result.valid) {
+        const warning = result.warnings?.[0]?.message;
+        setNotice(warning || "Konfiguracja zweryfikowana przez API.", "valid");
+      }
+      return result;
+    } catch (error) {
+      const payload = error.payload;
+      const message = payload?.errors?.[0]?.message || payload?.issues?.[0]?.message || "Konfiguracja wymaga korekty.";
+      setNotice(message, "error");
+      return payload || { valid: false };
+    }
+  }
+
+  function scheduleValidation() {
+    clearTimeout(validationTimer);
+    validationTimer = setTimeout(validateCurrent, 480);
+  }
+
+  async function saveProject() {
+    if (!api.available) {
+      setNotice("Zapis wymaga działającego API skonfigurowanego przez VITE_API_BASE_URL.", "error");
+      throw new Error("API_UNAVAILABLE");
+    }
+    saveButton.classList.add("is-busy");
+    saveLabel.textContent = "Waliduję i zapisuję…";
+    try {
+      const validation = await validateCurrent();
+      if (!validation.valid) throw new Error("CONFIGURATION_INVALID");
+      const saved = await api.save(configurationPayload(), 30);
+      savedShareId = saved.shareId;
+      savedShareUrl = saved.shareUrl;
+      saveLabel.textContent = "Projekt zapisany ✓";
+      setNotice("Projekt zapisany pod nieprzewidywalnym identyfikatorem. Link wygasa po 30 dniach.", "valid");
+      return saved;
+    } finally {
+      saveButton.classList.remove("is-busy");
+    }
+  }
+  saveButton.addEventListener("click", () => { saveProject().catch(() => {}); });
+  if (savedShareUrl) saveLabel.textContent = "Projekt odtworzony ✓";
+
   /* ---------- Eksport PDF projektu ---------- */
   const exportBtn = document.getElementById("pergolaExport");
   const doc = {
@@ -594,33 +936,15 @@ if (mount) {
     return on.map((s) => SIDE_LABELS[s]).join(", ");
   };
 
-  const specLine = () =>
-    `${state.widths.map((w) => w.toFixed(1)).join(" + ")} × ` +
-    `${state.depth.toFixed(1)} × ${state.height.toFixed(1)} m · ${state.angle}°`;
+  const specLine = () => specEl.textContent;
 
   const fillDoc = () => {
     doc.date.textContent = new Date().toLocaleDateString("pl-PL", {
       day: "numeric", month: "long", year: "numeric",
     });
+    doc.title.textContent = activeDefinition().name;
     doc.spec.textContent = specLine();
-    const totalW = state.widths.reduce((a, b) => a + b, 0).toFixed(1);
-    const rows = [
-      ["Rodzaj konstrukcji", CONSTRUCTION_LABELS[state.construction]],
-      ["Moduły", state.widths.length === 1 ? "1 moduł" : `${state.widths.length} moduły`],
-      ["Szerokość" + (state.widths.length > 1 ? " (moduły)" : ""),
-        state.widths.length > 1
-          ? `${state.widths.map((w) => w.toFixed(1)).join(" + ")} m  ·  razem ${totalW} m`
-          : `${state.widths[0].toFixed(1)} m`],
-      ["Wysięg (głębokość)", `${state.depth.toFixed(1)} m`],
-      ["Wysokość", `${state.height.toFixed(2)} m`],
-      ["Otwarcie lameli", `${state.angle}°`],
-      ["Kolor konstrukcji", state.frame.label],
-      ["Kolor lameli", state.slat.label],
-      ["Oświetlenie LED", ledLabel()],
-      ["Rolety screen", screensLabel()],
-      ["Przeszklenia", glassLabel()],
-      ["Dodatkowe nogi", state.extraLegs.length ? `${state.extraLegs.length} szt.` : "Standard (bez dodatkowych)"],
-    ];
+    const rows = summaryRows();
     doc.table.innerHTML = rows
       .map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`)
       .join("");
@@ -645,7 +969,24 @@ if (mount) {
       exportBtn.classList.add("is-busy");
       try {
         fillDoc();
-        doc.render.src = canvas.snapshot();
+        const snapshot = canvas.snapshot();
+        doc.render.src = snapshot;
+        if (api.available) {
+          try {
+            const blob = await api.pdf(configurationPayload(), snapshot);
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = `visnex-${state.productType}-${new Date().toISOString().slice(0, 10)}.pdf`;
+            anchor.click();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            setNotice("PDF wygenerowany po ponownej walidacji konfiguracji na serwerze.", "valid");
+            return;
+          } catch (error) {
+            console.error("Server PDF failed; opening local print fallback.", error);
+            setNotice("Serwerowy PDF jest chwilowo niedostępny. Otwieram lokalną kartę wydruku.", "error");
+          }
+        }
         // Poczekaj, aż obraz się zdekoduje, żeby nie trafił pusty na wydruk.
         if (doc.render.decode) {
           try { await doc.render.decode(); } catch (_) { /* i tak drukujemy */ }
@@ -665,68 +1006,34 @@ if (mount) {
 
   /* ---------- Wyślij zapytanie z tą konfiguracją ---------- */
   const inquiryBtn = document.getElementById("pergolaInquiry");
-  const contactForm = document.getElementById("contactForm");
   if (inquiryBtn) {
     const inquiryLabel = document.getElementById("pergolaInquiryLabel");
     let inquiryResetTimer = 0;
-    const configSummary = () => {
-      const totalW = state.widths.reduce((a, b) => a + b, 0).toFixed(1);
-      const lines = [
-        "Zapytanie z konfiguratora 3D — moja pergola:",
-        "",
-        `• Rodzaj konstrukcji: ${CONSTRUCTION_LABELS[state.construction]}`,
-        `• Moduły: ${state.widths.length === 1 ? "1 moduł" : state.widths.length + " moduły"}`,
-        `• Szerokość: ${state.widths.map((w) => w.toFixed(1)).join(" + ")} m` +
-          (state.widths.length > 1 ? ` (razem ${totalW} m)` : ""),
-        `• Wysięg: ${state.depth.toFixed(1)} m`,
-        `• Wysokość: ${state.height.toFixed(2)} m`,
-        `• Otwarcie lameli: ${state.angle}°`,
-        `• Kolor konstrukcji: ${state.frame.label}`,
-        `• Kolor lameli: ${state.slat.label}`,
-        `• Oświetlenie LED: ${ledLabel()}`,
-        `• Rolety screen: ${screensLabel()}`,
-        `• Przeszklenia: ${glassLabel()}`,
-        `• Dodatkowe nogi: ${state.extraLegs.length ? state.extraLegs.length + " szt." : "brak"}`,
-        "",
-        `Link do projektu: ${encodeState()}`,
-        "",
-        "Proszę o kontakt i orientacyjną wycenę.",
-      ];
-      return lines.join("\n");
-    };
-
-    inquiryBtn.addEventListener("click", () => {
-      const summary = configSummary();
-      const configuration = configurationPayload();
-      const quoteDraft = { createdAt: new Date().toISOString(), configuration, summary };
+    inquiryBtn.addEventListener("click", async () => {
+      const defaultText = inquiryLabel.textContent;
+      inquiryLabel.textContent = "Waliduję konfigurację…";
       try {
+        if (!savedShareUrl) await saveProject();
+        const configuration = configurationPayload();
+        const result = await api.quote(configuration);
+        const quoteDraft = { createdAt: new Date().toISOString(), configuration, shareUrl: savedShareUrl, ...result };
+      try {
+        localStorage.setItem("configurator:quote-draft", JSON.stringify(quoteDraft));
         localStorage.setItem("pergola:quote-draft", JSON.stringify(quoteDraft));
       } catch (_) { /* localStorage może być zablokowany przez ustawienia prywatności */ }
-      window.dispatchEvent(new CustomEvent("pergola:quote-request", { detail: quoteDraft }));
-
-      // Samodzielna wersja nie ma jeszcze panelu wycen. Zapisujemy szkic i
-      // wystawiamy zdarzenie, które przyszły moduł administracyjny przejmie.
-      if (!contactForm) {
-        if (inquiryLabel) {
-          const defaultText = inquiryLabel.textContent;
-          inquiryLabel.textContent = "Konfiguracja gotowa do wyceny ✓";
-          clearTimeout(inquiryResetTimer);
-          inquiryResetTimer = setTimeout(() => { inquiryLabel.textContent = defaultText; }, 2200);
-        }
-        return;
+        window.dispatchEvent(new CustomEvent("configurator:quote-request", { detail: quoteDraft }));
+        if (state.productType === "bioclimatic-pergola") window.dispatchEvent(new CustomEvent("pergola:quote-request", { detail: quoteDraft }));
+        quotePreview.hidden = false;
+        quotePreview.innerHTML = `<small>Wycena demonstracyjna · ${result.quoteId}</small><strong>${result.quote.gross.toLocaleString("pl-PL")} ${result.quote.currency}</strong><small>brutto · wymaga weryfikacji technicznej</small>`;
+        inquiryLabel.textContent = "Konfiguracja gotowa do wyceny ✓";
+        setNotice("Wycena i publiczny BOM zostały wygenerowane na backendzie.", "valid");
+      } catch (error) {
+        console.error("Quote request failed", error);
+        inquiryLabel.textContent = "Nie udało się przygotować wyceny";
+        setNotice("Wycena wymaga działającego API i poprawnej konfiguracji.", "error");
       }
-
-      const msg = contactForm.querySelector('[name="message"]');
-      if (msg) msg.value = summary;
-      closePanel();
-      const kontakt = document.getElementById("kontakt");
-      if (kontakt) {
-        const top = kontakt.getBoundingClientRect().top + window.scrollY - 70;
-        window.scrollTo({ top, behavior: "smooth" });
-      }
-      // Po dojechaniu do formularza ustaw kursor w pierwszym polu.
-      const nameField = contactForm.querySelector('[name="name"]');
-      if (nameField) setTimeout(() => nameField.focus({ preventScroll: true }), 700);
+      clearTimeout(inquiryResetTimer);
+      inquiryResetTimer = setTimeout(() => { inquiryLabel.textContent = defaultText; }, 2600);
     });
   }
 
@@ -746,8 +1053,9 @@ if (mount) {
       }, 1800);
     };
     copyBtn.addEventListener("click", async () => {
-      const link = encodeState();
       try {
+        if (!savedShareUrl) await saveProject();
+        const link = savedShareUrl;
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(link);
         } else {
@@ -761,13 +1069,17 @@ if (mount) {
           document.body.removeChild(ta);
         }
         flash("Skopiowano link ✓", true);
-      } catch (_) {
-        // Ostateczny fallback — pokaż link do ręcznego skopiowania.
-        window.prompt("Skopiuj link do projektu:", link);
-        flash(defaultLabel, false);
+      } catch (error) {
+        console.error("Share link failed", error);
+        flash("Zapis niedostępny", false);
       }
     });
   }
 
+  syncProductUi();
+  updateSummary();
+  setNotice(catalogSource === "api" ? "Definicje produktów pobrane z API." : "Publiczna definicja demo · API nie jest skonfigurowane.", catalogSource === "api" ? "valid" : "neutral");
+  scheduleValidation();
   queueMicrotask(emitConfigurationChange);
+  })();
 }
