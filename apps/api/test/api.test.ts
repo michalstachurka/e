@@ -61,6 +61,23 @@ test("saves and restores a project using an unpredictable share id", async () =>
   const restored = await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${body.shareId}` });
   assert.equal(restored.statusCode, 200);
   assert.deepEqual(restored.json().configuration.values.moduleWidths, [4]);
+  const crossTenantRestore = await app.inject({ method: "GET", url: `/api/public/other-company/configurations/${body.shareId}` });
+  assert.equal(crossTenantRestore.statusCode, 404);
+});
+
+test("rejects a configuration whose tenant differs from the route", async () => {
+  const mismatchedConfiguration = { ...pergolaConfiguration, tenantSlug: "other-company" };
+  for (const endpoint of ["validate", "configurations", "quotes", "pdf"]) {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/public/visnex/${endpoint}`,
+      payload: endpoint === "configurations"
+        ? { configuration: mismatchedConfiguration, expiresInDays: 30 }
+        : { configuration: mismatchedConfiguration },
+    });
+    assert.equal(response.statusCode, 400, endpoint);
+    assert.equal(response.json().error, "tenant_mismatch", endpoint);
+  }
 });
 
 test("generates a demo quote, public BOM and server PDF", async () => {
@@ -84,6 +101,17 @@ test("protects admin routes and allows an authenticated draft read", async () =>
   const products = await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } });
   assert.equal(products.statusCode, 200);
   assert.equal(products.json().products[0].definition.version.status, "draft");
+
+  const crossTenantRequests = [
+    { method: "GET" as const, url: "/api/admin/other-company/products" },
+    { method: "PUT" as const, url: "/api/admin/other-company/branding", payload: {} },
+    { method: "POST" as const, url: "/api/admin/other-company/products/bioclimatic-pergola/publish" },
+  ];
+  for (const crossTenantRequest of crossTenantRequests) {
+    const response = await app.inject({ ...crossTenantRequest, headers: { cookie } });
+    assert.equal(response.statusCode, 403, crossTenantRequest.url);
+    assert.equal(response.json().error, "tenant_forbidden", crossTenantRequest.url);
+  }
 });
 
 test("publishes a new version while archived configurations remain valid", async () => {

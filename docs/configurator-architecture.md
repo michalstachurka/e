@@ -96,6 +96,15 @@ Administracyjne endpointy:
 - `POST /api/admin/:tenantSlug/products/:productType/publish`
 - `PUT /api/admin/:tenantSlug/branding`
 
+### Niezmienniki izolacji klientów
+
+- każda publiczna operacja przyjmująca konfigurację porównuje `configuration.tenantSlug` z `:tenantSlug` w adresie i odrzuca rozbieżność jako `tenant_mismatch`;
+- każdy administracyjny endpoint z `:tenantSlug` korzysta ze wspólnego `requireTenantAdmin`, który porównuje klienta sesji z klientem trasy przed uruchomieniem logiki endpointu;
+- odczyt zapisanej konfiguracji wymaga jednocześnie poprawnego `shareId` i zgodnego klienta;
+- zapytania do danych produktowych, brandingu, konfiguracji i wycen muszą zawierać filtr klienta. Nowych endpointów nie wolno zabezpieczać wyłącznie identyfikatorem przekazanym przez frontend.
+
+Te reguły są objęte testami regresyjnymi. Przy migracji do PostgreSQL pozostają granicą aplikacyjną i powinny zostać uzupełnione politykami izolacji na poziomie bazy.
+
 ## Model danych
 
 Schemat SQLite ma logiczne tabele dla: `Tenant`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.

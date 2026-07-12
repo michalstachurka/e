@@ -62,7 +62,20 @@ export async function createApp(options: AppOptions) {
   const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
     const session = getSession(request);
     if (!session) return reply.code(401).send({ error: "unauthorized" });
-    request.headers["x-tenant-slug"] = session.tenant_slug;
+  };
+
+  const requireTenantAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = getSession(request);
+    if (!session) return reply.code(401).send({ error: "unauthorized" });
+    const { tenantSlug } = request.params as { tenantSlug?: string };
+    if (!tenantSlug || session.tenant_slug !== tenantSlug) return reply.code(403).send({ error: "tenant_forbidden" });
+  };
+
+  const requireMatchingConfigurationTenant = (reply: FastifyReply, tenantSlug: string, configuration: unknown) => {
+    if (!configuration || typeof configuration !== "object" || !("tenantSlug" in configuration)) return true;
+    if ((configuration as { tenantSlug?: unknown }).tenantSlug === tenantSlug) return true;
+    reply.code(400).send({ error: "tenant_mismatch" });
+    return false;
   };
 
   app.get("/health", async () => ({ status: "ok", service: "visNEX-configurator-api" }));
@@ -85,6 +98,7 @@ export async function createApp(options: AppOptions) {
   app.post("/api/public/:tenantSlug/validate", async (request, reply) => {
     const { tenantSlug } = request.params as { tenantSlug: string };
     const body = request.body as { configuration?: unknown };
+    if (!requireMatchingConfigurationTenant(reply, tenantSlug, body?.configuration)) return;
     const configuration = body?.configuration && typeof body.configuration === "object" ? body.configuration as Record<string, unknown> : {};
     const productType = String(configuration.productType || "");
     const productVersionId = String(configuration.productVersionId || "");
@@ -98,7 +112,7 @@ export async function createApp(options: AppOptions) {
     const { tenantSlug } = request.params as { tenantSlug: string };
     const parsed = SaveConfigurationRequestSchema.safeParse(request.body);
     if (!parsed.success) return badRequest(reply, parsed.error.issues);
-    if (parsed.data.configuration.tenantSlug !== tenantSlug) return badRequest(reply, [{ path: "configuration.tenantSlug", message: "Tenant mismatch" }]);
+    if (!requireMatchingConfigurationTenant(reply, tenantSlug, parsed.data.configuration)) return;
     const product = database.getProductVersion(tenantSlug, parsed.data.configuration.productType, parsed.data.configuration.productVersionId);
     if (!product) return reply.code(404).send({ error: "product_not_found" });
     const validation = validateConfiguration(parsed.data.configuration, product.definition);
@@ -124,6 +138,7 @@ export async function createApp(options: AppOptions) {
     const { tenantSlug } = request.params as { tenantSlug: string };
     const parsed = QuoteRequestSchema.safeParse(request.body);
     if (!parsed.success) return badRequest(reply, parsed.error.issues);
+    if (!requireMatchingConfigurationTenant(reply, tenantSlug, parsed.data.configuration)) return;
     const product = database.getProductVersion(tenantSlug, parsed.data.configuration.productType, parsed.data.configuration.productVersionId);
     if (!product) return reply.code(404).send({ error: "product_not_found" });
     const validation = validateConfiguration(parsed.data.configuration, product.definition);
@@ -139,6 +154,7 @@ export async function createApp(options: AppOptions) {
     const { tenantSlug } = request.params as { tenantSlug: string };
     const parsed = PdfRequestSchema.safeParse(request.body);
     if (!parsed.success) return badRequest(reply, parsed.error.issues);
+    if (!requireMatchingConfigurationTenant(reply, tenantSlug, parsed.data.configuration)) return;
     const tenant = database.getTenant(tenantSlug);
     const product = database.getProductVersion(tenantSlug, parsed.data.configuration.productType, parsed.data.configuration.productVersionId);
     if (!tenant || !product) return reply.code(404).send({ error: "product_not_found" });
@@ -176,17 +192,13 @@ export async function createApp(options: AppOptions) {
     return { authenticated: true, email: String(session.email), tenantSlug: String(session.tenant_slug) };
   });
 
-  app.get("/api/admin/:tenantSlug/products", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/admin/:tenantSlug/products", { preHandler: requireTenantAdmin }, async (request) => {
     const { tenantSlug } = request.params as { tenantSlug: string };
-    const session = getSession(request)!;
-    if (session.tenant_slug !== tenantSlug) return reply.code(403).send({ error: "tenant_forbidden" });
     return { products: database.getProducts(tenantSlug, "draft") };
   });
 
-  app.put("/api/admin/:tenantSlug/products/:productType", { preHandler: requireAdmin }, async (request, reply) => {
+  app.put("/api/admin/:tenantSlug/products/:productType", { preHandler: requireTenantAdmin }, async (request, reply) => {
     const { tenantSlug, productType } = request.params as { tenantSlug: string; productType: string };
-    const session = getSession(request)!;
-    if (session.tenant_slug !== tenantSlug) return reply.code(403).send({ error: "tenant_forbidden" });
     const parsed = AdminProductUpdateSchema.safeParse(request.body);
     if (!parsed.success) return badRequest(reply, parsed.error.issues);
     const sanitized = { ...parsed.data, name: sanitizeText(parsed.data.name, 120), description: sanitizeText(parsed.data.description, 500), steps: parsed.data.steps.map((step) => ({ ...step, label: sanitizeText(step.label, 120) })), parameters: parsed.data.parameters.map((parameter) => ({ ...parameter, label: sanitizeText(parameter.label, 120) })) };
@@ -194,18 +206,14 @@ export async function createApp(options: AppOptions) {
     return product ? { product } : reply.code(404).send({ error: "product_not_found" });
   });
 
-  app.post("/api/admin/:tenantSlug/products/:productType/publish", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/admin/:tenantSlug/products/:productType/publish", { preHandler: requireTenantAdmin }, async (request, reply) => {
     const { tenantSlug, productType } = request.params as { tenantSlug: string; productType: string };
-    const session = getSession(request)!;
-    if (session.tenant_slug !== tenantSlug) return reply.code(403).send({ error: "tenant_forbidden" });
     const product = database.publishProduct(tenantSlug, productType);
     return product ? { product } : reply.code(404).send({ error: "draft_not_found" });
   });
 
-  app.put("/api/admin/:tenantSlug/branding", { preHandler: requireAdmin }, async (request, reply) => {
+  app.put("/api/admin/:tenantSlug/branding", { preHandler: requireTenantAdmin }, async (request, reply) => {
     const { tenantSlug } = request.params as { tenantSlug: string };
-    const session = getSession(request)!;
-    if (session.tenant_slug !== tenantSlug) return reply.code(403).send({ error: "tenant_forbidden" });
     const parsed = BrandingSettingsSchema.safeParse(request.body);
     if (!parsed.success) return badRequest(reply, parsed.error.issues);
     database.updateBranding(tenantSlug, { ...parsed.data, companyName: sanitizeText(parsed.data.companyName, 120), pdfFooter: sanitizeText(parsed.data.pdfFooter, 300) });
