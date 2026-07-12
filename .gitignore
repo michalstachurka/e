@@ -2,3 +2,9 @@ node_modules
 dist
 shots
 *.tsbuildinfo
+.env
+.env.local
+data/*.sqlite
+data/*.sqlite-*
+test-results
+playwright-report
