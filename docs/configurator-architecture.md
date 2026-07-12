@@ -139,7 +139,9 @@ Panel diagnostyczny `debugAR` działa tylko na localhost.
 4. W drugim uruchom `npm run dev`.
 5. Otwórz `http://localhost:5173/konfigurator.html` oraz `http://localhost:5173/admin.html`.
 
-Frontend pobiera bazę API z `VITE_API_BASE_URL`. GitHub Pages publikuje tylko frontend. Produkcyjny backend musi działać pod osobnym adresem HTTPS, a jego URL należy przekazać podczas builda.
+Frontend pobiera bazę API z `VITE_API_BASE_URL`. GitHub Pages publikuje tylko frontend i wymaga zewnętrznego API. Railway może natomiast uruchomić cały stos pod jedną domeną: `VITE_BASE=/`, `VITE_API_BASE_URL=same-origin`, build `npm run build` i start `npm start`. Plik `railway.toml` zawiera te komendy oraz healthcheck `/health`.
+
+Do trwałych testów SQLite usługa Railway powinna mieć wolumen pod `/data`. Backend wykrywa `RAILWAY_VOLUME_MOUNT_PATH`, port, domenę publiczną i buduje na ich podstawie ścieżkę bazy, adres konfiguratora oraz CORS. W Railway trzeba ustawić tylko bezpieczne dane administratora i zmienne builda opisane w `README.md`.
 
 Komendy kontroli:
 

@@ -5,12 +5,13 @@ const cleanBaseUrl = (value) => {
 
 export class ConfiguratorApi {
   constructor({ baseUrl, tenantSlug }) {
-    this.baseUrl = cleanBaseUrl(baseUrl);
+    this.sameOrigin = String(baseUrl || "").trim() === "same-origin";
+    this.baseUrl = this.sameOrigin ? "" : cleanBaseUrl(baseUrl);
     this.tenantSlug = tenantSlug || "visnex";
   }
 
   get available() {
-    return Boolean(this.baseUrl);
+    return this.sameOrigin || Boolean(this.baseUrl);
   }
 
   async request(path, options = {}) {

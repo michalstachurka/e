@@ -36,6 +36,20 @@ npm run dev
 
 Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`.
 
+## Railway — pełne środowisko testowe
+
+Repozytorium zawiera `railway.toml`, który buduje frontend i API, a następnie uruchamia je pod jedną domeną. W usłudze Railway ustaw:
+
+```text
+VITE_BASE=/
+VITE_API_BASE_URL=same-origin
+ADMIN_SEED_EMAIL=<adres administratora>
+ADMIN_SEED_PASSWORD=<silne hasło, minimum 12 znaków>
+NODE_ENV=production
+```
+
+Dodaj wolumen zamontowany pod `/data`. Serwer automatycznie zapisze tam `configurator.sqlite` dzięki `RAILWAY_VOLUME_MOUNT_PATH`, użyje portu przekazanego przez Railway i utworzy linki udostępniania z publicznej domeny usługi. Po wdrożeniu dostępne są `/`, `/konfigurator.html`, `/admin.html`, `/api/...` i `/health`.
+
 ## Hero
 
 Hero odtwarza wideo `public/videos/hero.mp4` (fallback `hero.webm`,
