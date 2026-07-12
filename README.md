@@ -36,6 +36,14 @@ npm run dev
 
 Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`.
 
+Smoke test dowolnego wdrożenia lub przyszłej domeny white-label:
+
+```bash
+npm run test:deployment -- https://adres-wdrozenia.example
+```
+
+Test sprawdza healthcheck, strony, zasoby 3D, katalog API i granicę klienta. Opcjonalny test panelu nie zapisuje sekretów w repozytorium — dane przekazuje się wyłącznie przez `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD` i opcjonalny `TENANT_SLUG`.
+
 ## Railway — pełne środowisko testowe
 
 Repozytorium zawiera `railway.toml`, który buduje frontend i API, a następnie uruchamia je pod jedną domeną. W usłudze Railway ustaw:

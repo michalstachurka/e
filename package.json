@@ -19,7 +19,8 @@
     "test": "npm run test:unit && npm run test:api",
     "test:unit": "tsx --test packages/configurator-core/test/*.test.ts",
     "test:api": "tsx --test apps/api/test/*.test.ts",
-    "test:e2e": "node scripts/test-modular-configurator.mjs"
+    "test:e2e": "node scripts/test-modular-configurator.mjs",
+    "test:deployment": "node scripts/smoke-deployment.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
