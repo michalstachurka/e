@@ -59,6 +59,7 @@ export interface TenantProvisionResult {
  */
 export interface ConfiguratorStore {
   close(): Awaitable<void>;
+  healthCheck(): Awaitable<boolean>;
   getTenant(slug: string): Awaitable<TenantRecord | null>;
   getTenantByHostname(hostname: string): Awaitable<TenantRecord | null>;
   getPrimaryHostname(tenantSlug: string): Awaitable<string | null>;

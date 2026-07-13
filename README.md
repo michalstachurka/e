@@ -10,7 +10,7 @@ dla firm z branży wnętrzarskiej, budowlanej i home improvement.
 - Framer Motion
 - Fonty: Fraunces (display), Manrope (body), Space Grotesk (etykiety) — self-hosted przez Fontsource
 - Modułowy konfigurator: vanilla ES modules + Three.js
-- API konfiguratora: Fastify + Zod + port `ConfiguratorStore` z lokalnym adapterem SQLite (`node:sqlite`)
+- API konfiguratora: Fastify + Zod + port `ConfiguratorStore`, adaptery SQLite (`node:sqlite`) i PostgreSQL (`pg`)
 
 ## Uruchomienie
 
@@ -51,6 +51,7 @@ Repozytorium zawiera `railway.toml`, który buduje frontend i API, a następnie 
 ```text
 VITE_BASE=/
 VITE_API_BASE_URL=same-origin
+DATASTORE=sqlite
 ADMIN_SEED_EMAIL=<adres administratora>
 ADMIN_SEED_PASSWORD=<silne hasło, minimum 12 znaków>
 DEFAULT_TENANT_SLUG=visnex
@@ -60,6 +61,16 @@ NODE_ENV=production
 ```
 
 Dodaj wolumen zamontowany pod `/data`. Serwer automatycznie zapisze tam `configurator.sqlite` dzięki `RAILWAY_VOLUME_MOUNT_PATH`, użyje portu przekazanego przez Railway i utworzy linki udostępniania z publicznej domeny usługi. Po wdrożeniu dostępne są `/`, `/konfigurator.html`, `/admin.html`, `/api/...` i `/health`.
+
+`DATASTORE` jest przełącznikiem celowo wymagającym jawnej wartości. Domyślne `sqlite` zachowuje bieżące dane pilota. Adapter PostgreSQL uruchamia wersjonowane migracje pod blokadą transakcyjną i włącza się dopiero przez:
+
+```text
+DATASTORE=postgres
+DATABASE_URL=<wewnętrzny adres PostgreSQL>
+DATABASE_SSL_MODE=disable # Railway private network; require/verify-full dla zewnętrznego serwera
+```
+
+Samo ustawienie `DATABASE_URL` nie przełącza magazynu. Adapter nie kopiuje automatycznie istniejącego pliku SQLite; przed zmianą produkcji potrzebny jest osobny, sprawdzony eksport/import i próba odtworzenia. Zapobiega to uruchomieniu pustej bazy oraz utracie zapisanych projektów.
 
 Na wspólnej domenie klienta wybiera parametr `?tenant=slug`. Własne domeny aktywowane podczas onboardingu są przechowywane w tabeli `tenant_domains`, blokują host do jednego tenanta i stają się kanonicznym adresem jego linków udostępniania. `TENANT_HOST_MAP` pozostaje tylko przejściowym fallbackiem dla istniejących wdrożeń. Automatyczna weryfikacja DNS nie jest jeszcze dostępna; domenę aktywuje operator dopiero po sprawdzeniu konfiguracji.
 
@@ -83,7 +94,7 @@ NEW_TENANT_ADMIN_PASSWORD='<silne hasło>' \
 npm run tenant:provision -- --slug=firma-klienta --admin-email=admin@firma.example --domains=konfigurator.firma.example
 ```
 
-Komenda korzysta z `DATABASE_PATH` albo wolumenu Railway. Po jej wykonaniu usuń jednorazowe zmienne `NEW_TENANT_*`. Jeżeli frontend klienta jest hostowany poza wspólną usługą, dodaj jego origin do `CORS_ORIGINS`. Migracja na PostgreSQL będzie wymagała nowego adaptera `ConfiguratorStore`, a nie zmian w trasach API.
+Komenda korzysta z magazynu wybranego przez `DATASTORE`: `DATABASE_PATH`/wolumenu dla SQLite albo `DATABASE_URL` dla PostgreSQL. Po jej wykonaniu usuń jednorazowe zmienne `NEW_TENANT_*`. Jeżeli frontend klienta jest hostowany poza wspólną usługą, dodaj jego origin do `CORS_ORIGINS`.
 
 ## Hero
 

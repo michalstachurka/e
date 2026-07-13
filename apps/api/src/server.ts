@@ -3,6 +3,7 @@ import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createApp } from "./app.js";
+import { createConfiguredStore } from "./create-store.js";
 import { parseTenantHostMap } from "./tenant-context.js";
 
 const adminPassword = process.env.ADMIN_SEED_PASSWORD;
@@ -17,9 +18,18 @@ const corsOrigins = (process.env.CORS_ORIGINS || railwayOrigin || "http://localh
   .map((value) => value.trim())
   .filter(Boolean);
 const volumePath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const databasePath = process.env.DATABASE_PATH || (volumePath ? resolve(volumePath, "configurator.sqlite") : "./data/configurator.sqlite");
+const store = await createConfiguredStore({
+  driver: process.env.DATASTORE,
+  databasePath,
+  databaseUrl: process.env.DATABASE_URL,
+  databaseSslMode: process.env.DATABASE_SSL_MODE,
+  adminEmail: process.env.ADMIN_SEED_EMAIL || "admin@example.invalid",
+  adminPassword,
+});
 
 const app = await createApp({
-  databasePath: process.env.DATABASE_PATH || (volumePath ? resolve(volumePath, "configurator.sqlite") : "./data/configurator.sqlite"),
+  databasePath,
   adminEmail: process.env.ADMIN_SEED_EMAIL || "admin@example.invalid",
   adminPassword,
   publicAppUrl,
@@ -29,6 +39,7 @@ const app = await createApp({
   logger: true,
   defaultTenantSlug: process.env.DEFAULT_TENANT_SLUG || "visnex",
   tenantHostMap: parseTenantHostMap(process.env.TENANT_HOST_MAP),
+  store,
 });
 
 const staticRoot = resolve(process.cwd(), "dist");

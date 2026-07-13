@@ -1,11 +1,14 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { AdminLoginSchema, BrandingSettingsSchema, type AdminProductUpdate, type ProductDefinition, type PublicConfiguration } from "../../../packages/contracts/src/index.js";
+import type { AdminProductUpdate, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
 import { productSeeds, tenantSeed, type PricingRules } from "../../../packages/configurator-core/src/catalog.js";
 import { hashPassword, hashToken } from "./security.js";
 import { normalizeHostname } from "./tenant-context.js";
+import { nextDraftVersionId, prepareTenantProvision, TenantProvisionError } from "./tenant-provisioning.js";
 import type { ConfiguratorStore, TenantProvisionInput, TenantProvisionResult } from "./store.js";
+
+export { TenantProvisionError } from "./tenant-provisioning.js";
 
 type SqlValue = string | number | bigint | null | Uint8Array;
 type Row = Record<string, SqlValue>;
@@ -39,20 +42,6 @@ CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, admin_user_id TEXT NOT
 
 function asString(value: SqlValue | undefined) {
   return typeof value === "string" ? value : String(value ?? "");
-}
-
-const tenantSlugPattern = /^[a-z0-9-]{2,50}$/;
-const hostnameLabelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
-function validHostname(value: string) {
-  return value.length <= 253 && value.includes(".") && value.split(".").every((label) => hostnameLabelPattern.test(label));
-}
-
-export class TenantProvisionError extends Error {
-  constructor(public readonly code: "invalid_tenant" | "tenant_exists" | "domain_exists", message: string) {
-    super(message);
-    this.name = "TenantProvisionError";
-  }
 }
 
 export interface DatabaseOptions {
@@ -110,38 +99,15 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
   }
 
   async provisionTenant(input: TenantProvisionInput): Promise<TenantProvisionResult> {
-    const slug = input.slug.trim().toLowerCase();
-    const name = input.name.trim();
-    const login = AdminLoginSchema.safeParse({ email: input.adminEmail.trim().toLowerCase(), password: input.adminPassword });
-    const domains = [...new Set((input.domains || []).map(normalizeHostname).filter(Boolean))];
-    const branding = BrandingSettingsSchema.safeParse({
-      ...tenantSeed.branding,
-      companyName: name,
-      logoText: name.slice(0, 40),
-      contactEmail: input.adminEmail.trim().toLowerCase(),
-      ...input.branding,
-    });
-
-    if (!tenantSlugPattern.test(slug) || !name || name.length > 120 || !login.success || !branding.success || domains.some((hostname) => !validHostname(hostname))) {
-      throw new TenantProvisionError("invalid_tenant", "Tenant provisioning data is invalid");
-    }
+    const { slug, name, adminEmail, passwordHash, domains, branding, tenantId, now } = await prepareTenantProvision(input);
     if (this.connection.prepare("SELECT 1 FROM tenants WHERE slug=?").get(slug)) {
       throw new TenantProvisionError("tenant_exists", `Tenant ${slug} already exists`);
     }
-    for (const hostname of domains) {
-      if (this.connection.prepare("SELECT 1 FROM tenant_domains WHERE hostname=?").get(hostname)) {
-        throw new TenantProvisionError("domain_exists", `Domain ${hostname} is already assigned`);
-      }
-    }
-
-    const passwordHash = await hashPassword(login.data.password);
-    const now = new Date().toISOString();
-    const tenantId = `tenant-${slug}`;
     this.connection.exec("BEGIN IMMEDIATE");
     try {
       this.connection.prepare("INSERT INTO tenants (id,slug,name,created_at) VALUES (?,?,?,?)").run(tenantId, slug, name, now);
       this.connection.prepare("INSERT INTO branding_settings (id,tenant_id,settings_json,updated_at) VALUES (?,?,?,?)")
-        .run(`branding-${slug}`, tenantId, JSON.stringify(branding.data), now);
+        .run(`branding-${slug}`, tenantId, JSON.stringify(branding), now);
       this.connection.prepare("INSERT INTO product_categories (id,tenant_id,name,sort_order) VALUES (?,?,?,?)")
         .run(`category-${slug}-covers`, tenantId, "Zadaszenia", 10);
 
@@ -165,7 +131,7 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
       }
 
       this.connection.prepare("INSERT INTO admin_users (id,tenant_id,email,password_hash,active,created_at) VALUES (?,?,?,?,1,?)")
-        .run(`admin-${slug}`, tenantId, login.data.email, passwordHash, now);
+        .run(`admin-${slug}`, tenantId, adminEmail, passwordHash, now);
       domains.forEach((hostname, index) => {
         this.connection.prepare("INSERT INTO tenant_domains (id,tenant_id,hostname,status,verified_at,created_at) VALUES (?,?,?,'active',?,?)")
           .run(`domain-${slug}-${index + 1}`, tenantId, hostname, now, now);
@@ -173,6 +139,10 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
       this.connection.exec("COMMIT");
     } catch (error) {
       this.connection.exec("ROLLBACK");
+      if (error instanceof TenantProvisionError) throw error;
+      if (String(error).includes("tenant_domains.hostname")) {
+        throw new TenantProvisionError("domain_exists", "Domain is already assigned");
+      }
       throw error;
     }
 
@@ -183,6 +153,10 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
 
   close() {
     this.connection.close();
+  }
+
+  healthCheck() {
+    return Number((this.connection.prepare("SELECT 1 value").get() as Row).value) === 1;
   }
 
   getTenant(slug: string) {
@@ -291,7 +265,7 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
       const publishedDefinition = { ...draft.definition, version: { ...draft.definition.version, status: "published" as const } };
       this.connection.prepare("UPDATE product_versions SET definition_json=? WHERE id=?").run(JSON.stringify(publishedDefinition), draft.definition.version.id);
       const nextNumber = draft.definition.version.number + 1;
-      const nextId = `${productType}-draft-v${nextNumber}`;
+      const nextId = nextDraftVersionId(tenantSlug, productType, nextNumber);
       const nextDefinition = { ...publishedDefinition, version: { id: nextId, number: nextNumber, status: "draft" as const } };
       this.connection.prepare("INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
         .run(nextId, draft.definition.id, nextNumber, "draft", JSON.stringify(nextDefinition), JSON.stringify(draft.pricing), JSON.stringify(draft.bom), null, now);

@@ -73,6 +73,7 @@ Na bokach werandy prostokątna zabudowa i górny trójkąt są osobnymi decyzjam
 - Zod na granicy każdego zapisu;
 - portu `ConfiguratorStore`, który dopuszcza implementację synchroniczną i asynchroniczną;
 - SQLite przez `node:sqlite` jako bieżącego adaptera lokalnego i pilotażowego;
+- PostgreSQL przez `pg` jako jawnie wybierany adapter docelowy, z wersjonowanymi migracjami blokowanymi przed równoległym wykonaniem;
 - losowych identyfikatorów `shareId` i sesji;
 - `scrypt` do haseł;
 - HTTP-only cookies, `SameSite=Strict` i wygaśnięcia sesji;
@@ -121,9 +122,9 @@ Najpierw sprawdzany jest aktywny wpis w `tenant_domains`, a dopiero potem przej�
 
 ## Model danych
 
-Schemat SQLite ma logiczne tabele dla: `Tenant`, `TenantDomain`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.
+Schematy SQLite i PostgreSQL mają logiczne tabele dla: `Tenant`, `TenantDomain`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.
 
-`ConfiguratorStore` oddziela trasy Fastify od dialektu bazy i od synchronicznego API `node:sqlite`. Wszystkie wywołania w warstwie HTTP są `await`-owane, dlatego adapter PostgreSQL/Prisma może być asynchroniczny bez przebudowy endpointów. `ConfiguratorDatabase` jest pierwszym adapterem tego portu.
+`ConfiguratorStore` oddziela trasy Fastify od dialektu bazy i od synchronicznego API `node:sqlite`. Wszystkie wywołania w warstwie HTTP są `await`-owane. `ConfiguratorDatabase` implementuje SQLite, a `PostgresConfiguratorDatabase` ten sam kontrakt dla PostgreSQL. `DATASTORE=sqlite|postgres` wybiera adapter jawnie; obecność samego `DATABASE_URL` nie zmienia aktywnego magazynu.
 
 Operatorskie `npm run tenant:provision` tworzy nowego tenanta w jednej transakcji: branding, administratora, kategorię, osobne definicje i identyfikatory wersji obu produktów oraz aktywne domeny. Nie ma publicznego endpointu onboardingu. Niepowodzenie, w tym konflikt domeny, wycofuje całą operację.
 
@@ -145,7 +146,7 @@ Gdy API nie jest dostępne, zachowany jest dotychczasowy lokalny wydruk jako wyr
 
 ## Zapis i udostępnianie
 
-Nowy projekt jest walidowany i zapisywany w SQLite. Link zawiera tylko `tenant` i losowy `project`. Domyślne wygaśnięcie ustawione przez frontend wynosi 30 dni. Starsze linki pergoli z parametrami mogą zostać odczytane, ale aplikacja nie tworzy nowych linków tego typu.
+Nowy projekt jest walidowany i zapisywany przez aktywny `ConfiguratorStore`. Link zawiera tylko `tenant` i losowy `project`. Domyślne wygaśnięcie ustawione przez frontend wynosi 30 dni. Starsze linki pergoli z parametrami mogą zostać odczytane, ale aplikacja nie tworzy nowych linków tego typu.
 
 ## AR
 
@@ -170,7 +171,7 @@ Panel diagnostyczny `debugAR` działa tylko na localhost.
 
 Frontend pobiera bazę API z `VITE_API_BASE_URL`. GitHub Pages publikuje tylko frontend i wymaga zewnętrznego API. Railway może natomiast uruchomić cały stos pod jedną domeną: `VITE_BASE=/`, `VITE_API_BASE_URL=same-origin`, build `npm run build` i start `npm start`. Plik `railway.toml` zawiera te komendy oraz healthcheck `/health`.
 
-Do trwałych testów SQLite usługa Railway powinna mieć wolumen pod `/data`. Backend wykrywa `RAILWAY_VOLUME_MOUNT_PATH`, port, domenę publiczną i buduje na ich podstawie ścieżkę bazy, adres konfiguratora oraz CORS. W Railway trzeba ustawić tylko bezpieczne dane administratora i zmienne builda opisane w `README.md`.
+Do trwałych testów SQLite usługa Railway powinna mieć wolumen pod `/data`. Backend wykrywa `RAILWAY_VOLUME_MOUNT_PATH`, port, domenę publiczną i buduje na ich podstawie ścieżkę bazy, adres konfiguratora oraz CORS. PostgreSQL wymaga jawnego `DATASTORE=postgres` i `DATABASE_URL`; uruchamia migracje schematu w transakcji z blokadą, bez automatycznego importu pliku SQLite.
 
 Komendy kontroli:
 
@@ -185,7 +186,8 @@ Onboarding pilota korzysta z `NEW_TENANT_NAME`, `NEW_TENANT_ADMIN_PASSWORD` i ar
 
 ## Ograniczenia pionowego wycinka
 
-- SQLite używa lokalnego adaptera `node:sqlite`; port `ConfiguratorStore` usuwa sprzężenie tras z tym adapterem, ale implementacja PostgreSQL, migracje danych i polityki RLS pozostają etapem przed pełnym SaaS.
+- Adapter PostgreSQL i jego test kontraktowy są dostępne, ale produkcja nadal używa SQLite. Przed przełączeniem pozostają: eksport/import danych z kontrolą liczności i sum kontrolnych, próba odtworzenia, plan wycofania oraz test na prawdziwym serwerze PostgreSQL.
+- Zapytania obu adapterów filtrują dane tenantem i testy potwierdzają izolację aplikacyjną. Polityki PostgreSQL RLS pozostają dodatkową barierą wymaganą przed samoobsługowym SaaS i nie wolno deklarować ich działania przed wdrożeniem kontekstu tenanta na połączeniu.
 - Onboarding płatnego pilota jest transakcyjny, lecz wykonywany przez operatora. Samoobsługowy signup, weryfikacja DNS, billing i automatyczne certyfikaty pozostają poza MVP.
 - Panel edytuje podstawowe dane produktu, zakresy, wartości domyślne, widoczność pól, uproszczone profile, ceny demo, branding i publikację. Pełne edytory materiałów, opcji, zależności, BOM i szablonów PDF wymagają kolejnego etapu.
 - Reguły ceny i BOM są demonstracyjne, nie handlowe ani produkcyjne.

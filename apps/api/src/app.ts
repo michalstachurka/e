@@ -82,7 +82,14 @@ export async function createApp(options: AppOptions) {
     return false;
   };
 
-  app.get("/health", async () => ({ status: "ok", service: "visNEX-configurator-api" }));
+  app.get("/health", async (_request, reply) => {
+    try {
+      if (await database.healthCheck()) return { status: "ok", service: "visNEX-configurator-api" };
+    } catch (error) {
+      app.log.error(error);
+    }
+    return reply.code(503).send({ status: "unavailable", service: "visNEX-configurator-api" });
+  });
 
   app.get("/api/runtime-context", async (request, reply) => {
     reply.header("Cache-Control", "no-store");

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { resolve } from "node:path";
-import { ConfiguratorDatabase, TenantProvisionError } from "./database.js";
+import { createConfiguredStore, normalizeDatastoreDriver } from "./create-store.js";
+import { TenantProvisionError } from "./tenant-provisioning.js";
 
 function option(name: string) {
   const prefix = `--${name}=`;
@@ -36,8 +37,12 @@ if (!seedPassword || seedPassword.length < 12 || seedPassword.startsWith("replac
 
 const volumePath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
 const databasePath = process.env.DATABASE_PATH || (volumePath ? resolve(volumePath, "configurator.sqlite") : "./data/configurator.sqlite");
-const database = await ConfiguratorDatabase.create({
-  path: databasePath,
+const driver = normalizeDatastoreDriver(process.env.DATASTORE);
+const database = await createConfiguredStore({
+  driver,
+  databasePath,
+  databaseUrl: process.env.DATABASE_URL,
+  databaseSslMode: process.env.DATABASE_SSL_MODE,
   adminEmail: process.env.ADMIN_SEED_EMAIL || "admin@example.invalid",
   adminPassword: seedPassword,
 });
@@ -48,7 +53,8 @@ try {
     tenantSlug: result.tenant.slug,
     tenantName: result.tenant.name,
     domains: result.domains,
-    databasePath: databasePath === ":memory:" ? databasePath : resolve(databasePath),
+    datastore: driver,
+    ...(driver === "sqlite" ? { databasePath: databasePath === ":memory:" ? databasePath : resolve(databasePath) } : {}),
     nextStep: "Ustaw DNS domen. CORS_ORIGINS uzupełnij tylko wtedy, gdy frontend działa w osobnej usłudze.",
   }, null, 2));
 } catch (error) {

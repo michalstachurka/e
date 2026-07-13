@@ -98,6 +98,9 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
   assert.equal((await app.inject({ method: "GET", url: "/api/admin/pilot-a/products", headers: { cookie } })).statusCode, 200);
   assert.equal((await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } })).statusCode, 403);
 
+  await database.publishProduct("pilot-a", "bioclimatic-pergola");
+  assert.equal(database.getProduct("pilot-a", "bioclimatic-pergola", "draft")?.definition.version.id, "pilot-a-bioclimatic-pergola-draft-v3");
+
   await assert.rejects(
     database.provisionTenant({
       slug: "pilot-rollback",
@@ -223,6 +226,7 @@ test("publishes a new version while archived configurations remain valid", async
   const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
   const publicPergola = catalog.json().products.find((product: { productType: string }) => product.productType === "bioclimatic-pergola");
   assert.equal(publicPergola.version.number, 2);
+  assert.equal(database.getProduct("visnex", "bioclimatic-pergola", "draft")?.definition.version.id, "visnex-bioclimatic-pergola-draft-v3");
   const archivedValidation = await app.inject({ method: "POST", url: "/api/public/visnex/validate", payload: { configuration: pergolaConfiguration } });
   assert.equal(archivedValidation.statusCode, 200);
 });
