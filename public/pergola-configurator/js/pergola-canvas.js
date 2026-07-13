@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ProductRendererRegistry } from "./core/product-registry.js";
+import { profileMetres } from "./core/profile-definitions.js";
 import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
 
 /** Soft radial ground shadow texture. */
@@ -379,8 +380,11 @@ export function createPergolaCanvas(mountEl, initialParams) {
     const slats = [];
 
     const H = p.height;
-    const post = 0.14;
-    const beam = 0.18;
+    const post = profileMetres(p.profiles, "structural-post", "a", Number(p.visual?.postSize || 0.14));
+    const beamDepth = profileMetres(p.profiles, "frame-beam", "a", post);
+    const beam = profileMetres(p.profiles, "frame-beam", "b", Number(p.visual?.beamHeight || 0.18));
+    const louvrePitch = profileMetres(p.profiles, "roof-louvre", "a", Number(p.visual?.louvrePitch || 0.21));
+    const louvreThickness = profileMetres(p.profiles, "roof-louvre", "b", Number(p.visual?.louvreThickness || 0.015));
     const D = p.depth;
     const totalW = p.widths.reduce((a, b) => a + b, 0);
 
@@ -394,10 +398,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
       // Nogi budowane są globalnie po złożeniu modułów (patrz niżej), żeby
       // na styku dwóch modułów stała JEDNA wspólna noga, a nie dwie obok siebie.
       // Top frame
-      box(W, beam, post, 0, H - beam / 2, -(D - post) / 2);
-      box(W, beam, post, 0, H - beam / 2, (D - post) / 2);
-      box(post, beam, D - 2 * post, -(W - post) / 2, H - beam / 2, 0);
-      box(post, beam, D - 2 * post, (W - post) / 2, H - beam / 2, 0);
+      box(W, beam, beamDepth, 0, H - beam / 2, -(D - beamDepth) / 2);
+      box(W, beam, beamDepth, 0, H - beam / 2, (D - beamDepth) / 2);
+      box(beamDepth, beam, D - 2 * beamDepth, -(W - beamDepth) / 2, H - beam / 2, 0);
+      box(beamDepth, beam, D - 2 * beamDepth, (W - beamDepth) / 2, H - beam / 2, 0);
 
       // Linear LED: hairline strip along the inner bottom edge of the frame
       if (p.ledLinear) {
@@ -419,7 +423,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
       // Louvres (+ optional spots, ~1 per 1.5 m2)
       // Pitch == slat width, so closed louvres touch; at 90 deg the
       // 0.21 m blade stands proud of the 0.18 m collar
-      const pitch = 0.21;
+      const pitch = louvrePitch;
       const n = Math.max(3, Math.round((D - 2 * post) / pitch));
       const slatW = (D - 2 * post) / n;
       const span = W - 2 * post;
@@ -438,7 +442,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
       for (let i = 0; i < n; i++) {
         const z = -(D - 2 * post) / 2 + (i + 0.5) * ((D - 2 * post) / n);
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, 0.015, slatW * 1.01), slatMaterial);
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, louvreThickness, slatW * 1.01), slatMaterial);
         slat.name = "RoofLouvre";
         slat.userData.arRole = "slat";
         slat.position.set(cx, H - beam / 2, z);
@@ -567,7 +571,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     const screenBoxes = { front: [], back: [], left: [], right: [] };
     const screenBars = { front: [], back: [], left: [], right: [] };
     const screenGuides = { front: [], back: [], left: [], right: [] };
-    const cassetteH = 0.105; // skrzynka rolety — 10,5 cm
+    const cassetteH = Number(p.visual?.screenCassetteHeight || 0.105); // skrzynka rolety — 10,5 cm
     const fabricTop = H - beam - cassetteH; // płótno startuje od spodu skrzynki
     const inset = 0.02;
     // Obrót płótna tak, by FrontSide (normalna) patrzyła NA ZEWNĄTRZ pergoli.
@@ -947,6 +951,12 @@ export function createPergolaCanvas(mountEl, initialParams) {
     rightWall: params.rightWall,
     frontWall: params.frontWall,
     lighting: params.lighting,
+    leftTriangle: params.leftTriangle,
+    rightTriangle: params.rightTriangle,
+    leftScreenSupport: params.leftScreenSupport,
+    rightScreenSupport: params.rightScreenSupport,
+    profiles: params.profiles,
+    visual: params.visual,
   });
   let lastGeometrySignature = geometrySignature(initialParams);
 

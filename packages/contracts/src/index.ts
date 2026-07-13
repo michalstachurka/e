@@ -34,6 +34,9 @@ export const PergolaValuesSchema = z.object({
   extraLegs: z.array(ExtraLegSchema).max(12),
 });
 
+const VerandaSideWallSchema = z.enum(["none", "full-glass", "sliding-glass", "zip-screen", "solid", "top-wedge"]);
+const VerandaTriangleFillSchema = z.enum(["none", "full-glass", "sliding-glass", "zip-screen", "solid"]);
+
 export const VerandaValuesSchema = z.object({
   width: z.number().finite(),
   depth: z.number().finite(),
@@ -44,9 +47,13 @@ export const VerandaValuesSchema = z.object({
   rafterCount: z.number().int(),
   postCount: z.number().int(),
   roofMaterial: z.enum(["clear-glass", "smoked-glass", "clear-polycarbonate", "opal-polycarbonate"]),
-  leftWall: z.enum(["none", "full-glass", "sliding-glass", "zip-screen", "solid", "top-wedge"]),
-  rightWall: z.enum(["none", "full-glass", "sliding-glass", "zip-screen", "solid", "top-wedge"]),
+  leftWall: VerandaSideWallSchema,
+  rightWall: VerandaSideWallSchema,
   frontWall: z.enum(["none", "full-glass", "sliding-glass", "zip-screen", "solid"]),
+  leftTriangle: VerandaTriangleFillSchema.default("none"),
+  rightTriangle: VerandaTriangleFillSchema.default("none"),
+  leftScreenSupport: z.boolean().default(false),
+  rightScreenSupport: z.boolean().default(false),
   frameColor: z.string().min(1).max(40),
   lighting: z.boolean(),
 });
@@ -95,6 +102,16 @@ export const ColorDefinitionSchema = z.object({
   demoOnly: z.boolean().default(false),
 });
 
+export const ProfileDefinitionSchema = z.object({
+  id: z.string().min(1).max(80),
+  label: z.string().min(1).max(120),
+  usage: z.string().min(1).max(180),
+  aMm: z.number().int().positive().max(2000),
+  bMm: z.number().int().positive().max(2000),
+  shape: z.enum(["rectangular", "louvre"]).default("rectangular"),
+  demoOnly: z.boolean().default(false),
+});
+
 export const ProductDefinitionSchema = z.object({
   id: z.string().min(1).max(100),
   productType: ProductTypeSchema,
@@ -109,6 +126,7 @@ export const ProductDefinitionSchema = z.object({
   }),
   steps: z.array(z.object({ id: z.string(), label: z.string(), order: z.number().int() })),
   parameters: z.array(ParameterDefinitionSchema),
+  profiles: z.array(ProfileDefinitionSchema).default([]),
   colors: z.array(ColorDefinitionSchema),
   visual: z.record(z.string(), z.unknown()),
 });
@@ -152,6 +170,7 @@ export const AdminProductUpdateSchema = z.object({
   order: z.number().int().min(0).max(100),
   steps: z.array(z.object({ id: z.string().min(1).max(80), label: z.string().min(1).max(120), order: z.number().int() })).max(20),
   parameters: z.array(ParameterDefinitionSchema).max(80),
+  profiles: z.array(ProfileDefinitionSchema).max(30).default([]),
   colors: z.array(ColorDefinitionSchema).max(40),
   visual: z.record(z.string(), z.unknown()),
   pricing: z.object({

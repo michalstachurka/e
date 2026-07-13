@@ -38,6 +38,12 @@ function parameterRange(definition: ProductDefinition, key: string) {
   return definition.parameters.find((parameter) => parameter.key === key);
 }
 
+function profileMetres(definition: ProductDefinition, id: string, axis: "a" | "b", fallback: number) {
+  const profile = definition.profiles?.find((item) => item.id === id);
+  const millimetres = axis === "a" ? profile?.aMm : profile?.bMm;
+  return typeof millimetres === "number" ? millimetres / 1000 : fallback;
+}
+
 function checkRange(errors: ValidationIssue[], definition: ProductDefinition, key: string, value: number) {
   const parameter = parameterRange(definition, key);
   if (!parameter) return;
@@ -74,8 +80,8 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     checkRange(errors, definition, "depth", values.depth);
     checkRange(errors, definition, "height", values.height);
     checkRange(errors, definition, "slatAngle", values.slatAngle);
-    const pitch = Number(definition.visual.louvrePitch || 0.21);
-    const postSize = Number(definition.visual.postSize || 0.14);
+    const pitch = profileMetres(definition, "roof-louvre", "a", Number(definition.visual.louvrePitch || 0.21));
+    const postSize = profileMetres(definition, "structural-post", "a", Number(definition.visual.postSize || 0.14));
     derived.louvresPerModule = calculateLouvreCount(values.depth, pitch, postSize);
     derived.totalLouvres = Number(derived.louvresPerModule) * values.moduleWidths.length;
     derived.totalWidth = round(values.moduleWidths.reduce((sum, width) => sum + width, 0));
@@ -92,6 +98,12 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     }
     if (values.rafterCount < values.roofFields + 1) {
       errors.push({ path: "values.rafterCount", message: "Liczba krokwi musi być co najmniej o jeden większa od liczby pól dachowych.", code: "dependency" });
+    }
+    if (values.leftScreenSupport && values.leftWall !== "zip-screen") {
+      errors.push({ path: "values.leftScreenSupport", message: "Lewy profil podpierający wymaga rolety ZIP.", code: "dependency" });
+    }
+    if (values.rightScreenSupport && values.rightWall !== "zip-screen") {
+      errors.push({ path: "values.rightScreenSupport", message: "Prawy profil podpierający wymaga rolety ZIP.", code: "dependency" });
     }
     warnings.push({ path: "values", message: "Parametry werandy i wypełnień są demonstracyjne i wymagają danych technicznych producenta.", code: "demo_only" });
   }
@@ -116,7 +128,9 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
   } else {
     const values = configuration.values;
     area = values.width * values.depth;
-    options = Number(values.lighting) + [values.leftWall, values.rightWall, values.frontWall].filter((value) => value !== "none").length;
+    options = Number(values.lighting)
+      + [values.leftWall, values.rightWall, values.frontWall, values.leftTriangle, values.rightTriangle].filter((value) => value !== "none").length
+      + Number(values.leftScreenSupport) + Number(values.rightScreenSupport);
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   }
   const calculated = (rules.basePrice + area * rules.pricePerSquareMeter + Math.max(0, modules - 1) * rules.moduleSurcharge + options * rules.optionSurcharge + colorSurcharge) * rules.multiplier;
@@ -141,6 +155,8 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
     };
   }
   const values = configuration.values;
+  const triangleCount = [values.leftTriangle, values.rightTriangle].filter((value) => value !== "none").length;
+  const supportCount = Number(values.leftScreenSupport) + Number(values.rightScreenSupport);
   return {
     demoOnly: true as const,
     items: [
@@ -149,6 +165,8 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
       { label: "Słup frontowy", quantity: values.postCount, unit: "szt." },
       { label: "Krokiew", quantity: values.rafterCount, unit: "szt." },
       { label: "Pole dachowe", quantity: values.roofFields, unit: "szt." },
+      ...(triangleCount ? [{ label: "Wypełnienie trójkąta bocznego", quantity: triangleCount, unit: "szt." }] : []),
+      ...(supportCount ? [{ label: "Profil podpierający kasetę rolety", quantity: supportCount, unit: "szt." }] : []),
       { label: "Powierzchnia zadaszenia", quantity: round(values.width * values.depth, 2), unit: "m²" },
     ],
   };

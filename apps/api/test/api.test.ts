@@ -122,7 +122,7 @@ test("publishes a new version while archived configurations remain valid", async
   const definition = draft.definition;
   const update = {
     name: `${definition.name} test`, description: definition.description, enabled: definition.enabled, order: definition.order,
-    steps: definition.steps, parameters: definition.parameters, colors: definition.colors, visual: definition.visual, pricing: draft.pricing,
+    steps: definition.steps, parameters: definition.parameters, profiles: definition.profiles, colors: definition.colors, visual: definition.visual, pricing: draft.pricing,
   };
   const saved = await app.inject({ method: "PUT", url: "/api/admin/visnex/products/bioclimatic-pergola", headers: { cookie }, payload: update });
   assert.equal(saved.statusCode, 200);
@@ -139,9 +139,12 @@ test("validates the coupled veranda slope", async () => {
   const slope = deriveVerandaSlope(3.2, 2.95, 7);
   const configuration = {
     schemaVersion: "2.0", tenantSlug: "visnex", productType: "veranda", productVersionId: "visnex-veranda-v1",
-    values: { width: 4.5, depth: 3.2, backHeight: 2.95, frontHeight: slope.frontHeight, roofAngle: 7, roofFields: 4, rafterCount: 5, postCount: 3, roofMaterial: "clear-glass", leftWall: "none", rightWall: "none", frontWall: "none", frameColor: "anthracite", lighting: false },
+    values: { width: 4.5, depth: 3.2, backHeight: 2.95, frontHeight: slope.frontHeight, roofAngle: 7, roofFields: 4, rafterCount: 5, postCount: 3, roofMaterial: "clear-glass", leftWall: "zip-screen", rightWall: "none", frontWall: "none", leftTriangle: "solid", rightTriangle: "none", leftScreenSupport: true, rightScreenSupport: false, frameColor: "anthracite", lighting: false },
   };
   const response = await app.inject({ method: "POST", url: "/api/public/visnex/validate", payload: { configuration } });
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().derived.postPositions.length, 3);
+  const quote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration } });
+  assert.equal(quote.statusCode, 201);
+  assert.ok(quote.json().bom.items.some((item: { label: string }) => item.label === "Profil podpierający kasetę rolety"));
 });

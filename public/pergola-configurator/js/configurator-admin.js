@@ -1,4 +1,5 @@
 import { ConfiguratorApi } from "./core/configurator-api.js";
+import { resolveProfileDefinitions } from "./core/profile-definitions.js";
 
 const config = window.__VISNEX_CONFIG__ || {};
 const tenantSlug = config.tenantSlug || "visnex";
@@ -46,11 +47,13 @@ function parameterRows(product) {
 function renderProducts() {
   productsHost.innerHTML = products.map((product, productIndex) => {
     const definition = product.definition;
+    definition.profiles = resolveProfileDefinitions(definition);
     const visualEntries = Object.entries(definition.visual).filter(([, value]) => typeof value === "number");
     return `<article class="admin-product" data-product-index="${productIndex}"><header><div><span class="admin-version">${definition.productType} · draft v${definition.version.number}</span><h3>${escapeHtml(definition.name)}</h3></div><label class="admin-checkbox"><input data-field="enabled" type="checkbox" ${definition.enabled ? "checked" : ""} /> Produkt aktywny</label></header><div class="admin-product__body">
       <div class="admin-grid"><label class="admin-field">Nazwa<input data-field="name" value="${escapeHtml(definition.name)}" /></label><label class="admin-field">Kolejność<input data-field="order" type="number" min="0" value="${definition.order}" /></label><label class="admin-field admin-field--wide">Opis<textarea data-field="description">${escapeHtml(definition.description)}</textarea></label></div>
       <section><h4>Parametry</h4><table class="admin-table"><thead><tr><th>Etykieta</th><th>Klucz</th><th>Min</th><th>Max</th><th>Krok</th><th>Domyślna</th><th>Ukryj</th></tr></thead><tbody>${parameterRows(product)}</tbody></table></section>
       <section><h4>Wymiary wizualne · demo</h4><div class="admin-grid">${visualEntries.map(([key, value]) => `<label class="admin-field">${escapeHtml(key)}<input data-visual="${escapeHtml(key)}" type="number" step="0.001" value="${value}" /></label>`).join("")}</div></section>
+      <section><h4>Przekroje profili · mm</h4><div class="admin-grid">${definition.profiles.map((profile, profileIndex) => `<div class="admin-field" data-profile-index="${profileIndex}"><strong>${escapeHtml(profile.label)}</strong><label>a · mm<input data-profile-key="aMm" type="number" min="1" step="1" value="${profile.aMm}" /></label><label>b · mm<input data-profile-key="bMm" type="number" min="1" step="1" value="${profile.bMm}" /></label></div>`).join("")}</div></section>
       <section><h4>Podstawowe reguły ceny · demo</h4><div class="admin-grid">${Object.entries(product.pricing).filter(([, value]) => typeof value === "number").map(([key, value]) => `<label class="admin-field">${escapeHtml(key)}<input data-pricing="${escapeHtml(key)}" type="number" step="any" value="${value}" /></label>`).join("")}</div></section>
       <div class="admin-actions"><button class="admin-action" data-action="save" type="button">Zapisz draft</button><button class="admin-action admin-action--publish" data-action="publish" type="button">Publikuj nową wersję</button></div>
     </div></article>`;
@@ -74,9 +77,13 @@ function readProductCard(card, source) {
     });
   });
   card.querySelectorAll("[data-visual]").forEach((input) => { definition.visual[input.dataset.visual] = Number(input.value); });
+  card.querySelectorAll("[data-profile-index]").forEach((profileCard) => {
+    const profile = definition.profiles[Number(profileCard.dataset.profileIndex)];
+    profileCard.querySelectorAll("[data-profile-key]").forEach((input) => { profile[input.dataset.profileKey] = Number(input.value); });
+  });
   const pricing = structuredClone(source.pricing);
   card.querySelectorAll("[data-pricing]").forEach((input) => { pricing[input.dataset.pricing] = Number(input.value); });
-  return { name: definition.name, description: definition.description, enabled: definition.enabled, order: definition.order, steps: definition.steps, parameters: definition.parameters, colors: definition.colors, visual: definition.visual, pricing: { ...pricing, demoOnly: true } };
+  return { name: definition.name, description: definition.description, enabled: definition.enabled, order: definition.order, steps: definition.steps, parameters: definition.parameters, profiles: definition.profiles, colors: definition.colors, visual: definition.visual, pricing: { ...pricing, demoOnly: true } };
 }
 
 async function loadWorkspace() {

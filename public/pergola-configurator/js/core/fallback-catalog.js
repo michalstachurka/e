@@ -37,8 +37,13 @@ export const fallbackCatalog = Object.freeze({
         { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 2.2, max: 3.2, step: 0.05, defaultValue: 2.6 },
         { key: "slatAngle", label: "Otwarcie lameli", section: "structure", type: "range", unit: "°", min: 0, max: 120, step: 1, defaultValue: 35 },
       ],
+      profiles: [
+        { id: "structural-post", label: "Słup konstrukcyjny", usage: "Podparcie pionowe konstrukcji", aMm: 140, bMm: 140, shape: "rectangular", demoOnly: true },
+        { id: "frame-beam", label: "Belka ramy", usage: "Obwodowa rama dachu", aMm: 140, bMm: 180, shape: "rectangular", demoOnly: true },
+        { id: "roof-louvre", label: "Lamela dachowa", usage: "Ruchome wypełnienie dachu", aMm: 210, bMm: 15, shape: "louvre", demoOnly: true },
+      ],
       colors,
-      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, demoOnly: true },
+      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, louvreThickness: 0.015, demoOnly: true },
     },
     {
       id: "product-veranda",
@@ -59,8 +64,14 @@ export const fallbackCatalog = Object.freeze({
         { key: "rafterCount", label: "Liczba krokwi", section: "roof", type: "range", min: 3, max: 9, step: 1, defaultValue: 5, demoOnly: true },
         { key: "postCount", label: "Liczba słupów", section: "structure", type: "range", min: 2, max: 6, step: 1, defaultValue: 3, demoOnly: true },
       ],
+      profiles: [
+        { id: "structural-post", label: "Słup frontowy", usage: "Podparcie pionowe frontu", aMm: 130, bMm: 130, shape: "rectangular", demoOnly: true },
+        { id: "frame-beam", label: "Belka konstrukcyjna", usage: "Belka przyścienna i frontowa", aMm: 130, bMm: 170, shape: "rectangular", demoOnly: true },
+        { id: "roof-rafter", label: "Krokiew dachowa", usage: "Podparcie pola dachowego", aMm: 80, bMm: 122, shape: "rectangular", demoOnly: true },
+        { id: "screen-support", label: "Profil pod kasetę ZIP", usage: "Opcjonalne podparcie kasety na boku", aMm: 50, bMm: 80, shape: "rectangular", demoOnly: true },
+      ],
       colors,
-      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, roofThickness: 0.018, demoOnly: true },
+      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, rafterHeight: 0.122, roofThickness: 0.018, screenCassetteHeight: 0.105, screenCassetteDepth: 0.11, demoOnly: true },
     },
   ],
 });

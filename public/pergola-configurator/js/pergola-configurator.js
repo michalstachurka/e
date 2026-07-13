@@ -5,6 +5,7 @@ import { createPergolaCanvas } from "./pergola-canvas.js";
 import { setupPergolaAR } from "./ar-controller.js";
 import { ConfiguratorApi } from "./core/configurator-api.js";
 import { fallbackCatalog } from "./core/fallback-catalog.js";
+import { resolveProfileDefinitions } from "./core/profile-definitions.js";
 
 const mount = document.getElementById("pergolaMount");
 if (mount) {
@@ -22,7 +23,10 @@ if (mount) {
       console.warn("Configurator API catalog unavailable; using public demo definition.", error);
     }
   }
-  const products = [...catalog.products].filter((product) => product.enabled).sort((a, b) => a.order - b.order);
+  const products = [...catalog.products]
+    .filter((product) => product.enabled)
+    .sort((a, b) => a.order - b.order)
+    .map((product) => ({ ...product, profiles: resolveProfileDefinitions(product) }));
   const productDefinitions = new Map(products.map((product) => [product.productType, product]));
   const COLORS = (productDefinitions.get("bioclimatic-pergola")?.colors || fallbackCatalog.products[0].colors).map((color) => ({ ...color }));
   const colorAliases = { antracyt: "anthracite", bialy: "warm-white", czarny: "black", braz: "bronze" };
@@ -38,6 +42,7 @@ if (mount) {
   const SIDE_LABELS = { front: "Przód", back: "Tył", left: "Lewa", right: "Prawa" };
   const SIDES = ["front", "back", "left", "right"];
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[character]);
 
   const state = {
     productType: "bioclimatic-pergola",
@@ -68,6 +73,10 @@ if (mount) {
       leftWall: "none",
       rightWall: "none",
       frontWall: "none",
+      leftTriangle: "none",
+      rightTriangle: "none",
+      leftScreenSupport: false,
+      rightScreenSupport: false,
       frameColor: COLORS[0],
       lighting: false,
     },
@@ -146,7 +155,20 @@ if (mount) {
       state.glass = { ...values.glass };
       state.extraLegs = values.extraLegs.map((leg) => ({ ...leg }));
     } else {
-      Object.assign(state.veranda, configuration.values);
+      const values = { ...configuration.values };
+      if (values.leftWall === "top-wedge") {
+        values.leftWall = "none";
+        values.leftTriangle ||= "full-glass";
+      }
+      if (values.rightWall === "top-wedge") {
+        values.rightWall = "none";
+        values.rightTriangle ||= "full-glass";
+      }
+      values.leftTriangle ||= "none";
+      values.rightTriangle ||= "none";
+      values.leftScreenSupport = Boolean(values.leftScreenSupport && values.leftWall === "zip-screen");
+      values.rightScreenSupport = Boolean(values.rightScreenSupport && values.rightWall === "zip-screen");
+      Object.assign(state.veranda, values);
       state.veranda.frameColor = COLORS.find((color) => color.id === configuration.values.frameColor) || COLORS[0];
     }
     return true;
@@ -184,6 +206,7 @@ if (mount) {
     extraLegs: state.extraLegs.map((l) => ({ ...l })),
     spin: state.spin,
     visual: activeDefinition()?.visual,
+    profiles: activeDefinition()?.profiles,
   }));
   paramsBuilders.set("veranda", () => ({
     productType: "veranda",
@@ -195,6 +218,7 @@ if (mount) {
     glass: { front: false, back: false, left: false, right: false },
     spin: state.spin,
     visual: activeDefinition()?.visual,
+    profiles: activeDefinition()?.profiles,
   }));
   const params = () => paramsBuilders.get(state.productType)();
 
@@ -229,6 +253,10 @@ if (mount) {
     leftWall: state.veranda.leftWall,
     rightWall: state.veranda.rightWall,
     frontWall: state.veranda.frontWall,
+    leftTriangle: state.veranda.leftTriangle,
+    rightTriangle: state.veranda.rightTriangle,
+    leftScreenSupport: state.veranda.leftScreenSupport,
+    rightScreenSupport: state.veranda.rightScreenSupport,
     frameColor: state.veranda.frameColor.id,
     lighting: state.veranda.lighting,
   }));
@@ -247,7 +275,7 @@ if (mount) {
   };
 
   const publicApi = Object.freeze({
-    version: "2.0.0",
+    version: "2.1.0",
     getConfiguration: configurationPayload,
     getShareUrl: () => savedShareUrl,
     save: () => saveProject(),
@@ -259,6 +287,64 @@ if (mount) {
   mount.setAttribute("aria-busy", "false");
 
   const specEl = document.getElementById("pergolaSpec");
+  const profileDiagram = (profile) => {
+    const maxWidth = 88;
+    const maxHeight = 82;
+    const scale = Math.min(maxWidth / profile.aMm, maxHeight / profile.bMm);
+    const width = Math.max(24, profile.aMm * scale);
+    const height = Math.max(12, profile.bMm * scale);
+    const x = 22 + (maxWidth - width) / 2;
+    const y = 12 + (maxHeight - height) / 2;
+    const innerInset = Math.max(4, Math.min(8, Math.min(width, height) * 0.16));
+    const radius = profile.shape === "louvre" ? Math.min(9, height / 2) : 2;
+    const inner = width > 34 && height > 26
+      ? `<rect class="profile-card__inner" x="${x + innerInset}" y="${y + innerInset}" width="${width - innerInset * 2}" height="${height - innerInset * 2}" rx="${Math.max(1, radius / 2)}" />`
+      : "";
+    const dimensionY = 112;
+    const dimensionX = x + width + 20;
+    return `<svg class="profile-card__drawing" viewBox="0 0 160 136" role="img" aria-label="Przekrój ${escapeHtml(profile.label)}: ${profile.aMm} na ${profile.bMm} milimetrów">
+      <rect class="profile-card__section" x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" />${inner}
+      <path class="profile-card__extension" d="M ${x} ${y + height + 4} V ${dimensionY + 8} M ${x + width} ${y + height + 4} V ${dimensionY + 8}" />
+      <path class="profile-card__dimension" d="M ${x} ${dimensionY} H ${x + width} M ${x} ${dimensionY - 4} V ${dimensionY + 4} M ${x + width} ${dimensionY - 4} V ${dimensionY + 4}" />
+      <text x="${x + width / 2}" y="130" text-anchor="middle">a</text>
+      <path class="profile-card__extension" d="M ${x + width + 4} ${y} H ${dimensionX + 8} M ${x + width + 4} ${y + height} H ${dimensionX + 8}" />
+      <path class="profile-card__dimension" d="M ${dimensionX} ${y} V ${y + height} M ${dimensionX - 4} ${y} H ${dimensionX + 4} M ${dimensionX - 4} ${y + height} H ${dimensionX + 4}" />
+      <text x="${dimensionX + 13}" y="${y + height / 2}" dominant-baseline="middle">b</text>
+    </svg>`;
+  };
+
+  const renderProfileCards = (productType, hostId) => {
+    const host = document.getElementById(hostId);
+    const definition = productDefinitions.get(productType);
+    if (!host || !definition) return;
+    host.innerHTML = definition.profiles.map((profile) => `<article class="profile-card" data-profile="${escapeHtml(profile.id)}">
+      ${profileDiagram(profile)}
+      <div class="profile-card__copy">
+        <strong>${escapeHtml(profile.label)}</strong>
+        <span class="profile-card__size">${profile.aMm} × ${profile.bMm} mm</span>
+        <small>${escapeHtml(profile.usage)}${profile.demoOnly ? " · wymiar demo" : ""}</small>
+      </div>
+    </article>`).join("");
+  };
+  renderProfileCards("bioclimatic-pergola", "pergolaProfileCards");
+  renderProfileCards("veranda", "verandaProfileCards");
+
+  const setGuideText = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  };
+  const updateDimensionGuides = () => {
+    const totalPergolaWidth = state.widths.reduce((sum, width) => sum + width, 0);
+    setGuideText("pergolaGuideWidth", `${totalPergolaWidth.toFixed(1)} m`);
+    setGuideText("pergolaGuideDepth", `${state.depth.toFixed(1)} m`);
+    setGuideText("pergolaGuideHeight", `${state.height.toFixed(2)} m`);
+    setGuideText("verandaGuideWidth", `${state.veranda.width.toFixed(1)} m`);
+    setGuideText("verandaGuideDepth", `${state.veranda.depth.toFixed(1)} m`);
+    setGuideText("verandaGuideBackHeight", `${state.veranda.backHeight.toFixed(2)} m`);
+    setGuideText("verandaGuideFrontHeight", `${state.veranda.frontHeight.toFixed(2)} m`);
+    setGuideText("verandaGuideAngle", `${state.veranda.roofAngle.toFixed(1)}°`);
+  };
+
   const updateSpec = () => {
     specEl.textContent = state.productType === "bioclimatic-pergola"
       ? `${state.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.depth.toFixed(1)} × ${state.height.toFixed(1)} m · ${state.angle}°`
@@ -270,6 +356,7 @@ if (mount) {
     savedShareId = null;
     canvas.update(params());
     updateSpec();
+    updateDimensionGuides();
     updateSummary();
     emitConfigurationChange();
     scheduleValidation();
@@ -309,6 +396,7 @@ if (mount) {
     stepsHost.innerHTML = [...definition.steps].sort((a, b) => a.order - b.order).map((step) => `<li>${step.label}</li>`).join("");
     document.title = `${definition.name} 3D — visNEX`;
     updateSpec();
+    updateDimensionGuides();
     updateSummary();
   };
 
@@ -496,6 +584,7 @@ if (mount) {
   });
 
   updateSpec();
+  updateDimensionGuides();
 
   /* ---------- Weranda: działający moduł produktowy ---------- */
   const verandaRangeBindings = [
@@ -547,17 +636,57 @@ if (mount) {
     ["sliding-glass", "Przeszklenie przesuwne · demo"],
     ["zip-screen", "Roleta ZIP · demo"],
     ["solid", "Wypełnienie pełne · demo"],
-    ["top-wedge", "Klin górny · demo"],
   ];
-  const bindWallSelect = (id, key, allowWedge) => {
+  const TRIANGLE_OPTIONS = [
+    ["none", "Brak · trójkąt pozostaje pusty"],
+    ["full-glass", "Szkło z przeszklenia pełnego · demo"],
+    ["sliding-glass", "Szkło z systemu przesuwnego · demo"],
+    ["zip-screen", "Tkanina rolety ZIP · demo"],
+    ["solid", "Materiał wypełnienia pełnego · demo"],
+  ];
+  const syncVerandaSideAssembly = (side) => {
+    const prefix = side === "left" ? "Left" : "Right";
+    const wallKey = `${side}Wall`;
+    const supportKey = `${side}ScreenSupport`;
+    const supportHost = document.getElementById(`veranda${prefix}ScreenSupportWrap`);
+    const supportButton = document.getElementById(`veranda${prefix}ScreenSupport`);
+    const usesZip = state.veranda[wallKey] === "zip-screen";
+    if (!usesZip) state.veranda[supportKey] = false;
+    supportHost.hidden = !usesZip;
+    supportButton.setAttribute("aria-pressed", String(state.veranda[supportKey]));
+  };
+  const bindWallSelect = (id, key, side) => {
     const select = document.getElementById(id);
-    select.innerHTML = WALL_OPTIONS.filter(([value]) => allowWedge || value !== "top-wedge").map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    select.innerHTML = WALL_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    select.value = state.veranda[key];
+    select.addEventListener("change", () => {
+      state.veranda[key] = select.value;
+      if (side) syncVerandaSideAssembly(side);
+      push();
+    });
+  };
+  const bindTriangleSelect = (id, key) => {
+    const select = document.getElementById(id);
+    select.innerHTML = TRIANGLE_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
     select.value = state.veranda[key];
     select.addEventListener("change", () => { state.veranda[key] = select.value; push(); });
   };
-  bindWallSelect("verandaLeftWall", "leftWall", true);
-  bindWallSelect("verandaRightWall", "rightWall", true);
-  bindWallSelect("verandaFrontWall", "frontWall", false);
+  bindWallSelect("verandaLeftWall", "leftWall", "left");
+  bindWallSelect("verandaRightWall", "rightWall", "right");
+  bindWallSelect("verandaFrontWall", "frontWall");
+  bindTriangleSelect("verandaLeftTriangle", "leftTriangle");
+  bindTriangleSelect("verandaRightTriangle", "rightTriangle");
+  for (const side of ["left", "right"]) {
+    const prefix = side === "left" ? "Left" : "Right";
+    const supportKey = `${side}ScreenSupport`;
+    const supportButton = document.getElementById(`veranda${prefix}ScreenSupport`);
+    supportButton.addEventListener("click", () => {
+      state.veranda[supportKey] = !state.veranda[supportKey];
+      syncVerandaSideAssembly(side);
+      push();
+    });
+    syncVerandaSideAssembly(side);
+  }
 
   const verandaRoofMaterial = document.getElementById("verandaRoofMaterial");
   verandaRoofMaterial.querySelectorAll("button").forEach((button) => {
@@ -824,7 +953,8 @@ if (mount) {
     "clear-polycarbonate": "Poliwęglan przejrzysty · demo",
     "opal-polycarbonate": "Poliwęglan mleczny · demo",
   };
-  const WALL_LABELS = Object.fromEntries(WALL_OPTIONS);
+  const WALL_LABELS = Object.fromEntries([...WALL_OPTIONS, ["top-wedge", "Klin górny · starszy zapis"]]);
+  const TRIANGLE_LABELS = Object.fromEntries(TRIANGLE_OPTIONS);
   const summaryHost = document.getElementById("configurationSummaryList");
   const quotePreview = document.getElementById("quotePreview");
   const notice = document.getElementById("configuratorNotice");
@@ -845,6 +975,8 @@ if (mount) {
     ["Spadek", `${state.veranda.backHeight.toFixed(2)} → ${state.veranda.frontHeight.toFixed(2)} m · ${state.veranda.roofAngle.toFixed(1)}°`],
     ["Dach", `${ROOF_LABELS[state.veranda.roofMaterial]} · ${state.veranda.roofFields} pól`],
     ["Zabudowy", `L: ${WALL_LABELS[state.veranda.leftWall]}, P: ${WALL_LABELS[state.veranda.rightWall]}, F: ${WALL_LABELS[state.veranda.frontWall]}`],
+    ["Trójkąty boczne", `L: ${TRIANGLE_LABELS[state.veranda.leftTriangle]}, P: ${TRIANGLE_LABELS[state.veranda.rightTriangle]}`],
+    ["Podparcie kasety", [state.veranda.leftScreenSupport ? "lewa" : "", state.veranda.rightScreenSupport ? "prawa" : ""].filter(Boolean).join(", ") || "Bez profilu dodatkowego"],
   ];
 
   const updateSummary = () => {

@@ -99,18 +99,36 @@ async function runDesktop() {
   await page.waitForSelector("#pergolaMount canvas");
   await page.waitForFunction(() => document.querySelector("#pergolaMount")?.getAttribute("aria-busy") === "false");
   await page.waitForFunction(() => document.querySelector("#configuratorNotice")?.classList.contains("is-valid"));
+  const pergolaProfileSizes = await page.locator("#pergolaProfileCards .profile-card__size").allTextContents();
+  if (pergolaProfileSizes.length < 3 || pergolaProfileSizes.some((value) => !/^\d+ × \d+ mm$/.test(value.trim()))) throw new Error(`Invalid pergola profile dimensions: ${pergolaProfileSizes.join(", ")}`);
+  if (await page.locator("#pergolaProfileCards .profile-card__drawing").count() !== pergolaProfileSizes.length) throw new Error("Every pergola profile must have a drawing");
 
   await page.locator('[data-modules="2"]').click();
   await page.locator('#pergolaScreens [data-side="front"]').click();
   await page.locator('#pergolaDepth').evaluate((input) => { input.value = "3.8"; input.dispatchEvent(new Event("input", { bubbles: true })); });
   await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.moduleWidths.length === 2);
+  await page.waitForFunction(() => document.querySelector("#pergolaGuideDepth")?.textContent === "3.8 m");
   await page.locator('[data-view="front"]').click();
 
   await page.locator('[data-product="veranda"]').click();
   await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().productType === "veranda");
   await page.locator("#verandaAngle").evaluate((input) => { input.value = "9"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator("#verandaLeftWall").selectOption("zip-screen");
+  await page.locator("#verandaLeftTriangle").selectOption("solid");
+  await page.locator("#verandaLeftScreenSupport").click();
   await page.locator("#verandaRightWall").selectOption("sliding-glass");
-  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.roofAngle === 9);
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true;
+  });
+  const verandaProfileSizes = await page.locator("#verandaProfileCards .profile-card__size").allTextContents();
+  if (verandaProfileSizes.length < 4 || verandaProfileSizes.some((value) => !/^\d+ × \d+ mm$/.test(value.trim()))) throw new Error(`Invalid veranda profile dimensions: ${verandaProfileSizes.join(", ")}`);
+  if (await page.locator("#verandaProfileCards .profile-card__drawing").count() !== verandaProfileSizes.length) throw new Error("Every veranda profile must have a drawing");
+  await page.locator("#verandaControls").screenshot({ path: path.join(resultsDir, "desktop-veranda-controls.png") });
+  await page.locator("#pergolaSpin").click();
+  await page.locator('[data-view="left"]').click();
+  await page.waitForTimeout(350);
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-veranda-zip.png") });
 
   await page.locator("#configuratorSave").click();
   await page.waitForFunction(() => Boolean(window.sunProtectionConfigurator.getShareUrl()));
@@ -118,7 +136,10 @@ async function runDesktop() {
   if (!shareUrl.includes("project=") || shareUrl.includes("roofAngle=")) throw new Error(`Unsafe share URL: ${shareUrl}`);
   await page.goto(shareUrl, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.sunProtectionConfigurator?.getConfiguration().productType === "veranda");
-  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.roofAngle === 9);
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true;
+  });
 
   await page.locator("#pergolaInquiry").click();
   await page.waitForFunction(() => Boolean(localStorage.getItem("configurator:quote-draft")));
@@ -165,8 +186,21 @@ async function runMobile() {
   await page.waitForFunction(() => document.querySelector("#pergolaOptionsToggle")?.getAttribute("aria-expanded") === "false");
   await page.locator('[data-product="veranda"]').click();
   await page.waitForFunction(() => window.sunProtectionConfigurator?.getConfiguration().productType === "veranda");
+  await page.locator("#pergolaOptionsToggle").click();
+  await page.waitForFunction(() => document.querySelector("#pergolaOptionsToggle")?.getAttribute("aria-expanded") === "true");
+  await page.locator("#verandaLeftWall").selectOption("zip-screen");
+  await page.locator("#verandaLeftTriangle").selectOption("full-glass");
+  await page.locator("#verandaLeftScreenSupport").click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.leftWall === "zip-screen" && values.leftTriangle === "full-glass" && values.leftScreenSupport === true;
+  });
+  await page.locator("#verandaLeftScreenSupportWrap").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(resultsDir, "mobile-veranda-options.png"), fullPage: false });
+  await page.locator("#pergolaPanelClose").click({ force: true });
+  await page.waitForFunction(() => document.querySelector("#pergolaOptionsToggle")?.getAttribute("aria-expanded") === "false");
   await page.screenshot({ path: path.join(resultsDir, "mobile-veranda.png"), fullPage: false });
-  results.mobile = { pageErrors, canvas: await page.locator("#pergolaMount canvas").count() === 1 };
+  results.mobile = { pageErrors, canvas: await page.locator("#pergolaMount canvas").count() === 1, configuration: await page.evaluate(() => window.sunProtectionConfigurator.getConfiguration()) };
   await context.close();
 }
 

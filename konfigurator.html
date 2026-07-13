@@ -92,6 +92,29 @@
               </div>
 
               <div class="product-controls" id="pergolaControls" data-product-controls="bioclimatic-pergola">
+              <section class="dimension-guide" aria-labelledby="pergolaDimensionGuideTitle">
+                <div class="dimension-guide__head">
+                  <span class="pergola3d__label" id="pergolaDimensionGuideTitle">Jak mierzymy pergolę</span>
+                  <p>Rysunek pokazuje, którego kierunku dotyczy każda wartość.</p>
+                </div>
+                <figure class="dimension-guide__figure">
+                  <svg viewBox="0 0 360 245" role="img" aria-label="Pergola z oznaczoną szerokością, wysięgiem i wysokością">
+                    <g class="dimension-guide__model">
+                      <path class="dimension-guide__roof" d="M78 62 242 62 306 102 142 102Z" />
+                      <path d="M78 62V190M242 62V190M142 102V218M306 102V218" />
+                      <path d="M78 62 242 62 306 102 142 102 78 62M78 190 142 218M242 190 306 218" />
+                      <path class="dimension-guide__detail" d="M101 68 265 68M121 81 285 81M142 94 302 94" />
+                    </g>
+                    <g class="dimension-guide__measure">
+                      <path d="M142 225V238M306 225V238M142 234H306" /><text id="pergolaGuideWidth" x="224" y="231" text-anchor="middle">4.0 m</text>
+                      <path d="M312 218 326 224M248 190 262 196M256 193 320 221" /><text id="pergolaGuideDepth" x="300" y="197" transform="rotate(24 300 197)" text-anchor="middle">3.2 m</text>
+                      <path d="M60 62H72M60 190H72M65 62V190" /><text id="pergolaGuideHeight" x="50" y="126" transform="rotate(-90 50 126)" text-anchor="middle">2.60 m</text>
+                    </g>
+                  </svg>
+                  <figcaption><span><i>↔</i>Szerokość</span><span><i>↗</i>Wysięg</span><span><i>↕</i>Wysokość</span></figcaption>
+                </figure>
+              </section>
+
               <div class="pergola3d__group">
                 <span class="pergola3d__label">Rodzaj konstrukcji</span>
                 <div class="pergola3d__pills" id="pergolaConstruction" role="group" aria-label="Rodzaj konstrukcji">
@@ -123,6 +146,14 @@
                 <span class="pergola3d__label">Otwarcie lameli · <b id="pergolaAngleVal">35</b>°</span>
                 <input type="range" id="pergolaAngle" min="0" max="120" step="1" value="35" />
               </label>
+
+              <section class="profile-specs" aria-labelledby="pergolaProfilesTitle">
+                <div class="profile-specs__head">
+                  <span class="pergola3d__label" id="pergolaProfilesTitle">Przekroje profili</span>
+                  <p>Format zawsze: <strong>a × b mm</strong>. Wymiary demonstracyjne wymagają zatwierdzenia technicznego.</p>
+                </div>
+                <div class="profile-specs__grid" id="pergolaProfileCards"></div>
+              </section>
 
               <div class="pergola3d__group">
                 <span class="pergola3d__label">Kolor konstrukcji</span>
@@ -174,6 +205,30 @@
 
               <div class="product-controls" id="verandaControls" data-product-controls="veranda" hidden>
                 <p class="pergola3d__hint demo-badge">Dane wizualne i zakresy werandy są demonstracyjne do czasu zatwierdzenia dokumentacji technicznej.</p>
+                <section class="dimension-guide dimension-guide--veranda" aria-labelledby="verandaDimensionGuideTitle">
+                  <div class="dimension-guide__head">
+                    <span class="pergola3d__label" id="verandaDimensionGuideTitle">Jak mierzymy werandę</span>
+                    <p>Tył oznacza stronę przy ścianie; przód to linia słupów i rynny.</p>
+                  </div>
+                  <figure class="dimension-guide__figure">
+                    <svg viewBox="0 0 360 245" role="img" aria-label="Weranda z oznaczoną szerokością, głębokością, wysokościami i kątem dachu">
+                      <g class="dimension-guide__model">
+                        <path class="dimension-guide__roof" d="M72 55 246 92 310 120 136 83Z" />
+                        <path d="M72 55V190M246 92V205M136 83V218M310 120V218" />
+                        <path d="M72 55 246 92 310 120 136 83 72 55M72 190 136 218M246 205 310 218" />
+                        <path class="dimension-guide__detail" d="M103 62 277 99M121 74 295 111" />
+                      </g>
+                      <g class="dimension-guide__measure">
+                        <path d="M136 225V238M310 225V238M136 234H310" /><text id="verandaGuideWidth" x="223" y="231" text-anchor="middle">4.5 m</text>
+                        <path d="M316 218 328 224M252 205 264 211M258 207 322 221" /><text id="verandaGuideDepth" x="300" y="198" transform="rotate(13 300 198)" text-anchor="middle">3.2 m</text>
+                        <path d="M52 55H65M52 190H65M58 55V190" /><text id="verandaGuideBackHeight" x="44" y="123" transform="rotate(-90 44 123)" text-anchor="middle">2.95 m</text>
+                        <path d="M230 92H241M230 205H241M235 92V205" /><text id="verandaGuideFrontHeight" x="225" y="149" transform="rotate(-90 225 149)" text-anchor="middle">2.56 m</text>
+                        <path d="M75 69A46 46 0 0 1 119 78" /><text id="verandaGuideAngle" x="102" y="61" text-anchor="middle">7.0°</text>
+                      </g>
+                    </svg>
+                    <figcaption><span>Tył / ściana</span><span>Przód / rynna</span><span>Spadek dachu</span></figcaption>
+                  </figure>
+                </section>
                 <label class="pergola3d__slider"><span class="pergola3d__label">Szerokość · <b id="verandaWidthVal">4.5</b> m</span><input type="range" id="verandaWidth" min="2.5" max="8" step="0.1" value="4.5" /></label>
                 <label class="pergola3d__slider"><span class="pergola3d__label">Głębokość · <b id="verandaDepthVal">3.2</b> m</span><input type="range" id="verandaDepth" min="2" max="5" step="0.1" value="3.2" /></label>
                 <label class="pergola3d__slider"><span class="pergola3d__label">Wysokość przy ścianie · <b id="verandaBackHeightVal">2.95</b> m</span><input type="range" id="verandaBackHeight" min="2.4" max="3.6" step="0.05" value="2.95" /></label>
@@ -183,11 +238,37 @@
                 <label class="pergola3d__slider"><span class="pergola3d__label">Krokwie · <b id="verandaRaftersVal">5</b></span><input type="range" id="verandaRafters" min="3" max="9" step="1" value="5" /></label>
                 <label class="pergola3d__slider"><span class="pergola3d__label">Słupy frontowe · <b id="verandaPostsVal">3</b></span><input type="range" id="verandaPosts" min="2" max="6" step="1" value="3" /></label>
 
+                <section class="profile-specs" aria-labelledby="verandaProfilesTitle">
+                  <div class="profile-specs__head">
+                    <span class="pergola3d__label" id="verandaProfilesTitle">Przekroje profili</span>
+                    <p>Format zawsze: <strong>a × b mm</strong>. Profil ZIP pokazujemy osobno, ponieważ jest opcjonalnym podparciem kasety.</p>
+                  </div>
+                  <div class="profile-specs__grid" id="verandaProfileCards"></div>
+                </section>
+
                 <div class="pergola3d__group"><span class="pergola3d__label">Wypełnienie dachu · demo</span><div class="pergola3d__pills" id="verandaRoofMaterial">
                   <button type="button" data-value="clear-glass" aria-pressed="true">Szkło przejrzyste</button><button type="button" data-value="smoked-glass" aria-pressed="false">Szkło dymione</button><button type="button" data-value="clear-polycarbonate" aria-pressed="false">Poliwęglan przejrzysty</button><button type="button" data-value="opal-polycarbonate" aria-pressed="false">Poliwęglan mleczny</button>
                 </div></div>
-                <div class="pergola3d__group"><span class="pergola3d__label">Zabudowa lewa · demo</span><select class="configurator-select" id="verandaLeftWall"></select></div>
-                <div class="pergola3d__group"><span class="pergola3d__label">Zabudowa prawa · demo</span><select class="configurator-select" id="verandaRightWall"></select></div>
+                <section class="veranda-side-assembly" aria-labelledby="verandaLeftAssemblyTitle">
+                  <div class="veranda-side-assembly__head"><span class="pergola3d__label" id="verandaLeftAssemblyTitle">Bok lewy · demo</span><small>Widok od zewnątrz</small></div>
+                  <label class="veranda-side-assembly__field"><span>Zabudowa pod kasetą / dachem</span><select class="configurator-select" id="verandaLeftWall"></select></label>
+                  <label class="veranda-side-assembly__field"><span>Wypełnienie bocznego trójkąta</span><select class="configurator-select" id="verandaLeftTriangle"></select></label>
+                  <div class="veranda-side-assembly__support" id="verandaLeftScreenSupportWrap" hidden>
+                    <span>Podparcie kasety ZIP</span>
+                    <button type="button" id="verandaLeftScreenSupport" aria-pressed="false">Dodaj profil nad kasetą</button>
+                    <small>Najpierw profil boczny, bezpośrednio pod nim kaseta. Tkanina schodzi z kasety w dół.</small>
+                  </div>
+                </section>
+                <section class="veranda-side-assembly" aria-labelledby="verandaRightAssemblyTitle">
+                  <div class="veranda-side-assembly__head"><span class="pergola3d__label" id="verandaRightAssemblyTitle">Bok prawy · demo</span><small>Widok od zewnątrz</small></div>
+                  <label class="veranda-side-assembly__field"><span>Zabudowa pod kasetą / dachem</span><select class="configurator-select" id="verandaRightWall"></select></label>
+                  <label class="veranda-side-assembly__field"><span>Wypełnienie bocznego trójkąta</span><select class="configurator-select" id="verandaRightTriangle"></select></label>
+                  <div class="veranda-side-assembly__support" id="verandaRightScreenSupportWrap" hidden>
+                    <span>Podparcie kasety ZIP</span>
+                    <button type="button" id="verandaRightScreenSupport" aria-pressed="false">Dodaj profil nad kasetą</button>
+                    <small>Najpierw profil boczny, bezpośrednio pod nim kaseta. Tkanina schodzi z kasety w dół.</small>
+                  </div>
+                </section>
                 <div class="pergola3d__group"><span class="pergola3d__label">Zabudowa frontu · demo</span><select class="configurator-select" id="verandaFrontWall"></select></div>
                 <div class="pergola3d__group"><span class="pergola3d__label">Kolor konstrukcji</span><div class="pergola3d__swatches" id="verandaFrameColor"></div></div>
                 <div class="pergola3d__group"><span class="pergola3d__label">Wyposażenie dodatkowe</span><div class="pergola3d__pills"><button type="button" id="verandaLighting" aria-pressed="false">Oświetlenie liniowe</button></div></div>

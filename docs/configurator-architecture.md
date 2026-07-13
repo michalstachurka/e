@@ -14,6 +14,7 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 - `ProductRendererRegistry` wybiera renderer na podstawie `productType`;
 - istniejąca pergola jest adapterem pierwszego modułu;
 - weranda jest osobnym rendererem parametrycznym;
+- profile konstrukcyjne są publiczną, wersjonowaną częścią definicji produktu, a ich przekroje są prezentowane w milimetrach jako `a × b mm`;
 - definicje produktów i zakresy pochodzą z publicznego API, z jawnym fallbackiem demo dla statycznego GitHub Pages;
 - API waliduje, zapisuje i wersjonuje konfiguracje;
 - wycena, publiczny BOM i PDF powstają po stronie serwera;
@@ -38,6 +39,8 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 
 Frontend nie zawiera pełnych reguł ceny, marż, kosztów ani kodów BOM. Nie generuje nowych linków z pełną konfiguracją w query string.
 
+Każdy produkt pokazuje techniczny schemat wymiarowania bryły. Dzięki temu szerokość, głębokość/wysięg, wysokości i kąt są jednoznaczne przed zmianą suwaków. Karty profili korzystają z tej samej wersjonowanej definicji co renderer; starsze katalogi bez pola `profiles` są uzupełniane bezpiecznym adapterem na podstawie istniejących wartości wizualnych.
+
 ### Wspólny rdzeń
 
 `packages/contracts` zawiera schematy Zod publicznych DTO i bezpiecznych danych administracyjnych.
@@ -60,6 +63,8 @@ Rejestr wymaga metod `createScene`, `updateScene`, `disposeScene` i `getBounds`.
 Pergola zachowuje dotychczasową geometrię, animację lameli, LED, screeny, przeszklenia, dodatkowe słupy, kamerę, snapshot i AR. Zmiany samych kolorów lub kąta lameli nie tworzą nowego renderera i nie wymuszają pełnej przebudowy sceny.
 
 Weranda składa się z parametrycznych belek, słupów, krokwi, pól dachowych i opcjonalnych wypełnień. Krokwie, słupy i pola dachu używają `InstancedMesh`. Dane techniczne werandy są oznaczone jako `demoOnly`.
+
+Na bokach werandy prostokątna zabudowa i górny trójkąt są osobnymi decyzjami. Dla rolety ZIP kaseta jest pozioma, tkanina wychodzi z jej dolnej krawędzi i schodzi do podłoża, a obszar nad kasetą nie jest automatycznie wypełniany. Lewy i prawy trójkąt mogą niezależnie użyć materiału dostępnego dla zabudów bocznych. Opcjonalny profil podpierający jest montowany bezpośrednio nad kasetą i może zostać włączony wyłącznie dla rolety ZIP; zależność sprawdza backend.
 
 ### API
 
@@ -108,6 +113,8 @@ Te reguły są objęte testami regresyjnymi. Przy migracji do PostgreSQL pozosta
 ## Model danych
 
 Schemat SQLite ma logiczne tabele dla: `Tenant`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.
+
+Publiczna definicja profilu zawiera stabilne `id`, nazwę, zastosowanie, wymiary `aMm` i `bMm`, typ uproszczonego przekroju oraz flagę `demoOnly`. Panel administratora pozwala zmienić oba wymiary w wersji roboczej. Renderer otrzymuje przekroje razem z definicją produktu, dlatego tenant może podmienić zatwierdzone profile bez forka frontendu.
 
 W pionowym wycinku opublikowane definicje, parametry, kolory oraz prywatne reguły demo są przechowywane w wersjonowanych dokumentach JSON. Osobne tabele normalizacyjne są przygotowane pod kolejną iterację panelu. Publikacja archiwizuje poprzednią wersję, publikuje draft i tworzy następny draft. Zapisana konfiguracja przechowuje `productVersionId`.
 
@@ -169,6 +176,8 @@ npm run test:e2e
 - GitHub Pages nie hostuje API; bez `VITE_API_BASE_URL` działa jawny tryb statyczny z podglądem i AR, ale zapis, wycena i serwerowy PDF są niedostępne.
 - PDF MVP używa bezpiecznego fontu bazowego i transliteracji znaków w warstwie serwerowej. Produkcyjny szablon wymaga zatwierdzonego fontu TTF/OTF i finalnego brandingu.
 - Pergola nadal przebudowuje część geometrii po zmianach konstrukcyjnych. Dalsza optymalizacja lameli do jednego `InstancedMesh` pozostaje osobnym zadaniem wydajnościowym.
+- Przekroje seedów, w tym profil podpierający kasetę ZIP, pozostają danymi demonstracyjnymi do czasu przekazania kart technicznych producenta. Interfejs nie przedstawia ich jako zatwierdzonych danych wykonawczych.
+- Sposób montażu pozostałych zabudów bocznych werandy nie został w tej iteracji przebudowany; kolejne zmiany mogą korzystać z rozdzielonych pól prostokąta i trójkąta bez migracji całego produktu.
 
 ## Dane techniczne potrzebne dla produkcyjnej werandy
 

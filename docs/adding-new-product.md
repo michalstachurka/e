@@ -16,6 +16,7 @@ Dodaj seed w `packages/configurator-core/src/catalog.ts`:
 - parametry z `min`, `max`, `step`, wartością domyślną i jednostką;
 - publiczne kolory i opcje;
 - uproszczone parametry wizualne;
+- profile z nazwą, zastosowaniem i przekrojem `aMm × bMm`, oznaczone `demoOnly`, dopóki producent ich nie zatwierdzi;
 - `demoOnly: true` dla danych niezatwierdzonych;
 - prywatne reguły ceny i BOM demo.
 
@@ -58,6 +59,8 @@ Zasady renderera:
 - wyłączaj elementy techniczne z AR przez `userData.arExclude`;
 - trzymaj dół modelu na `Y = 0`;
 - zachowuj stabilny target i dystans kamery.
+
+Wymiary geometrii powtarzalnej powinny pochodzić z `profiles`, a nie z wartości powielonych w UI. Jeśli produkt ma wejścia wymiarowe, dodaj również mały schemat bryły z podpisami, aby klient wiedział, którą krawędź opisuje dane pole.
 
 ## 5. Podłącz kontrolki
 

@@ -49,6 +49,10 @@ const veranda = (): PublicConfiguration => {
       leftWall: "none",
       rightWall: "full-glass",
       frontWall: "none",
+      leftTriangle: "none",
+      rightTriangle: "none",
+      leftScreenSupport: false,
+      rightScreenSupport: false,
       frameColor: "anthracite",
       lighting: false,
     },
@@ -84,6 +88,23 @@ test("rejects contradictory veranda slope and roof dependencies", () => {
   const result = validateConfiguration(configuration, verandaSeed.definition);
   assert.equal(result.valid, false);
   assert.deepEqual(new Set(result.errors.map((issue) => issue.code)), new Set(["slope_conflict", "dependency"]));
+});
+
+test("validates the ZIP cassette support dependency and side triangle data", () => {
+  const configuration = veranda();
+  configuration.values.leftWall = "zip-screen";
+  configuration.values.leftTriangle = "solid";
+  configuration.values.leftScreenSupport = true;
+  const valid = validateConfiguration(configuration, verandaSeed.definition);
+  assert.equal(valid.valid, true);
+  const bom = generateBom(configuration, valid.derived);
+  assert.ok(bom.items.some((item) => item.label === "Wypełnienie trójkąta bocznego" && item.quantity === 1));
+  assert.ok(bom.items.some((item) => item.label === "Profil podpierający kasetę rolety" && item.quantity === 1));
+
+  configuration.values.leftWall = "full-glass";
+  const invalid = validateConfiguration(configuration, verandaSeed.definition);
+  assert.equal(invalid.valid, false);
+  assert.ok(invalid.errors.some((issue) => issue.path === "values.leftScreenSupport" && issue.code === "dependency"));
 });
 
 test("calculates demo quote and public BOM without production codes", () => {
