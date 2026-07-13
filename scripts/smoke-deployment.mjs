@@ -51,7 +51,7 @@ assert.ok(landing.text.includes("visNEX"), "Strona główna nie zawiera marki vi
 
 const configurator = await request("/konfigurator.html");
 assert.ok(configurator.text.includes("Konfigurator osłon 3D"), "Brak strony modułowego konfiguratora.");
-assert.ok(/apiBaseUrl:\s*["']same-origin["']/.test(configurator.text), "Konfigurator nie korzysta z API pod tą samą domeną.");
+assert.ok(/apiBaseUrl:\s*(?:existing\.apiBaseUrl\s*\?\?\s*)?["']same-origin["']/.test(configurator.text), "Konfigurator nie korzysta z API pod tą samą domeną.");
 
 const admin = await request("/admin.html");
 assert.ok(admin.text.includes("Panel konfiguratora"), "Brak strony panelu konfiguratora.");
