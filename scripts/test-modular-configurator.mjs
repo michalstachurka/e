@@ -96,18 +96,18 @@ async function runDesktop() {
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`http://127.0.0.1:${webPort}/e/konfigurator.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.sunProtectionConfigurator?.getConfiguration);
+  const tenantContext = await page.evaluate(() => window.__VISNEX_TENANT_CONTEXT__);
+  if (tenantContext?.tenantSlug !== "visnex" || tenantContext?.hostLocked !== false) throw new Error(`Unexpected tenant context: ${JSON.stringify(tenantContext)}`);
   await page.waitForSelector("#pergolaMount canvas");
   await page.waitForFunction(() => document.querySelector("#pergolaMount")?.getAttribute("aria-busy") === "false");
   await page.waitForFunction(() => document.querySelector("#configuratorNotice")?.classList.contains("is-valid"));
-  const pergolaProfileSizes = await page.locator("#pergolaProfileCards .profile-card__size").allTextContents();
-  if (pergolaProfileSizes.length < 3 || pergolaProfileSizes.some((value) => !/^\d+ × \d+ mm$/.test(value.trim()))) throw new Error(`Invalid pergola profile dimensions: ${pergolaProfileSizes.join(", ")}`);
-  if (await page.locator("#pergolaProfileCards .profile-card__drawing").count() !== pergolaProfileSizes.length) throw new Error("Every pergola profile must have a drawing");
+  if (await page.locator(".dimension-guide, .profile-specs, .profile-card").count()) throw new Error("Technical profile tooling leaked into the public configurator");
 
   await page.locator('[data-modules="2"]').click();
   await page.locator('#pergolaScreens [data-side="front"]').click();
   await page.locator('#pergolaDepth').evaluate((input) => { input.value = "3.8"; input.dispatchEvent(new Event("input", { bubbles: true })); });
   await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.moduleWidths.length === 2);
-  await page.waitForFunction(() => document.querySelector("#pergolaGuideDepth")?.textContent === "3.8 m");
+  await page.waitForFunction(() => document.querySelector("#pergolaDepthVal")?.textContent === "3.8");
   await page.locator('[data-view="front"]').click();
 
   await page.locator('[data-product="veranda"]').click();
@@ -121,9 +121,6 @@ async function runDesktop() {
     const values = window.sunProtectionConfigurator.getConfiguration().values;
     return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true;
   });
-  const verandaProfileSizes = await page.locator("#verandaProfileCards .profile-card__size").allTextContents();
-  if (verandaProfileSizes.length < 4 || verandaProfileSizes.some((value) => !/^\d+ × \d+ mm$/.test(value.trim()))) throw new Error(`Invalid veranda profile dimensions: ${verandaProfileSizes.join(", ")}`);
-  if (await page.locator("#verandaProfileCards .profile-card__drawing").count() !== verandaProfileSizes.length) throw new Error("Every veranda profile must have a drawing");
   await page.locator("#verandaControls").screenshot({ path: path.join(resultsDir, "desktop-veranda-controls.png") });
   await page.locator("#pergolaSpin").click();
   await page.locator('[data-view="left"]').click();
@@ -136,6 +133,7 @@ async function runDesktop() {
   if (!shareUrl.includes("project=") || shareUrl.includes("roofAngle=")) throw new Error(`Unsafe share URL: ${shareUrl}`);
   await page.goto(shareUrl, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.sunProtectionConfigurator?.getConfiguration().productType === "veranda");
+  await page.waitForFunction(() => window.__VISNEX_TENANT_CONTEXT__?.source === "query");
   await page.waitForFunction(() => {
     const values = window.sunProtectionConfigurator.getConfiguration().values;
     return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true;
@@ -167,6 +165,21 @@ async function runLanding() {
   await page.waitForSelector("#root");
   await page.waitForFunction(() => document.body.innerText.includes("visNEX"));
   results.landing = { pageErrors, root: await page.locator("#root").count() === 1 };
+  await context.close();
+}
+
+async function runTenantBoundary() {
+  const context = await browser.newContext({ viewport: { width: 1100, height: 760 } });
+  await configurePage(context);
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto(`http://127.0.0.1:${webPort}/e/konfigurator.html?tenant=other-company`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.body.dataset.tenantStatus === "unavailable");
+  const tenantContext = await page.evaluate(() => window.__VISNEX_TENANT_CONTEXT__);
+  if (tenantContext?.tenantSlug !== "other-company" || tenantContext?.source !== "query") throw new Error(`Unexpected shared-host tenant selection: ${JSON.stringify(tenantContext)}`);
+  if (await page.locator("#pergolaMount canvas").count()) throw new Error("Fallback catalog leaked into an unavailable tenant");
+  results.tenantBoundary = { pageErrors, tenantContext, failClosed: await page.locator(".configurator-tenant-error").count() === 1 };
   await context.close();
 }
 
@@ -208,25 +221,58 @@ async function runAdmin() {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   const pageErrors = [];
+  const consoleErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && !message.text().includes("status of 401 (Unauthorized)")) consoleErrors.push(message.text());
+  });
   await page.goto(`http://127.0.0.1:${webPort}/e/admin.html`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.__VISNEX_TENANT_CONTEXT__?.tenantSlug === "visnex");
+  if (await page.locator("#adminTenantLabel").textContent() !== "Tenant · visnex") throw new Error("Admin tenant label is not resolved dynamically");
+  if (!(await page.locator("#adminConfiguratorLink").getAttribute("href"))?.includes("tenant=visnex")) throw new Error("Admin configurator link does not preserve tenant context");
   await page.locator('[name="email"]').fill("admin@example.invalid");
   await page.locator('[name="password"]').fill("local-e2e-password");
   await page.locator("#adminLoginForm button").click();
   await page.waitForSelector("#adminWorkspace:not([hidden])");
+  await page.waitForSelector("#adminProfileCanvas canvas");
+  const profileCards = page.locator("#adminProfileStudio .admin-profile-card");
+  if (await profileCards.count() < 3) throw new Error("Admin profile studio does not show all pergola profiles");
+  if (await page.locator("#adminProfileStudio .admin-profile-card__drawing").count() !== await profileCards.count()) throw new Error("Every admin profile requires an a/b cross-section drawing");
+  await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll(".admin-profile-preview__overlay text")].map((node) => node.textContent);
+    return labels.some((value) => value.startsWith("a ·")) && labels.some((value) => value.startsWith("b ·"));
+  });
+  const firstProfileA = page.locator('[data-studio-profile="0"] [data-studio-profile-value="aMm"]');
+  const originalA = Number(await firstProfileA.inputValue());
+  await firstProfileA.fill(String(originalA + 5));
+  await page.waitForFunction((expected) => document.querySelector('[data-studio-profile="0"] output')?.textContent.startsWith(`${expected} ×`), originalA + 5);
+  await page.locator('[data-studio-action="save"]').click();
+  await page.waitForFunction(() => document.querySelector("#adminToast")?.classList.contains("is-visible"));
+  const profileSaveMessage = await page.locator("#adminToast").textContent();
+  if (!profileSaveMessage.includes("Profile zapisane")) throw new Error(`Profile save failed: ${profileSaveMessage}; ${[...pageErrors, ...consoleErrors].join("; ")}`);
+  await page.locator("#profileStudioSection").screenshot({ path: path.join(resultsDir, "admin-profile-studio.png") });
+  await page.locator('[data-studio-product="1"]').click();
+  await page.waitForFunction(() => document.querySelectorAll("#adminProfileStudio .admin-profile-card").length >= 4);
+  await page.waitForFunction(() => document.querySelector(".admin-profile-preview__marker")?.textContent === "Słup frontowy");
+  if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error("Admin studio must keep exactly one live 3D renderer while switching products");
+  await page.locator("#profileStudioSection").screenshot({ path: path.join(resultsDir, "admin-profile-studio-veranda.png") });
   await page.locator('[data-product-index="0"] [data-field="description"]').fill("Opis testowy wersji roboczej.");
   await page.locator('[data-product-index="0"] [data-action="save"]').click();
   await page.waitForFunction(() => document.querySelector("#adminToast")?.classList.contains("is-visible"));
   await page.screenshot({ path: path.join(resultsDir, "admin.png"), fullPage: false });
-  results.admin = { pageErrors, products: await page.locator(".admin-product").count() };
+  results.admin = { pageErrors, consoleErrors, products: await page.locator(".admin-product").count(), profileCards: await profileCards.count(), previewCanvases: await page.locator("#adminProfileStudio canvas").count() };
   await context.close();
 }
 
 try {
-  await runLanding();
-  await runDesktop();
-  await runMobile();
-  await runAdmin();
+  if (process.env.E2E_ONLY_ADMIN === "1") await runAdmin();
+  else {
+    await runLanding();
+    await runTenantBoundary();
+    await runDesktop();
+    await runMobile();
+    await runAdmin();
+  }
   const errors = Object.values(results).flatMap((result) => [...(result.pageErrors || []), ...(result.consoleErrors || [])]);
   console.log(JSON.stringify(results, null, 2));
   if (errors.length) throw new Error(`Browser errors:\n${errors.join("\n")}`);

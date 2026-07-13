@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { FastifyInstance } from "fastify";
 import { createApp } from "../src/app.js";
+import { parseTenantHostMap } from "../src/tenant-context.js";
 import { deriveVerandaSlope } from "../../../packages/configurator-core/src/domain.js";
 
 let app: FastifyInstance;
@@ -13,6 +14,8 @@ before(async () => {
     adminPassword: "local-test-password",
     publicAppUrl: "http://localhost:5173/konfigurator.html",
     corsOrigins: ["http://localhost:5173"],
+    defaultTenantSlug: "visnex",
+    tenantHostMap: { "pilot.example.test": "visnex", "missing.example.test": "missing-tenant" },
   });
 });
 
@@ -34,6 +37,23 @@ const pergolaConfiguration = {
   },
 };
 
+test("resolves and locks tenant context for mapped custom domains", async () => {
+  assert.deepEqual(parseTenantHostMap("Pilot.Example.Test.=visnex,invalid=/admin"), { "pilot.example.test": "visnex" });
+  const shared = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "shared.example.test" } });
+  assert.equal(shared.statusCode, 200);
+  assert.deepEqual(shared.json(), { tenantSlug: "visnex", source: "default", hostLocked: false });
+  assert.equal(shared.headers["cache-control"], "no-store");
+  assert.equal(shared.headers.vary, "Host");
+
+  const mapped = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "pilot.example.test" } });
+  assert.equal(mapped.statusCode, 200);
+  assert.deepEqual(mapped.json(), { tenantSlug: "visnex", source: "host", hostLocked: true });
+
+  const unavailable = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "missing.example.test" } });
+  assert.equal(unavailable.statusCode, 503);
+  assert.equal(unavailable.json().error, "mapped_tenant_unavailable");
+});
+
 test("returns tenant catalog and product definition", async () => {
   const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
   assert.equal(catalog.statusCode, 200);
@@ -41,6 +61,21 @@ test("returns tenant catalog and product definition", async () => {
   const product = await app.inject({ method: "GET", url: "/api/public/visnex/products/veranda" });
   assert.equal(product.statusCode, 200);
   assert.equal(product.json().product.productType, "veranda");
+});
+
+test("allows authenticated admin updates through CORS", async () => {
+  const response = await app.inject({
+    method: "OPTIONS",
+    url: "/api/admin/visnex/products/bioclimatic-pergola",
+    headers: {
+      origin: "http://localhost:5173",
+      "access-control-request-method": "PUT",
+      "access-control-request-headers": "content-type",
+    },
+  });
+  assert.equal(response.statusCode, 204);
+  assert.match(String(response.headers["access-control-allow-methods"]), /PUT/);
+  assert.equal(response.headers["access-control-allow-credentials"], "true");
 });
 
 test("validates valid and invalid configurations", async () => {

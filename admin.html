@@ -8,15 +8,31 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/pergola-configurator/css/style.css" />
     <link rel="stylesheet" href="/pergola-configurator/css/admin.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./pergola-configurator/assets/vendor/three/three.module.js",
+          "three/examples/jsm/controls/OrbitControls.js": "./pergola-configurator/assets/vendor/three/examples/jsm/controls/OrbitControls.js",
+          "three/examples/jsm/environments/RoomEnvironment.js": "./pergola-configurator/assets/vendor/three/examples/jsm/environments/RoomEnvironment.js"
+        }
+      }
+    </script>
     <script>
-      window.__VISNEX_CONFIG__ = { apiBaseUrl: "%VITE_API_BASE_URL%", tenantSlug: "visnex" };
+      {
+        const existing = window.__VISNEX_CONFIG__ || {};
+        window.__VISNEX_CONFIG__ = {
+          ...existing,
+          apiBaseUrl: existing.apiBaseUrl ?? "%VITE_API_BASE_URL%",
+          tenantSlug: existing.tenantSlug ?? "visnex"
+        };
+      }
     </script>
   </head>
   <body class="admin-shell">
     <header class="admin-topbar">
       <a href="./" class="admin-topbar__brand">visNEX</a>
       <span>Panel konfiguratora</span>
-      <nav><a href="./konfigurator.html">Konfigurator ↗</a><button type="button" id="adminLogout" hidden>Wyloguj</button></nav>
+      <nav><a href="./konfigurator.html" id="adminConfiguratorLink">Konfigurator ↗</a><button type="button" id="adminLogout" hidden>Wyloguj</button></nav>
     </header>
 
     <main class="admin-main">
@@ -34,7 +50,7 @@
 
       <section class="admin-workspace" id="adminWorkspace" hidden>
         <header class="admin-hero">
-          <div><p class="eyebrow">Tenant · visnex</p><h1>Definicje<br><em>produktów.</em></h1></div>
+          <div><p class="eyebrow" id="adminTenantLabel">Tenant</p><h1>Definicje<br><em>produktów.</em></h1></div>
           <p>Zmiany zapisują wersję roboczą. Publikacja tworzy niezmienną wersję dla nowych projektów i zachowuje poprzednie konfiguracje.</p>
         </header>
 
@@ -43,8 +59,13 @@
           <form class="admin-grid" id="brandingForm"></form>
         </section>
 
+        <section class="admin-section" id="profileStudioSection">
+          <header><span>02</span><div><h2>Profile i podgląd 3D</h2><p>Techniczny podgląd wersji bazowej. Wymiary a i b są widoczne wyłącznie w panelu administratora.</p></div></header>
+          <div id="adminProfileStudio"></div>
+        </section>
+
         <section class="admin-section">
-          <header><span>02</span><div><h2>Produkty i wersje</h2><p>Zakresy, widoczność, kroki, kolory i reguły demonstracyjne.</p></div></header>
+          <header><span>03</span><div><h2>Produkty i wersje</h2><p>Zakresy, widoczność, kroki, kolory i reguły demonstracyjne.</p></div></header>
           <div id="adminProducts" class="admin-products"></div>
         </section>
 

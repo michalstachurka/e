@@ -17,7 +17,7 @@
     "api:start": "tsx apps/api/src/server.ts",
     "typecheck:api": "tsc -p apps/api/tsconfig.json",
     "test": "npm run test:unit && npm run test:api",
-    "test:unit": "tsx --test packages/configurator-core/test/*.test.ts",
+    "test:unit": "tsx --test packages/configurator-core/test/*.test.ts && node --test scripts/tests/tenant-context.test.mjs",
     "test:api": "tsx --test apps/api/test/*.test.ts",
     "test:e2e": "node scripts/test-modular-configurator.mjs",
     "test:deployment": "node scripts/smoke-deployment.mjs"

@@ -380,7 +380,9 @@ export function createPergolaCanvas(mountEl, initialParams) {
     const slats = [];
 
     const H = p.height;
-    const post = profileMetres(p.profiles, "structural-post", "a", Number(p.visual?.postSize || 0.14));
+    const postWidth = profileMetres(p.profiles, "structural-post", "a", Number(p.visual?.postSize || 0.14));
+    const postDepth = profileMetres(p.profiles, "structural-post", "b", Number(p.visual?.postSize || 0.14));
+    const post = Math.max(postWidth, postDepth);
     const beamDepth = profileMetres(p.profiles, "frame-beam", "a", post);
     const beam = profileMetres(p.profiles, "frame-beam", "b", Number(p.visual?.beamHeight || 0.18));
     const louvrePitch = profileMetres(p.profiles, "roof-louvre", "a", Number(p.visual?.louvrePitch || 0.21));
@@ -489,12 +491,12 @@ export function createPergolaCanvas(mountEl, initialParams) {
       const last = edges.length - 1;
       for (let j = 0; j < edges.length; j++) {
         // Skrajne słupy wsunięte o pół grubości do środka; wewnętrzne na styku.
-        const px = j === 0 ? edges[0] + post / 2
-          : j === last ? edges[last] - post / 2
+        const px = j === 0 ? edges[0] + postWidth / 2
+          : j === last ? edges[last] - postWidth / 2
           : edges[j];
         for (const sz of zSides) {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(post, H, post), material);
-          leg.position.set(px, H / 2, (sz * (D - post)) / 2);
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(postWidth, H, postDepth), material);
+          leg.position.set(px, H / 2, (sz * (D - postDepth)) / 2);
           group.add(leg);
         }
       }
@@ -728,10 +730,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
     // ziemi do belki, w kolorze konstrukcji, z drobną stopką.
     if (p.extraLegs) {
       for (const leg of p.extraLegs) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(post, H, post), material);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(postWidth, H, postDepth), material);
         m.position.set(leg.x, H / 2, leg.z);
         group.add(m);
-        const footPlate = new THREE.Mesh(new THREE.BoxGeometry(post * 1.6, 0.02, post * 1.6), material);
+        const footPlate = new THREE.Mesh(new THREE.BoxGeometry(postWidth * 1.6, 0.02, postDepth * 1.6), material);
         footPlate.position.set(leg.x, 0.01, leg.z);
         group.add(footPlate);
       }
@@ -834,6 +836,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = el;
+    if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();

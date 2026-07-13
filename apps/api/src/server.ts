@@ -3,6 +3,7 @@ import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createApp } from "./app.js";
+import { parseTenantHostMap } from "./tenant-context.js";
 
 const adminPassword = process.env.ADMIN_SEED_PASSWORD;
 if (!adminPassword || adminPassword.length < 12 || adminPassword.startsWith("replace-")) {
@@ -26,6 +27,8 @@ const app = await createApp({
   sessionTtlHours: Number(process.env.SESSION_TTL_HOURS || 12),
   secureCookies: process.env.NODE_ENV === "production",
   logger: true,
+  defaultTenantSlug: process.env.DEFAULT_TENANT_SLUG || "visnex",
+  tenantHostMap: parseTenantHostMap(process.env.TENANT_HOST_MAP),
 });
 
 const staticRoot = resolve(process.cwd(), "dist");

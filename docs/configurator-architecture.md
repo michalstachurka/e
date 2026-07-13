@@ -107,8 +107,16 @@ Administracyjne endpointy:
 - każdy administracyjny endpoint z `:tenantSlug` korzysta ze wspólnego `requireTenantAdmin`, który porównuje klienta sesji z klientem trasy przed uruchomieniem logiki endpointu;
 - odczyt zapisanej konfiguracji wymaga jednocześnie poprawnego `shareId` i zgodnego klienta;
 - zapytania do danych produktowych, brandingu, konfiguracji i wycen muszą zawierać filtr klienta. Nowych endpointów nie wolno zabezpieczać wyłącznie identyfikatorem przekazanym przez frontend.
+- wspólna domena może wybrać klienta przez zwalidowany `?tenant=slug`, ale host obecny w serwerowej `TENANT_HOST_MAP` jest zablokowany do wskazanego klienta i ma pierwszeństwo przed parametrem URL;
+- frontend nie używa katalogu fallback `visnex` dla innego klienta. Brak katalogu lub błędna mapa domeny kończy się stanem fail-closed bez renderowania cudzych produktów.
 
 Te reguły są objęte testami regresyjnymi. Przy migracji do PostgreSQL pozostają granicą aplikacyjną i powinny zostać uzupełnione politykami izolacji na poziomie bazy.
+
+### Kontekst tenantów i domeny white-label
+
+`GET /api/runtime-context` rozwiązuje tenant na podstawie nagłówka hosta oraz runtime'owej mapy `TENANT_HOST_MAP`. Odpowiedź ma `Cache-Control: no-store` i `Vary: Host`, aby warstwa cache nie przeniosła kontekstu między domenami. Konfigurator i panel korzystają z jednego resolvera: zablokowana domena, mapa osadzającej aplikacji, zwalidowany query string, domyślny tenant serwera, a na końcu lokalny tenant pilota.
+
+Panel zachowuje tenant w linku do konfiguratora. Identyfikator jest nadal sprawdzany na każdej granicy API; wybór tenanta we frontendzie nie nadaje uprawnień administratora. Obecna mapa środowiskowa jest etapem przejściowym dla płatnych pilotów. Automatyczny onboarding, weryfikacja DNS i kanoniczne adresy linków wymagają docelowo tabeli domen tenantów w PostgreSQL.
 
 ## Model danych
 

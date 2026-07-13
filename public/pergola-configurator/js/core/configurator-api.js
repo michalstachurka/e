@@ -14,6 +14,10 @@ export class ConfiguratorApi {
     return this.sameOrigin || Boolean(this.baseUrl);
   }
 
+  getRuntimeContext() {
+    return this.request("/api/runtime-context");
+  }
+
   async request(path, options = {}) {
     if (!this.available) throw new Error("API_UNAVAILABLE");
     const controller = new AbortController();

@@ -6,22 +6,49 @@ import { setupPergolaAR } from "./ar-controller.js";
 import { ConfiguratorApi } from "./core/configurator-api.js";
 import { fallbackCatalog } from "./core/fallback-catalog.js";
 import { resolveProfileDefinitions } from "./core/profile-definitions.js";
+import { resolveTenantContext } from "./core/tenant-context.js";
 
 const mount = document.getElementById("pergolaMount");
 if (mount) {
   void (async () => {
   const runtimeConfig = window.__VISNEX_CONFIG__ || {};
-  const tenantSlug = runtimeConfig.tenantSlug || new URLSearchParams(window.location.search).get("tenant") || "visnex";
+  const provisionalTenantContext = resolveTenantContext({ runtimeConfig, locationLike: window.location });
+  const bootstrapApi = new ConfiguratorApi({ baseUrl: runtimeConfig.apiBaseUrl, tenantSlug: provisionalTenantContext.tenantSlug });
+  let serverTenantContext = null;
+  if (bootstrapApi.available) {
+    try {
+      serverTenantContext = await bootstrapApi.getRuntimeContext();
+    } catch (error) {
+      console.warn("Runtime tenant context unavailable; using the local resolver.", error);
+    }
+  }
+  const tenantContext = resolveTenantContext({ runtimeConfig, serverContext: serverTenantContext, locationLike: window.location });
+  const tenantSlug = tenantContext.tenantSlug;
+  window.__VISNEX_TENANT_CONTEXT__ = tenantContext;
+  document.documentElement.dataset.tenantSlug = tenantSlug;
   const api = new ConfiguratorApi({ baseUrl: runtimeConfig.apiBaseUrl, tenantSlug });
-  let catalog = fallbackCatalog;
-  let catalogSource = "fallback";
+  let catalog = null;
+  let catalogSource = "api";
   if (api.available) {
     try {
       catalog = await api.getCatalog();
-      catalogSource = "api";
     } catch (error) {
-      console.warn("Configurator API catalog unavailable; using public demo definition.", error);
+      console.warn("Configurator API catalog unavailable.", error);
     }
+  }
+  if (!catalog && tenantSlug === fallbackCatalog.tenant.slug) {
+    catalog = fallbackCatalog;
+    catalogSource = "fallback";
+  }
+  if (!catalog) {
+    const errorCard = document.createElement("div");
+    errorCard.className = "configurator-tenant-error";
+    errorCard.innerHTML = "<span>Kontekst klienta</span><strong>Ten konfigurator nie jest jeszcze dostępny.</strong><p>Sprawdź adres klienta lub konfigurację domeny. Żadne dane innego klienta nie zostały wczytane.</p><small></small>";
+    errorCard.querySelector("small").textContent = `tenant · ${tenantSlug}`;
+    mount.replaceChildren(errorCard);
+    mount.setAttribute("aria-busy", "false");
+    document.body.dataset.tenantStatus = "unavailable";
+    return;
   }
   const products = [...catalog.products]
     .filter((product) => product.enabled)
@@ -42,7 +69,6 @@ if (mount) {
   const SIDE_LABELS = { front: "Przód", back: "Tył", left: "Lewa", right: "Prawa" };
   const SIDES = ["front", "back", "left", "right"];
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-  const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[character]);
 
   const state = {
     productType: "bioclimatic-pergola",
@@ -287,64 +313,6 @@ if (mount) {
   mount.setAttribute("aria-busy", "false");
 
   const specEl = document.getElementById("pergolaSpec");
-  const profileDiagram = (profile) => {
-    const maxWidth = 88;
-    const maxHeight = 82;
-    const scale = Math.min(maxWidth / profile.aMm, maxHeight / profile.bMm);
-    const width = Math.max(24, profile.aMm * scale);
-    const height = Math.max(12, profile.bMm * scale);
-    const x = 22 + (maxWidth - width) / 2;
-    const y = 12 + (maxHeight - height) / 2;
-    const innerInset = Math.max(4, Math.min(8, Math.min(width, height) * 0.16));
-    const radius = profile.shape === "louvre" ? Math.min(9, height / 2) : 2;
-    const inner = width > 34 && height > 26
-      ? `<rect class="profile-card__inner" x="${x + innerInset}" y="${y + innerInset}" width="${width - innerInset * 2}" height="${height - innerInset * 2}" rx="${Math.max(1, radius / 2)}" />`
-      : "";
-    const dimensionY = 112;
-    const dimensionX = x + width + 20;
-    return `<svg class="profile-card__drawing" viewBox="0 0 160 136" role="img" aria-label="Przekrój ${escapeHtml(profile.label)}: ${profile.aMm} na ${profile.bMm} milimetrów">
-      <rect class="profile-card__section" x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" />${inner}
-      <path class="profile-card__extension" d="M ${x} ${y + height + 4} V ${dimensionY + 8} M ${x + width} ${y + height + 4} V ${dimensionY + 8}" />
-      <path class="profile-card__dimension" d="M ${x} ${dimensionY} H ${x + width} M ${x} ${dimensionY - 4} V ${dimensionY + 4} M ${x + width} ${dimensionY - 4} V ${dimensionY + 4}" />
-      <text x="${x + width / 2}" y="130" text-anchor="middle">a</text>
-      <path class="profile-card__extension" d="M ${x + width + 4} ${y} H ${dimensionX + 8} M ${x + width + 4} ${y + height} H ${dimensionX + 8}" />
-      <path class="profile-card__dimension" d="M ${dimensionX} ${y} V ${y + height} M ${dimensionX - 4} ${y} H ${dimensionX + 4} M ${dimensionX - 4} ${y + height} H ${dimensionX + 4}" />
-      <text x="${dimensionX + 13}" y="${y + height / 2}" dominant-baseline="middle">b</text>
-    </svg>`;
-  };
-
-  const renderProfileCards = (productType, hostId) => {
-    const host = document.getElementById(hostId);
-    const definition = productDefinitions.get(productType);
-    if (!host || !definition) return;
-    host.innerHTML = definition.profiles.map((profile) => `<article class="profile-card" data-profile="${escapeHtml(profile.id)}">
-      ${profileDiagram(profile)}
-      <div class="profile-card__copy">
-        <strong>${escapeHtml(profile.label)}</strong>
-        <span class="profile-card__size">${profile.aMm} × ${profile.bMm} mm</span>
-        <small>${escapeHtml(profile.usage)}${profile.demoOnly ? " · wymiar demo" : ""}</small>
-      </div>
-    </article>`).join("");
-  };
-  renderProfileCards("bioclimatic-pergola", "pergolaProfileCards");
-  renderProfileCards("veranda", "verandaProfileCards");
-
-  const setGuideText = (id, value) => {
-    const node = document.getElementById(id);
-    if (node) node.textContent = value;
-  };
-  const updateDimensionGuides = () => {
-    const totalPergolaWidth = state.widths.reduce((sum, width) => sum + width, 0);
-    setGuideText("pergolaGuideWidth", `${totalPergolaWidth.toFixed(1)} m`);
-    setGuideText("pergolaGuideDepth", `${state.depth.toFixed(1)} m`);
-    setGuideText("pergolaGuideHeight", `${state.height.toFixed(2)} m`);
-    setGuideText("verandaGuideWidth", `${state.veranda.width.toFixed(1)} m`);
-    setGuideText("verandaGuideDepth", `${state.veranda.depth.toFixed(1)} m`);
-    setGuideText("verandaGuideBackHeight", `${state.veranda.backHeight.toFixed(2)} m`);
-    setGuideText("verandaGuideFrontHeight", `${state.veranda.frontHeight.toFixed(2)} m`);
-    setGuideText("verandaGuideAngle", `${state.veranda.roofAngle.toFixed(1)}°`);
-  };
-
   const updateSpec = () => {
     specEl.textContent = state.productType === "bioclimatic-pergola"
       ? `${state.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.depth.toFixed(1)} × ${state.height.toFixed(1)} m · ${state.angle}°`
@@ -356,7 +324,6 @@ if (mount) {
     savedShareId = null;
     canvas.update(params());
     updateSpec();
-    updateDimensionGuides();
     updateSummary();
     emitConfigurationChange();
     scheduleValidation();
@@ -396,7 +363,6 @@ if (mount) {
     stepsHost.innerHTML = [...definition.steps].sort((a, b) => a.order - b.order).map((step) => `<li>${step.label}</li>`).join("");
     document.title = `${definition.name} 3D — visNEX`;
     updateSpec();
-    updateDimensionGuides();
     updateSummary();
   };
 
@@ -584,7 +550,6 @@ if (mount) {
   });
 
   updateSpec();
-  updateDimensionGuides();
 
   /* ---------- Weranda: działający moduł produktowy ---------- */
   const verandaRangeBindings = [

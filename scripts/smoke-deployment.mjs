@@ -42,6 +42,10 @@ async function request(path, options = {}, expectedStatus = 200) {
 const health = await request("/health");
 assert.equal(health.data?.status, "ok");
 
+const runtimeContext = await request("/api/runtime-context");
+assert.equal(runtimeContext.data?.tenantSlug, tenantSlug, "Runtime przypisał wdrożenie do innego tenanta.");
+assert.equal(typeof runtimeContext.data?.hostLocked, "boolean");
+
 const landing = await request("/");
 assert.ok(landing.text.includes("visNEX"), "Strona główna nie zawiera marki visNEX.");
 
@@ -53,6 +57,7 @@ const admin = await request("/admin.html");
 assert.ok(admin.text.includes("Panel konfiguratora"), "Brak strony panelu konfiguratora.");
 
 await request("/pergola-configurator/js/pergola-configurator.js");
+await request("/pergola-configurator/js/core/tenant-context.js");
 await request("/pergola-configurator/css/style.css");
 await request("/pergola-configurator/assets/vendor/three/three.module.js");
 

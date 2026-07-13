@@ -15,6 +15,7 @@ import { calculateQuote, generateBom, validateConfiguration } from "../../../pac
 import { ConfiguratorDatabase } from "./database.js";
 import { createOpaqueToken, sanitizeText, verifyPassword } from "./security.js";
 import { generateProjectPdf } from "./pdf.js";
+import { tenantForHostname } from "./tenant-context.js";
 
 export interface AppOptions {
   databasePath: string;
@@ -25,6 +26,8 @@ export interface AppOptions {
   sessionTtlHours?: number;
   secureCookies?: boolean;
   logger?: boolean;
+  defaultTenantSlug?: string;
+  tenantHostMap?: Record<string, string>;
 }
 
 type Session = { id: string; admin_user_id: string; tenant_slug: string; email: string };
@@ -39,6 +42,7 @@ export async function createApp(options: AppOptions) {
   await app.register(cookie);
   await app.register(cors, {
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "OPTIONS"],
     origin(origin, callback) {
       if (!origin || options.corsOrigins.includes(origin)) callback(null, true);
       else callback(new Error("Origin not allowed"), false);
@@ -79,6 +83,19 @@ export async function createApp(options: AppOptions) {
   };
 
   app.get("/health", async () => ({ status: "ok", service: "visNEX-configurator-api" }));
+
+  app.get("/api/runtime-context", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    reply.header("Vary", "Host");
+    const mappedTenantSlug = tenantForHostname(request.hostname, options.tenantHostMap || {});
+    if (mappedTenantSlug) {
+      if (!database.getTenant(mappedTenantSlug)) return reply.code(503).send({ error: "mapped_tenant_unavailable" });
+      return { tenantSlug: mappedTenantSlug, source: "host", hostLocked: true };
+    }
+    const tenantSlug = options.defaultTenantSlug || "visnex";
+    if (!database.getTenant(tenantSlug)) return reply.code(503).send({ error: "default_tenant_unavailable" });
+    return { tenantSlug, source: "default", hostLocked: false };
+  });
 
   app.get("/api/public/:tenantSlug/configurator", async (request, reply) => {
     const { tenantSlug } = request.params as { tenantSlug: string };

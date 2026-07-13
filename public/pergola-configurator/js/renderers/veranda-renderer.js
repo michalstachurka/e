@@ -152,7 +152,9 @@ export function createVerandaRenderer(context) {
     root = resetRoot("VerandaVisualRoot");
     clearAnimationState();
     configureRoofMaterial(config.roofMaterial);
-    const post = profileMetres(config.profiles, "structural-post", "a", Number(config.visual?.postSize || 0.13));
+    const postWidth = profileMetres(config.profiles, "structural-post", "a", Number(config.visual?.postSize || 0.13));
+    const postDepth = profileMetres(config.profiles, "structural-post", "b", Number(config.visual?.postSize || 0.13));
+    const post = Math.max(postWidth, postDepth);
     const beamDepth = profileMetres(config.profiles, "frame-beam", "a", post);
     const beam = profileMetres(config.profiles, "frame-beam", "b", Number(config.visual?.beamHeight || 0.17));
     const rafterWidth = profileMetres(config.profiles, "roof-rafter", "a", Number(config.visual?.rafterWidth || 0.08));
@@ -167,12 +169,12 @@ export function createVerandaRenderer(context) {
     box(root, frameMaterial, beamDepth, beam, roofLength, -config.width / 2 + beamDepth / 2, midHeight - beam / 2, 0, angle);
     box(root, frameMaterial, beamDepth, beam, roofLength, config.width / 2 - beamDepth / 2, midHeight - beam / 2, 0, angle);
 
-    const postGeometry = new THREE.BoxGeometry(post, config.frontHeight, post);
+    const postGeometry = new THREE.BoxGeometry(postWidth, config.frontHeight, postDepth);
     const posts = new THREE.InstancedMesh(postGeometry, frameMaterial, config.postCount);
     const matrix = new THREE.Matrix4();
     for (let index = 0; index < config.postCount; index += 1) {
-      const x = config.postCount === 1 ? 0 : -config.width / 2 + post / 2 + ((config.width - post) * index) / (config.postCount - 1);
-      matrix.makeTranslation(x, config.frontHeight / 2, config.depth / 2 - post / 2);
+      const x = config.postCount === 1 ? 0 : -config.width / 2 + postWidth / 2 + ((config.width - postWidth) * index) / (config.postCount - 1);
+      matrix.makeTranslation(x, config.frontHeight / 2, config.depth / 2 - postDepth / 2);
       posts.setMatrixAt(index, matrix);
     }
     posts.instanceMatrix.needsUpdate = true;

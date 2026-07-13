@@ -53,10 +53,15 @@ VITE_BASE=/
 VITE_API_BASE_URL=same-origin
 ADMIN_SEED_EMAIL=<adres administratora>
 ADMIN_SEED_PASSWORD=<silne hasło, minimum 12 znaków>
+DEFAULT_TENANT_SLUG=visnex
+# opcjonalnie: klient.example.com=klient-a,drugi.example.com=klient-b
+TENANT_HOST_MAP=
 NODE_ENV=production
 ```
 
 Dodaj wolumen zamontowany pod `/data`. Serwer automatycznie zapisze tam `configurator.sqlite` dzięki `RAILWAY_VOLUME_MOUNT_PATH`, użyje portu przekazanego przez Railway i utworzy linki udostępniania z publicznej domeny usługi. Po wdrożeniu dostępne są `/`, `/konfigurator.html`, `/admin.html`, `/api/...` i `/health`.
+
+Na wspólnej domenie klienta wybiera parametr `?tenant=slug`. Własną domenę przypisz przez `TENANT_HOST_MAP`; takie mapowanie jest nadrzędne wobec query string, więc domeny white-label nie da się przełączyć na innego klienta dopisaniem parametru. Mapa wskazuje wyłącznie istniejące tenanty i jest odczytywana w runtime, bez forka ani ponownego budowania frontendu. Linki zapisu nadal używają kanonicznego `PUBLIC_APP_URL`; osobne kanoniczne domeny per tenant wymagają docelowego rejestru domen w PostgreSQL.
 
 ## Hero
 
