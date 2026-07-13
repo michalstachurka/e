@@ -14,7 +14,7 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 - `ProductRendererRegistry` wybiera renderer na podstawie `productType`;
 - istniejąca pergola jest adapterem pierwszego modułu;
 - weranda jest osobnym rendererem parametrycznym;
-- profile konstrukcyjne są publiczną, wersjonowaną częścią definicji produktu, a ich przekroje są prezentowane w milimetrach jako `a × b mm`;
+- profile konstrukcyjne są wersjonowaną częścią definicji produktu, natomiast ich przekroje i narzędzia edycji są prezentowane wyłącznie administratorowi;
 - definicje produktów i zakresy pochodzą z publicznego API, z jawnym fallbackiem demo dla statycznego GitHub Pages;
 - API waliduje, zapisuje i wersjonuje konfiguracje;
 - wycena, publiczny BOM i PDF powstają po stronie serwera;
@@ -39,7 +39,7 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 
 Frontend nie zawiera pełnych reguł ceny, marż, kosztów ani kodów BOM. Nie generuje nowych linków z pełną konfiguracją w query string.
 
-Każdy produkt pokazuje techniczny schemat wymiarowania bryły. Dzięki temu szerokość, głębokość/wysięg, wysokości i kąt są jednoznaczne przed zmianą suwaków. Karty profili korzystają z tej samej wersjonowanej definicji co renderer; starsze katalogi bez pola `profiles` są uzupełniane bezpiecznym adapterem na podstawie istniejących wartości wizualnych.
+Publiczny panel nie pokazuje przekrojów profili ani technicznych oznaczeń `a`/`b`. Te dane pozostają w kontrakcie renderera, lecz ich edycja i wizualne objaśnienie należą do chronionego panelu administratora. Starsze katalogi bez pola `profiles` są uzupełniane adapterem na podstawie istniejących wartości wizualnych.
 
 ### Wspólny rdzeń
 
@@ -71,7 +71,8 @@ Na bokach werandy prostokątna zabudowa i górny trójkąt są osobnymi decyzjam
 `apps/api` to osobna aplikacja Fastify. Korzysta z:
 
 - Zod na granicy każdego zapisu;
-- SQLite przez `node:sqlite` lokalnie;
+- portu `ConfiguratorStore`, który dopuszcza implementację synchroniczną i asynchroniczną;
+- SQLite przez `node:sqlite` jako bieżącego adaptera lokalnego i pilotażowego;
 - losowych identyfikatorów `shareId` i sesji;
 - `scrypt` do haseł;
 - HTTP-only cookies, `SameSite=Strict` i wygaśnięcia sesji;
@@ -114,13 +115,17 @@ Te reguły są objęte testami regresyjnymi. Przy migracji do PostgreSQL pozosta
 
 ### Kontekst tenantów i domeny white-label
 
-`GET /api/runtime-context` rozwiązuje tenant na podstawie nagłówka hosta oraz runtime'owej mapy `TENANT_HOST_MAP`. Odpowiedź ma `Cache-Control: no-store` i `Vary: Host`, aby warstwa cache nie przeniosła kontekstu między domenami. Konfigurator i panel korzystają z jednego resolvera: zablokowana domena, mapa osadzającej aplikacji, zwalidowany query string, domyślny tenant serwera, a na końcu lokalny tenant pilota.
+`GET /api/runtime-context` rozwiązuje tenant na podstawie nagłówka hosta, rejestru domen w bazie oraz przejściowej mapy `TENANT_HOST_MAP`. Odpowiedź ma `Cache-Control: no-store` i `Vary: Host`, aby warstwa cache nie przeniosła kontekstu między domenami. Konfigurator i panel korzystają z jednego resolvera: zablokowana domena, mapa osadzającej aplikacji, zwalidowany query string, domyślny tenant serwera, a na końcu lokalny tenant pilota.
 
-Panel zachowuje tenant w linku do konfiguratora. Identyfikator jest nadal sprawdzany na każdej granicy API; wybór tenanta we frontendzie nie nadaje uprawnień administratora. Obecna mapa środowiskowa jest etapem przejściowym dla płatnych pilotów. Automatyczny onboarding, weryfikacja DNS i kanoniczne adresy linków wymagają docelowo tabeli domen tenantów w PostgreSQL.
+Najpierw sprawdzany jest aktywny wpis w `tenant_domains`, a dopiero potem przejściowa mapa środowiskowa `TENANT_HOST_MAP`. Domena z bazy jest host-locked i pierwsza aktywna domena tenanta służy jako kanoniczny adres nowych linków projektów. Panel zachowuje tenant w linku do konfiguratora. Identyfikator jest nadal sprawdzany na każdej granicy API; wybór tenanta we frontendzie nie nadaje uprawnień administratora. Automatyczna weryfikacja DNS i samoobsługowy onboarding pozostają kolejnym etapem, ale nie wymagają już forka aplikacji ani zmiany tras API.
 
 ## Model danych
 
-Schemat SQLite ma logiczne tabele dla: `Tenant`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.
+Schemat SQLite ma logiczne tabele dla: `Tenant`, `TenantDomain`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.
+
+`ConfiguratorStore` oddziela trasy Fastify od dialektu bazy i od synchronicznego API `node:sqlite`. Wszystkie wywołania w warstwie HTTP są `await`-owane, dlatego adapter PostgreSQL/Prisma może być asynchroniczny bez przebudowy endpointów. `ConfiguratorDatabase` jest pierwszym adapterem tego portu.
+
+Operatorskie `npm run tenant:provision` tworzy nowego tenanta w jednej transakcji: branding, administratora, kategorię, osobne definicje i identyfikatory wersji obu produktów oraz aktywne domeny. Nie ma publicznego endpointu onboardingu. Niepowodzenie, w tym konflikt domeny, wycofuje całą operację.
 
 Publiczna definicja profilu zawiera stabilne `id`, nazwę, zastosowanie, wymiary `aMm` i `bMm`, typ uproszczonego przekroju oraz flagę `demoOnly`. Panel administratora pozwala zmienić oba wymiary w wersji roboczej. Renderer otrzymuje przekroje razem z definicją produktu, dlatego tenant może podmienić zatwierdzone profile bez forka frontendu.
 
@@ -176,9 +181,12 @@ VITE_BASE=/e/ npm run build
 npm run test:e2e
 ```
 
+Onboarding pilota korzysta z `NEW_TENANT_NAME`, `NEW_TENANT_ADMIN_PASSWORD` i argumentów `--slug`, `--admin-email`, opcjonalnie `--domains`. Hasło nie jest argumentem procesu. Na Windows nazwę ze spacjami najlepiej przekazać przez `NEW_TENANT_NAME`.
+
 ## Ograniczenia pionowego wycinka
 
-- SQLite używa lokalnego adaptera `node:sqlite`; migracja na Prisma/PostgreSQL pozostaje etapem wdrożenia produkcyjnego.
+- SQLite używa lokalnego adaptera `node:sqlite`; port `ConfiguratorStore` usuwa sprzężenie tras z tym adapterem, ale implementacja PostgreSQL, migracje danych i polityki RLS pozostają etapem przed pełnym SaaS.
+- Onboarding płatnego pilota jest transakcyjny, lecz wykonywany przez operatora. Samoobsługowy signup, weryfikacja DNS, billing i automatyczne certyfikaty pozostają poza MVP.
 - Panel edytuje podstawowe dane produktu, zakresy, wartości domyślne, widoczność pól, uproszczone profile, ceny demo, branding i publikację. Pełne edytory materiałów, opcji, zależności, BOM i szablonów PDF wymagają kolejnego etapu.
 - Reguły ceny i BOM są demonstracyjne, nie handlowe ani produkcyjne.
 - GitHub Pages nie hostuje API; bez `VITE_API_BASE_URL` działa jawny tryb statyczny z podglądem i AR, ale zapis, wycena i serwerowy PDF są niedostępne.

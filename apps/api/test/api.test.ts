@@ -2,12 +2,26 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { FastifyInstance } from "fastify";
 import { createApp } from "../src/app.js";
+import { ConfiguratorDatabase, TenantProvisionError } from "../src/database.js";
 import { parseTenantHostMap } from "../src/tenant-context.js";
 import { deriveVerandaSlope } from "../../../packages/configurator-core/src/domain.js";
 
 let app: FastifyInstance;
+let database: ConfiguratorDatabase;
 
 before(async () => {
+  database = await ConfiguratorDatabase.create({
+    path: ":memory:",
+    adminEmail: "admin@example.invalid",
+    adminPassword: "local-test-password",
+  });
+  await database.provisionTenant({
+    slug: "pilot-a",
+    name: "Pilot A",
+    adminEmail: "pilot-admin@example.invalid",
+    adminPassword: "pilot-local-password",
+    domains: ["pilot.db.test"],
+  });
   app = await createApp({
     databasePath: ":memory:",
     adminEmail: "admin@example.invalid",
@@ -15,7 +29,8 @@ before(async () => {
     publicAppUrl: "http://localhost:5173/konfigurator.html",
     corsOrigins: ["http://localhost:5173"],
     defaultTenantSlug: "visnex",
-    tenantHostMap: { "pilot.example.test": "visnex", "missing.example.test": "missing-tenant" },
+    tenantHostMap: { "pilot.example.test": "visnex", "pilot.db.test": "visnex", "missing.example.test": "missing-tenant" },
+    store: database,
   });
 });
 
@@ -49,9 +64,51 @@ test("resolves and locks tenant context for mapped custom domains", async () => 
   assert.equal(mapped.statusCode, 200);
   assert.deepEqual(mapped.json(), { tenantSlug: "visnex", source: "host", hostLocked: true });
 
+  const provisionedDomain = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "pilot.db.test" } });
+  assert.equal(provisionedDomain.statusCode, 200);
+  assert.deepEqual(provisionedDomain.json(), { tenantSlug: "pilot-a", source: "domain", hostLocked: true });
+
   const unavailable = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "missing.example.test" } });
   assert.equal(unavailable.statusCode, 503);
   assert.equal(unavailable.json().error, "mapped_tenant_unavailable");
+});
+
+test("provisions a fully isolated pilot tenant transactionally", async () => {
+  const catalog = await app.inject({ method: "GET", url: "/api/public/pilot-a/configurator" });
+  assert.equal(catalog.statusCode, 200);
+  assert.equal(catalog.json().tenant.name, "Pilot A");
+  assert.equal(catalog.json().tenant.branding.companyName, "Pilot A");
+  assert.equal(catalog.json().products.length, 2);
+  assert.ok(catalog.json().products.every((product: { id: string; version: { id: string } }) => product.id.includes("pilot-a") && product.version.id.startsWith("pilot-a-")));
+
+  const configuration = structuredClone(pergolaConfiguration);
+  configuration.tenantSlug = "pilot-a";
+  configuration.productVersionId = "pilot-a-bioclimatic-pergola-v1";
+  const saved = await app.inject({ method: "POST", url: "/api/public/pilot-a/configurations", payload: { configuration, expiresInDays: 30 } });
+  assert.equal(saved.statusCode, 201);
+  assert.match(saved.json().shareUrl, /^https:\/\/pilot\.db\.test\/konfigurator\.html\?tenant=pilot-a&project=/);
+  const shareId = saved.json().shareId;
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/pilot-a/configurations/${shareId}` })).statusCode, 200);
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}` })).statusCode, 404);
+
+  const login = await app.inject({ method: "POST", url: "/api/admin/pilot-a/login", payload: { email: "pilot-admin@example.invalid", password: "pilot-local-password" } });
+  assert.equal(login.statusCode, 200);
+  const cookie = login.headers["set-cookie"];
+  assert.ok(cookie);
+  assert.equal((await app.inject({ method: "GET", url: "/api/admin/pilot-a/products", headers: { cookie } })).statusCode, 200);
+  assert.equal((await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } })).statusCode, 403);
+
+  await assert.rejects(
+    database.provisionTenant({
+      slug: "pilot-rollback",
+      name: "Pilot Rollback",
+      adminEmail: "rollback@example.invalid",
+      adminPassword: "rollback-password",
+      domains: ["pilot.db.test"],
+    }),
+    (error: unknown) => error instanceof TenantProvisionError && error.code === "domain_exists",
+  );
+  assert.equal(database.getTenant("pilot-rollback"), null);
 });
 
 test("returns tenant catalog and product definition", async () => {

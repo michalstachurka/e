@@ -60,7 +60,7 @@ Zasady renderera:
 - trzymaj dół modelu na `Y = 0`;
 - zachowuj stabilny target i dystans kamery.
 
-Wymiary geometrii powtarzalnej powinny pochodzić z `profiles`, a nie z wartości powielonych w UI. Jeśli produkt ma wejścia wymiarowe, dodaj również mały schemat bryły z podpisami, aby klient wiedział, którą krawędź opisuje dane pole.
+Wymiary geometrii powtarzalnej powinny pochodzić z `profiles`, a nie z wartości powielonych w UI. Przekroje i techniczne oznaczenia `a`/`b` dodaj do studia profili w panelu administratora, razem z żywym renderem wskazującym konkretny element. Nie ujawniaj tych narzędzi technicznych w publicznym panelu klienta.
 
 ## 5. Podłącz kontrolki
 

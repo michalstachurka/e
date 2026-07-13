@@ -1,9 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AdminProductUpdate, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
+import { AdminLoginSchema, BrandingSettingsSchema, type AdminProductUpdate, type ProductDefinition, type PublicConfiguration } from "../../../packages/contracts/src/index.js";
 import { productSeeds, tenantSeed, type PricingRules } from "../../../packages/configurator-core/src/catalog.js";
 import { hashPassword, hashToken } from "./security.js";
+import { normalizeHostname } from "./tenant-context.js";
+import type { ConfiguratorStore, TenantProvisionInput, TenantProvisionResult } from "./store.js";
 
 type SqlValue = string | number | bigint | null | Uint8Array;
 type Row = Record<string, SqlValue>;
@@ -11,6 +13,7 @@ type Row = Record<string, SqlValue>;
 const schema = `
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS tenant_domains (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), hostname TEXT UNIQUE NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','active')), verified_at TEXT, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS admin_users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), email TEXT NOT NULL, password_hash TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, UNIQUE(tenant_id,email));
 CREATE TABLE IF NOT EXISTS branding_settings (id TEXT PRIMARY KEY, tenant_id TEXT UNIQUE NOT NULL REFERENCES tenants(id), settings_json TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS product_categories (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0);
@@ -38,13 +41,27 @@ function asString(value: SqlValue | undefined) {
   return typeof value === "string" ? value : String(value ?? "");
 }
 
+const tenantSlugPattern = /^[a-z0-9-]{2,50}$/;
+const hostnameLabelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+function validHostname(value: string) {
+  return value.length <= 253 && value.includes(".") && value.split(".").every((label) => hostnameLabelPattern.test(label));
+}
+
+export class TenantProvisionError extends Error {
+  constructor(public readonly code: "invalid_tenant" | "tenant_exists" | "domain_exists", message: string) {
+    super(message);
+    this.name = "TenantProvisionError";
+  }
+}
+
 export interface DatabaseOptions {
   path: string;
   adminEmail: string;
   adminPassword: string;
 }
 
-export class ConfiguratorDatabase {
+export class ConfiguratorDatabase implements ConfiguratorStore {
   readonly connection: DatabaseSync;
 
   private constructor(connection: DatabaseSync) {
@@ -92,6 +109,78 @@ export class ConfiguratorDatabase {
     }
   }
 
+  async provisionTenant(input: TenantProvisionInput): Promise<TenantProvisionResult> {
+    const slug = input.slug.trim().toLowerCase();
+    const name = input.name.trim();
+    const login = AdminLoginSchema.safeParse({ email: input.adminEmail.trim().toLowerCase(), password: input.adminPassword });
+    const domains = [...new Set((input.domains || []).map(normalizeHostname).filter(Boolean))];
+    const branding = BrandingSettingsSchema.safeParse({
+      ...tenantSeed.branding,
+      companyName: name,
+      logoText: name.slice(0, 40),
+      contactEmail: input.adminEmail.trim().toLowerCase(),
+      ...input.branding,
+    });
+
+    if (!tenantSlugPattern.test(slug) || !name || name.length > 120 || !login.success || !branding.success || domains.some((hostname) => !validHostname(hostname))) {
+      throw new TenantProvisionError("invalid_tenant", "Tenant provisioning data is invalid");
+    }
+    if (this.connection.prepare("SELECT 1 FROM tenants WHERE slug=?").get(slug)) {
+      throw new TenantProvisionError("tenant_exists", `Tenant ${slug} already exists`);
+    }
+    for (const hostname of domains) {
+      if (this.connection.prepare("SELECT 1 FROM tenant_domains WHERE hostname=?").get(hostname)) {
+        throw new TenantProvisionError("domain_exists", `Domain ${hostname} is already assigned`);
+      }
+    }
+
+    const passwordHash = await hashPassword(login.data.password);
+    const now = new Date().toISOString();
+    const tenantId = `tenant-${slug}`;
+    this.connection.exec("BEGIN IMMEDIATE");
+    try {
+      this.connection.prepare("INSERT INTO tenants (id,slug,name,created_at) VALUES (?,?,?,?)").run(tenantId, slug, name, now);
+      this.connection.prepare("INSERT INTO branding_settings (id,tenant_id,settings_json,updated_at) VALUES (?,?,?,?)")
+        .run(`branding-${slug}`, tenantId, JSON.stringify(branding.data), now);
+      this.connection.prepare("INSERT INTO product_categories (id,tenant_id,name,sort_order) VALUES (?,?,?,?)")
+        .run(`category-${slug}-covers`, tenantId, "Zadaszenia", 10);
+
+      for (const seed of productSeeds) {
+        const productType = seed.definition.productType;
+        const typeId = `type-${productType}`;
+        const definitionId = `product-${slug}-${productType}`;
+        const publishedId = `${slug}-${productType}-v1`;
+        const definition = structuredClone(seed.definition);
+        definition.id = definitionId;
+        definition.version = { id: publishedId, number: 1, status: "published" };
+        this.connection.prepare("INSERT OR IGNORE INTO product_types (id,code,name) VALUES (?,?,?)")
+          .run(typeId, productType, definition.name);
+        this.connection.prepare("INSERT INTO product_definitions (id,tenant_id,product_type_id,name,description,enabled,sort_order) VALUES (?,?,?,?,?,?,?)")
+          .run(definitionId, tenantId, typeId, definition.name, definition.description, Number(definition.enabled), definition.order);
+        this.connection.prepare("INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(publishedId, definitionId, 1, "published", JSON.stringify(definition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), now, now);
+        const draftDefinition = { ...definition, version: { id: `${slug}-${productType}-draft-v2`, number: 2, status: "draft" as const } };
+        this.connection.prepare("INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(draftDefinition.version.id, definitionId, 2, "draft", JSON.stringify(draftDefinition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), null, now);
+      }
+
+      this.connection.prepare("INSERT INTO admin_users (id,tenant_id,email,password_hash,active,created_at) VALUES (?,?,?,?,1,?)")
+        .run(`admin-${slug}`, tenantId, login.data.email, passwordHash, now);
+      domains.forEach((hostname, index) => {
+        this.connection.prepare("INSERT INTO tenant_domains (id,tenant_id,hostname,status,verified_at,created_at) VALUES (?,?,?,'active',?,?)")
+          .run(`domain-${slug}-${index + 1}`, tenantId, hostname, now, now);
+      });
+      this.connection.exec("COMMIT");
+    } catch (error) {
+      this.connection.exec("ROLLBACK");
+      throw error;
+    }
+
+    const tenant = this.getTenant(slug);
+    if (!tenant) throw new Error("Provisioned tenant could not be read back");
+    return { tenant, domains };
+  }
+
   close() {
     this.connection.close();
   }
@@ -101,6 +190,28 @@ export class ConfiguratorDatabase {
     if (!row) return null;
     const branding = this.connection.prepare("SELECT settings_json FROM branding_settings WHERE tenant_id=?").get(asString(row.id)) as Row;
     return { id: asString(row.id), slug: asString(row.slug), name: asString(row.name), branding: JSON.parse(asString(branding.settings_json)) as unknown };
+  }
+
+  getTenantByHostname(hostname: string) {
+    const row = this.connection.prepare(`
+      SELECT t.slug
+      FROM tenant_domains td
+      JOIN tenants t ON t.id=td.tenant_id
+      WHERE td.hostname=? AND td.status='active'
+    `).get(normalizeHostname(hostname)) as Row | undefined;
+    return row ? this.getTenant(asString(row.slug)) : null;
+  }
+
+  getPrimaryHostname(tenantSlug: string) {
+    const row = this.connection.prepare(`
+      SELECT td.hostname
+      FROM tenant_domains td
+      JOIN tenants t ON t.id=td.tenant_id
+      WHERE t.slug=? AND td.status='active'
+      ORDER BY td.created_at,td.id
+      LIMIT 1
+    `).get(tenantSlug) as Row | undefined;
+    return row ? asString(row.hostname) : null;
   }
 
   getProducts(tenantSlug: string, status: "published" | "draft" = "published") {
@@ -224,7 +335,8 @@ export class ConfiguratorDatabase {
   }
 
   findAdmin(tenantSlug: string, email: string) {
-    return this.connection.prepare(`SELECT au.* FROM admin_users au JOIN tenants t ON t.id=au.tenant_id WHERE t.slug=? AND au.email=? AND au.active=1`).get(tenantSlug, email.toLowerCase()) as Row | undefined;
+    const row = this.connection.prepare(`SELECT au.id,au.email,au.password_hash FROM admin_users au JOIN tenants t ON t.id=au.tenant_id WHERE t.slug=? AND au.email=? AND au.active=1`).get(tenantSlug, email.toLowerCase()) as Row | undefined;
+    return row ? { id: asString(row.id), email: asString(row.email), passwordHash: asString(row.password_hash) } : null;
   }
 
   createSession(id: string, adminUserId: string, token: string, expiresAt: string) {
@@ -232,7 +344,14 @@ export class ConfiguratorDatabase {
   }
 
   getSession(token: string) {
-    return this.connection.prepare(`SELECT s.id,s.admin_user_id,s.expires_at,au.tenant_id,t.slug tenant_slug,au.email FROM sessions s JOIN admin_users au ON au.id=s.admin_user_id JOIN tenants t ON t.id=au.tenant_id WHERE s.token_hash=? AND s.expires_at>?`).get(hashToken(token), new Date().toISOString()) as Row | undefined;
+    const row = this.connection.prepare(`SELECT s.id,s.admin_user_id,s.expires_at,t.slug tenant_slug,au.email FROM sessions s JOIN admin_users au ON au.id=s.admin_user_id JOIN tenants t ON t.id=au.tenant_id WHERE s.token_hash=? AND s.expires_at>?`).get(hashToken(token), new Date().toISOString()) as Row | undefined;
+    return row ? {
+      id: asString(row.id),
+      adminUserId: asString(row.admin_user_id),
+      tenantSlug: asString(row.tenant_slug),
+      email: asString(row.email),
+      expiresAt: asString(row.expires_at),
+    } : null;
   }
 
   deleteSession(token: string) {

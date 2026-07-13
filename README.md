@@ -10,7 +10,7 @@ dla firm z branży wnętrzarskiej, budowlanej i home improvement.
 - Framer Motion
 - Fonty: Fraunces (display), Manrope (body), Space Grotesk (etykiety) — self-hosted przez Fontsource
 - Modułowy konfigurator: vanilla ES modules + Three.js
-- API konfiguratora: Fastify + Zod + SQLite (`node:sqlite`)
+- API konfiguratora: Fastify + Zod + port `ConfiguratorStore` z lokalnym adapterem SQLite (`node:sqlite`)
 
 ## Uruchomienie
 
@@ -54,14 +54,36 @@ VITE_API_BASE_URL=same-origin
 ADMIN_SEED_EMAIL=<adres administratora>
 ADMIN_SEED_PASSWORD=<silne hasło, minimum 12 znaków>
 DEFAULT_TENANT_SLUG=visnex
-# opcjonalnie: klient.example.com=klient-a,drugi.example.com=klient-b
+# przejściowy fallback dla domen jeszcze nieprzeniesionych do rejestru bazy
 TENANT_HOST_MAP=
 NODE_ENV=production
 ```
 
 Dodaj wolumen zamontowany pod `/data`. Serwer automatycznie zapisze tam `configurator.sqlite` dzięki `RAILWAY_VOLUME_MOUNT_PATH`, użyje portu przekazanego przez Railway i utworzy linki udostępniania z publicznej domeny usługi. Po wdrożeniu dostępne są `/`, `/konfigurator.html`, `/admin.html`, `/api/...` i `/health`.
 
-Na wspólnej domenie klienta wybiera parametr `?tenant=slug`. Własną domenę przypisz przez `TENANT_HOST_MAP`; takie mapowanie jest nadrzędne wobec query string, więc domeny white-label nie da się przełączyć na innego klienta dopisaniem parametru. Mapa wskazuje wyłącznie istniejące tenanty i jest odczytywana w runtime, bez forka ani ponownego budowania frontendu. Linki zapisu nadal używają kanonicznego `PUBLIC_APP_URL`; osobne kanoniczne domeny per tenant wymagają docelowego rejestru domen w PostgreSQL.
+Na wspólnej domenie klienta wybiera parametr `?tenant=slug`. Własne domeny aktywowane podczas onboardingu są przechowywane w tabeli `tenant_domains`, blokują host do jednego tenanta i stają się kanonicznym adresem jego linków udostępniania. `TENANT_HOST_MAP` pozostaje tylko przejściowym fallbackiem dla istniejących wdrożeń. Automatyczna weryfikacja DNS nie jest jeszcze dostępna; domenę aktywuje operator dopiero po sprawdzeniu konfiguracji.
+
+## Onboarding płatnego pilota
+
+Nowego klienta tworzy transakcyjne narzędzie operatorskie. Nie istnieje publiczny endpoint tworzenia tenantów. Komenda tworzy branding, administratora, osobne identyfikatory produktów, wersje `published`/`draft` oraz rejestr domen. Hasło podaje się wyłącznie przez zmienną środowiskową, aby nie trafiło do historii poleceń.
+
+PowerShell:
+
+```powershell
+$env:NEW_TENANT_NAME='Firma Klienta'
+$env:NEW_TENANT_ADMIN_PASSWORD='<silne hasło>'
+npm.cmd run tenant:provision -- --slug=firma-klienta --admin-email=admin@firma.example --domains=konfigurator.firma.example
+```
+
+Bash:
+
+```bash
+NEW_TENANT_NAME='Firma Klienta' \
+NEW_TENANT_ADMIN_PASSWORD='<silne hasło>' \
+npm run tenant:provision -- --slug=firma-klienta --admin-email=admin@firma.example --domains=konfigurator.firma.example
+```
+
+Komenda korzysta z `DATABASE_PATH` albo wolumenu Railway. Po jej wykonaniu usuń jednorazowe zmienne `NEW_TENANT_*`. Jeżeli frontend klienta jest hostowany poza wspólną usługą, dodaj jego origin do `CORS_ORIGINS`. Migracja na PostgreSQL będzie wymagała nowego adaptera `ConfiguratorStore`, a nie zmian w trasach API.
 
 ## Hero
 

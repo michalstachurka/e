@@ -1,7 +1,7 @@
 const tenantSlugPattern = /^[a-z0-9-]{2,50}$/;
 const hostnamePattern = /^[a-z0-9.-]+$/;
 
-const normalizeHostname = (value: string) => value.trim().toLowerCase().replace(/\.$/, "");
+export const normalizeHostname = (value: string) => value.trim().toLowerCase().replace(/\.$/, "");
 
 export function parseTenantHostMap(value: string | undefined) {
   const result: Record<string, string> = {};
