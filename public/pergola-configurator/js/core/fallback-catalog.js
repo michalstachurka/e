@@ -73,5 +73,66 @@ export const fallbackCatalog = Object.freeze({
       colors,
       visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, rafterHeight: 0.122, roofThickness: 0.018, screenCassetteHeight: 0.105, screenCassetteDepth: 0.11, demoOnly: true },
     },
+    {
+      id: "product-carport", productType: "carport", name: "Carport", description: "Carport z nieruchomą blachą trapezową.", enabled: true, order: 30,
+      version: { id: "visnex-carport-v1", number: 1, status: "published" }, steps: [],
+      parameters: [
+        { key: "moduleWidths", label: "Szerokość modułu", section: "dimensions", type: "range", unit: "m", min: 2.5, max: 6, step: 0.1, defaultValue: [4], demoOnly: true },
+        { key: "depth", label: "Głębokość", section: "dimensions", type: "range", unit: "m", min: 3, max: 7, step: 0.1, defaultValue: 5.5, demoOnly: true },
+        { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 2.2, max: 3.5, step: 0.05, defaultValue: 2.7, demoOnly: true },
+      ],
+      profiles: [
+        { id: "structural-post", label: "Słup konstrukcyjny", usage: "Podparcie pionowe", aMm: 140, bMm: 140, shape: "rectangular", demoOnly: true },
+        { id: "frame-beam", label: "Belka ramy", usage: "Rama dachu", aMm: 140, bMm: 180, shape: "rectangular", demoOnly: true },
+        { id: "roof-sheet", label: "Blacha trapezowa", usage: "Stałe poszycie", aMm: 200, bMm: 35, shape: "louvre", demoOnly: true },
+      ],
+      colors, visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetThickness: 0.018, demoOnly: true },
+    },
+    {
+      id: "product-window-screen", productType: "window-screen", name: "Screen ZIP do okna", description: "Zewnętrzny screen okienny.", enabled: true, order: 40,
+      version: { id: "visnex-window-screen-v1", number: 1, status: "published" }, steps: [],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 0.6, max: 5, step: 0.05, defaultValue: 2, demoOnly: true },
+        { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 0.6, max: 5, step: 0.05, defaultValue: 2.2, demoOnly: true },
+        { key: "openingPercent", label: "Opuszczenie", section: "fabric", type: "range", unit: "%", min: 0, max: 100, step: 1, defaultValue: 80, demoOnly: true },
+      ],
+      profiles: [
+        { id: "screen-cassette", label: "Kaseta", usage: "Osłona wału", aMm: 105, bMm: 105, shape: "rectangular", demoOnly: true },
+        { id: "screen-guide", label: "Prowadnica ZIP", usage: "Prowadzenie tkaniny", aMm: 25, bMm: 45, shape: "rectangular", demoOnly: true },
+        { id: "screen-bottom", label: "Listwa dolna", usage: "Dolna krawędź", aMm: 30, bMm: 20, shape: "rectangular", demoOnly: true },
+      ],
+      colors, visual: { cassetteSize: 0.105, guideWidth: 0.025, bottomBarHeight: 0.03, demoOnly: true },
+    },
+    {
+      id: "product-external-roller-shutter", productType: "external-roller-shutter", name: "Roleta zewnętrzna", description: "Zewnętrzna roleta pancerzowa.", enabled: true, order: 50,
+      version: { id: "visnex-external-shutter-v1", number: 1, status: "published" }, steps: [],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 0.5, max: 4, step: 0.05, defaultValue: 1.6, demoOnly: true },
+        { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 0.5, max: 3.5, step: 0.05, defaultValue: 2.1, demoOnly: true },
+        { key: "openingPercent", label: "Opuszczenie", section: "system", type: "range", unit: "%", min: 0, max: 100, step: 1, defaultValue: 65, demoOnly: true },
+      ],
+      profiles: [
+        { id: "shutter-box", label: "Skrzynka", usage: "Osłona wału", aMm: 165, bMm: 165, shape: "rectangular", demoOnly: true },
+        { id: "shutter-guide", label: "Prowadnica", usage: "Prowadzenie pancerza", aMm: 53, bMm: 22, shape: "rectangular", demoOnly: true },
+        { id: "shutter-slat", label: "Profil pancerza", usage: "Pozioma osłona", aMm: 39, bMm: 8, shape: "louvre", demoOnly: true },
+      ],
+      colors, visual: { boxSize: 0.165, guideWidth: 0.053, slatPitch: 0.039, demoOnly: true },
+    },
+    {
+      id: "product-awning", productType: "awning", name: "Markiza tarasowa", description: "Markiza z kasetą i automatyką.", enabled: true, order: 60,
+      version: { id: "visnex-awning-v1", number: 1, status: "published" }, steps: [],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 2, max: 7, step: 0.1, defaultValue: 4.5, demoOnly: true },
+        { key: "projection", label: "Wysięg", section: "dimensions", type: "range", unit: "m", min: 1.5, max: 4, step: 0.1, defaultValue: 3, demoOnly: true },
+        { key: "pitch", label: "Kąt", section: "mounting", type: "range", unit: "°", min: 5, max: 40, step: 1, defaultValue: 14, demoOnly: true },
+        { key: "openingPercent", label: "Wysunięcie", section: "dimensions", type: "range", unit: "%", min: 10, max: 100, step: 1, defaultValue: 85, demoOnly: true },
+      ],
+      profiles: [
+        { id: "awning-cassette", label: "Kaseta", usage: "Osłona mechanizmu", aMm: 260, bMm: 140, shape: "rectangular", demoOnly: true },
+        { id: "awning-front", label: "Belka przednia", usage: "Przednia krawędź", aMm: 80, bMm: 50, shape: "rectangular", demoOnly: true },
+        { id: "awning-arm", label: "Ramię", usage: "Podparcie tkaniny", aMm: 50, bMm: 30, shape: "rectangular", demoOnly: true },
+      ],
+      colors, visual: { cassetteWidth: 0.26, cassetteHeight: 0.14, frontBarHeight: 0.08, armWidth: 0.05, demoOnly: true },
+    },
   ],
 });

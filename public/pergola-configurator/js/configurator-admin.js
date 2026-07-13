@@ -92,6 +92,8 @@ function buildProfilePreviewParams(definition) {
       leftScreenSupport: true,
       rightScreenSupport: false,
       lighting: false,
+      rafterLeds: [],
+      extraLegs: [],
       frameColor,
       slatColor: frameColor,
       screenColor: "#C9B79C",
@@ -102,9 +104,32 @@ function buildProfilePreviewParams(definition) {
       visual: definition.visual,
     };
   }
+  if (definition.productType === "window-screen") {
+    return {
+      productType: "window-screen", width: Number(parameterDefault(definition, "width", 2)), height: Number(parameterDefault(definition, "height", 2.2)),
+      mounting: "front", guideType: "zip", fabric: "transparent", fabricColor: "#C9B79C", frameColor, slatColor: frameColor,
+      drive: "radio", openingPercent: 80, windSensor: false, spin: false, profiles: definition.profiles, visual: definition.visual,
+    };
+  }
+  if (definition.productType === "external-roller-shutter") {
+    return {
+      productType: "external-roller-shutter", width: Number(parameterDefault(definition, "width", 1.6)), height: Number(parameterDefault(definition, "height", 2.1)),
+      mounting: "front", slatProfile: "aluminium-foam", armorColor: frameColor, boxColor: frameColor, guideColor: frameColor,
+      frameColor, slatColor: frameColor, drive: "radio", integratedMosquitoNet: true, openingPercent: 65, spin: false,
+      profiles: definition.profiles, visual: definition.visual,
+    };
+  }
+  if (definition.productType === "awning") {
+    return {
+      productType: "awning", width: Number(parameterDefault(definition, "width", 4.5)), projection: Number(parameterDefault(definition, "projection", 3)),
+      mounting: "wall", cassetteType: "full-cassette", pitch: Number(parameterDefault(definition, "pitch", 14)), fabricColor: "#C9B79C",
+      frameColor, slatColor: frameColor, drive: "radio", led: true, windSensor: true, sunSensor: false, openingPercent: 85,
+      spin: false, profiles: definition.profiles, visual: definition.visual,
+    };
+  }
   const widths = parameterDefault(definition, "moduleWidths", [4]);
   return {
-    productType: "bioclimatic-pergola",
+    productType: definition.productType,
     construction: "freestanding",
     widths: Array.isArray(widths) ? widths.map(Number) : [Number(widths)],
     depth: Number(parameterDefault(definition, "depth", 3.2)),
@@ -112,6 +137,8 @@ function buildProfilePreviewParams(definition) {
     slatAngle: Number(parameterDefault(definition, "slatAngle", 35)),
     frameColor,
     slatColor: frameColor,
+    roofColor: frameColor,
+    antiCondensationLayer: true,
     ledLinear: false,
     ledSpots: false,
     screens: { front: false, back: false, left: false, right: false },
@@ -163,12 +190,41 @@ function profileAnnotationPoints(params, profile) {
     };
     return points[profile.id] || points["frame-beam"];
   }
+  if (params.productType === "window-screen") {
+    const cassette = Number(params.visual?.cassetteSize || 0.105);
+    const guide = Number(params.visual?.guideWidth || 0.025);
+    const points = {
+      "screen-cassette": { target: [0, params.height + cassette / 2, 0.1], a: [[-a / 2, params.height + cassette, 0.1], [a / 2, params.height + cassette, 0.1]], b: [[a / 2, params.height, 0.1], [a / 2, params.height + b, 0.1]] },
+      "screen-guide": { target: [params.width / 2 + guide / 2, params.height * 0.5, 0.1], a: [[params.width / 2, params.height * 0.5, 0.1], [params.width / 2 + a, params.height * 0.5, 0.1]], b: [[params.width / 2 + a, params.height * 0.5 - b / 2, 0.1], [params.width / 2 + a, params.height * 0.5 + b / 2, 0.1]] },
+      "screen-bottom": { target: [0, params.height * 0.2, 0.14], a: [[-a / 2, params.height * 0.2, 0.14], [a / 2, params.height * 0.2, 0.14]], b: [[a / 2, params.height * 0.2 - b / 2, 0.14], [a / 2, params.height * 0.2 + b / 2, 0.14]] },
+    };
+    return points[profile.id] || points["screen-cassette"];
+  }
+  if (params.productType === "external-roller-shutter") {
+    const boxSize = Number(params.visual?.boxSize || 0.165);
+    const points = {
+      "shutter-box": { target: [0, params.height + boxSize / 2, 0.12], a: [[-a / 2, params.height + boxSize, 0.12], [a / 2, params.height + boxSize, 0.12]], b: [[a / 2, params.height, 0.12], [a / 2, params.height + b, 0.12]] },
+      "shutter-guide": { target: [params.width / 2, params.height * 0.5, 0.12], a: [[params.width / 2, params.height * 0.5, 0.12], [params.width / 2 + a, params.height * 0.5, 0.12]], b: [[params.width / 2 + a, params.height * 0.5 - b / 2, 0.12], [params.width / 2 + a, params.height * 0.5 + b / 2, 0.12]] },
+      "shutter-slat": { target: [0, params.height * 0.65, 0.15], a: [[-a / 2, params.height * 0.65, 0.15], [a / 2, params.height * 0.65, 0.15]], b: [[a / 2, params.height * 0.65 - b / 2, 0.15], [a / 2, params.height * 0.65 + b / 2, 0.15]] },
+    };
+    return points[profile.id] || points["shutter-box"];
+  }
+  if (params.productType === "awning") {
+    const projected = params.projection * params.openingPercent / 100;
+    const points = {
+      "awning-cassette": { target: [0, 2.75, 0], a: [[-a / 2, 2.82, 0.12], [a / 2, 2.82, 0.12]], b: [[a / 2, 2.75 - b / 2, 0.12], [a / 2, 2.75 + b / 2, 0.12]] },
+      "awning-front": { target: [0, 2.75 - Math.sin(params.pitch * Math.PI / 180) * projected, projected], a: [[-a / 2, 2.75, projected], [a / 2, 2.75, projected]], b: [[a / 2, 2.75 - b / 2, projected], [a / 2, 2.75 + b / 2, projected]] },
+      "awning-arm": { target: [params.width * 0.3, 2.65, projected / 2], a: [[params.width * 0.3 - a / 2, 2.65, projected / 2], [params.width * 0.3 + a / 2, 2.65, projected / 2]], b: [[params.width * 0.3 + a / 2, 2.65 - b / 2, projected / 2], [params.width * 0.3 + a / 2, 2.65 + b / 2, projected / 2]] },
+    };
+    return points[profile.id] || points["awning-cassette"];
+  }
   const width = params.widths.reduce((sum, value) => sum + value, 0);
   const beamHeight = (params.profiles.find((item) => item.id === "frame-beam")?.bMm || 180) / 1000;
   const points = {
     "structural-post": { target: [width / 2 - a / 2, params.height * 0.42, params.depth / 2 - b / 2], a: [[width / 2 - a, params.height * 0.42, params.depth / 2], [width / 2, params.height * 0.42, params.depth / 2]], b: [[width / 2, params.height * 0.42, params.depth / 2 - b], [width / 2, params.height * 0.42, params.depth / 2]] },
     "frame-beam": { target: [width * 0.27, params.height - b / 2, params.depth / 2 - a / 2], a: [[width * 0.27, params.height, params.depth / 2 - a], [width * 0.27, params.height, params.depth / 2]], b: [[width * 0.27, params.height - b, params.depth / 2], [width * 0.27, params.height, params.depth / 2]] },
     "roof-louvre": { target: [0, params.height - beamHeight / 2, 0], a: [[0, params.height - beamHeight / 2, -a / 2], [0, params.height - beamHeight / 2, a / 2]], b: [[0, params.height - beamHeight / 2 - b / 2, a / 2], [0, params.height - beamHeight / 2 + b / 2, a / 2]] },
+    "roof-sheet": { target: [0, params.height - beamHeight / 2, 0], a: [[-a / 2, params.height - beamHeight / 2, 0], [a / 2, params.height - beamHeight / 2, 0]], b: [[a / 2, params.height - beamHeight / 2 - b / 2, 0], [a / 2, params.height - beamHeight / 2 + b / 2, 0]] },
   };
   return points[profile.id] || points["frame-beam"];
 }
@@ -226,7 +282,11 @@ function renderProfileStudio() {
   const definition = products[activeStudioProduct].definition;
   definition.profiles = resolveProfileDefinitions(definition);
   activeStudioProfile = Math.min(activeStudioProfile, definition.profiles.length - 1);
-  const modeLabel = definition.productType === "bioclimatic-pergola" ? "Wersja wolnostojąca" : "Wersja bazowa przyścienna";
+  const modeLabel = ["bioclimatic-pergola", "carport"].includes(definition.productType)
+    ? "Wersja wolnostojąca"
+    : definition.productType === "veranda"
+      ? "Wersja bazowa przyścienna"
+      : "Montaż poglądowy";
   profileStudioHost.innerHTML = `<div class="admin-profile-studio">
     <section class="admin-profile-preview">
       <header><div><span>Żywy model techniczny</span><strong>${escapeHtml(definition.name)}</strong></div><b>${modeLabel}</b></header>

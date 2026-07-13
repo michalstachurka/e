@@ -15,14 +15,40 @@ function configurationRows(configuration: PublicConfiguration) {
       ["Kolor", values.frameColor],
     ];
   }
+  if (configuration.productType === "veranda") {
+    const values = configuration.values;
+    return [
+      ["Szerokosc", `${values.width} m`], ["Glebokosc", `${values.depth} m`],
+      ["Wysokosc tyl/przod", `${values.backHeight} / ${values.frontHeight} m`], ["Kat dachu", `${values.roofAngle} deg`],
+      ["Pola / krokwie", `${values.roofFields} / ${values.rafterCount}`], ["Pokrycie", values.roofMaterial],
+    ];
+  }
+  if (configuration.productType === "carport") {
+    const values = configuration.values;
+    return [
+      ["Konstrukcja", values.construction], ["Szerokosc", `${values.moduleWidths.join(" + ")} m`],
+      ["Glebokosc", `${values.depth} m`], ["Wysokosc", `${values.height} m`],
+      ["Dach", `blacha trapezowa / ${values.roofColor}`], ["Spod", "warstwa antykondensacyjna"],
+    ];
+  }
+  if (configuration.productType === "window-screen") {
+    const values = configuration.values;
+    return [
+      ["Wymiar", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Prowadzenie", values.guideType],
+      ["Tkanina", values.fabric], ["Naped", values.drive], ["Opuszczenie", `${values.openingPercent}%`],
+    ];
+  }
+  if (configuration.productType === "external-roller-shutter") {
+    const values = configuration.values;
+    return [
+      ["Wymiar", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Pancerz", values.slatProfile],
+      ["Naped", values.drive], ["Opuszczenie", `${values.openingPercent}%`], ["Moskitiera", values.integratedMosquitoNet ? "tak" : "nie"],
+    ];
+  }
   const values = configuration.values;
   return [
-    ["Szerokosc", `${values.width} m`],
-    ["Glebokosc", `${values.depth} m`],
-    ["Wysokosc tyl/przod", `${values.backHeight} / ${values.frontHeight} m`],
-    ["Kat dachu", `${values.roofAngle} deg`],
-    ["Pola / krokwie", `${values.roofFields} / ${values.rafterCount}`],
-    ["Pokrycie", values.roofMaterial],
+    ["Wymiar", `${values.width} x ${values.projection} m`], ["Montaz", values.mounting], ["Kaseta", values.cassetteType],
+    ["Kat", `${values.pitch} deg`], ["Naped", values.drive], ["Wysuniecie", `${values.openingPercent}%`],
   ];
 }
 

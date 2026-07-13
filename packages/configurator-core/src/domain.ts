@@ -86,7 +86,7 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     derived.totalLouvres = Number(derived.louvresPerModule) * values.moduleWidths.length;
     derived.totalWidth = round(values.moduleWidths.reduce((sum, width) => sum + width, 0));
     if (values.extraLegs.length > 8) warnings.push({ path: "values.extraLegs", message: "Duża liczba dodatkowych słupów wymaga oceny technicznej.", code: "technical_review" });
-  } else {
+  } else if (configuration.productType === "veranda") {
     const values = configuration.values;
     ["width", "depth", "backHeight", "frontHeight", "roofAngle", "roofFields", "rafterCount", "postCount"].forEach((key) => checkRange(errors, definition, key, values[key as keyof typeof values] as number));
     const slope = deriveVerandaSlope(values.depth, values.backHeight, values.roofAngle);
@@ -105,7 +105,52 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     if (values.rightScreenSupport && values.rightWall !== "zip-screen") {
       errors.push({ path: "values.rightScreenSupport", message: "Prawy profil podpierający wymaga rolety ZIP.", code: "dependency" });
     }
+    if (new Set(values.rafterLeds).size !== values.rafterLeds.length) {
+      errors.push({ path: "values.rafterLeds", message: "Każda krokiew może być wybrana do LED tylko raz.", code: "duplicate" });
+    }
+    if (values.rafterLeds.some((index) => index >= values.rafterCount)) {
+      errors.push({ path: "values.rafterLeds", message: "Wybrano LED dla krokwi, która nie istnieje.", code: "dependency" });
+    }
+    if (values.extraLegs.length > 8) warnings.push({ path: "values.extraLegs", message: "Duża liczba dodatkowych nóg wymaga oceny technicznej.", code: "technical_review" });
     warnings.push({ path: "values", message: "Parametry werandy i wypełnień są demonstracyjne i wymagają danych technicznych producenta.", code: "demo_only" });
+  } else if (configuration.productType === "carport") {
+    const values = configuration.values;
+    values.moduleWidths.forEach((width, index) => {
+      const range = parameterRange(definition, "moduleWidths");
+      if (range?.min !== undefined && width < range.min) errors.push({ path: `values.moduleWidths.${index}`, message: "Moduł jest zbyt wąski.", code: "too_small" });
+      if (range?.max !== undefined && width > range.max) errors.push({ path: `values.moduleWidths.${index}`, message: "Moduł jest zbyt szeroki.", code: "too_big" });
+    });
+    checkRange(errors, definition, "depth", values.depth);
+    checkRange(errors, definition, "height", values.height);
+    derived.totalWidth = round(values.moduleWidths.reduce((sum, width) => sum + width, 0));
+    derived.roofArea = round(Number(derived.totalWidth) * values.depth, 2);
+    if (values.extraLegs.length > 8) warnings.push({ path: "values.extraLegs", message: "Duża liczba dodatkowych słupów wymaga oceny technicznej.", code: "technical_review" });
+    warnings.push({ path: "values", message: "Nośność, rozstaw podpór i parametry blachy są demonstracyjne i wymagają obliczeń producenta.", code: "demo_only" });
+  } else if (configuration.productType === "window-screen") {
+    const values = configuration.values;
+    checkRange(errors, definition, "width", values.width);
+    checkRange(errors, definition, "height", values.height);
+    checkRange(errors, definition, "openingPercent", values.openingPercent);
+    derived.coverArea = round(values.width * values.height, 2);
+    warnings.push({ path: "values", message: "Dopuszczalne gabaryty, tkanina, prowadnice i napęd wymagają weryfikacji w konkretnym systemie screen ZIP.", code: "demo_only" });
+  } else if (configuration.productType === "external-roller-shutter") {
+    const values = configuration.values;
+    checkRange(errors, definition, "width", values.width);
+    checkRange(errors, definition, "height", values.height);
+    checkRange(errors, definition, "openingPercent", values.openingPercent);
+    derived.coverArea = round(values.width * values.height, 2);
+    warnings.push({ path: "values", message: "Dobór skrzynki, pancerza, prowadnic i maksymalnych wymiarów wymaga tabel producenta.", code: "demo_only" });
+  } else {
+    const values = configuration.values;
+    checkRange(errors, definition, "width", values.width);
+    checkRange(errors, definition, "projection", values.projection);
+    checkRange(errors, definition, "pitch", values.pitch);
+    checkRange(errors, definition, "openingPercent", values.openingPercent);
+    derived.coverArea = round(values.width * values.projection, 2);
+    if (values.drive === "manual" && (values.windSensor || values.sunSensor)) {
+      errors.push({ path: "values.drive", message: "Automatyka pogodowa wymaga napędu elektrycznego.", code: "dependency" });
+    }
+    warnings.push({ path: "values", message: "Wysięg, montaż, klasa wiatrowa i parametry ramion markizy wymagają weryfikacji producenta.", code: "demo_only" });
   }
 
   return { valid: errors.length === 0, errors, warnings, derived, configuration };
@@ -119,18 +164,34 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
   let modules = 1;
   let options = 0;
   let colorSurcharge = 0;
-  if (configuration.productType === "bioclimatic-pergola") {
+  if (configuration.productType === "bioclimatic-pergola" || configuration.productType === "carport") {
     const values = configuration.values;
     area = values.moduleWidths.reduce((sum, width) => sum + width, 0) * values.depth;
     modules = values.moduleWidths.length;
-    options = Number(values.ledLinear) + Number(values.ledSpots) + countSelected(values.screens) + countSelected(values.glass) + values.extraLegs.length;
+    options = Number(values.ledLinear) + countSelected(values.screens) + countSelected(values.glass) + values.extraLegs.length;
+    options += "ledSpots" in values ? Number(values.ledSpots) : 0;
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
-  } else {
+  } else if (configuration.productType === "veranda") {
     const values = configuration.values;
     area = values.width * values.depth;
-    options = Number(values.lighting)
+    options = (values.rafterLeds?.length || Number(values.lighting)) + (values.extraLegs?.length || 0)
       + [values.leftWall, values.rightWall, values.frontWall, values.leftTriangle, values.rightTriangle].filter((value) => value !== "none").length
       + Number(values.leftScreenSupport) + Number(values.rightScreenSupport);
+    colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
+  } else if (configuration.productType === "window-screen") {
+    const values = configuration.values;
+    area = values.width * values.height;
+    options = Number(values.drive !== "wired") + Number(values.windSensor) + Number(values.mounting !== "front");
+    colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
+  } else if (configuration.productType === "external-roller-shutter") {
+    const values = configuration.values;
+    area = values.width * values.height;
+    options = Number(values.drive !== "manual") + Number(values.integratedMosquitoNet) + Number(values.mounting !== "front") + Number(values.slatProfile === "extruded");
+    colorSurcharge = values.armorColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
+  } else {
+    const values = configuration.values;
+    area = values.width * values.projection;
+    options = Number(values.drive !== "manual") + Number(values.led) + Number(values.windSensor) + Number(values.sunSensor) + Number(values.cassetteType === "full-cassette");
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   }
   const calculated = (rules.basePrice + area * rules.pricePerSquareMeter + Math.max(0, modules - 1) * rules.moduleSurcharge + options * rules.optionSurcharge + colorSurcharge) * rules.multiplier;
@@ -154,20 +215,70 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
       ],
     };
   }
+  if (configuration.productType === "carport") {
+    const values = configuration.values;
+    const modules = values.moduleWidths.length;
+    const standardPosts = values.construction === "freestanding" ? (modules + 1) * 2 : values.construction === "wall" ? modules + 1 : 0;
+    return {
+      demoOnly: true as const,
+      items: [
+        { label: "Zestaw ramy modułu", quantity: modules, unit: "zest." },
+        { label: "Słup konstrukcyjny", quantity: standardPosts + values.extraLegs.length, unit: "szt." },
+        { label: "Blacha trapezowa z warstwą antykondensacyjną", quantity: round(values.moduleWidths.reduce((sum, width) => sum + width, 0) * values.depth, 2), unit: "m²" },
+      ],
+    };
+  }
+  if (configuration.productType === "veranda") {
+    const values = configuration.values;
+    const triangleCount = [values.leftTriangle, values.rightTriangle].filter((value) => value !== "none").length;
+    const supportCount = Number(values.leftScreenSupport) + Number(values.rightScreenSupport);
+    return {
+      demoOnly: true as const,
+      items: [
+        { label: "Belka przyścienna", quantity: 1, unit: "szt." },
+        { label: "Belka frontowa", quantity: 1, unit: "szt." },
+        { label: "Słup frontowy", quantity: values.postCount + (values.extraLegs?.length || 0), unit: "szt." },
+        { label: "Krokiew", quantity: values.rafterCount, unit: "szt." },
+        { label: "Pole dachowe", quantity: values.roofFields, unit: "szt." },
+        ...(values.rafterLeds?.length ? [{ label: "LED liniowy na krokwi", quantity: values.rafterLeds.length, unit: "szt." }] : []),
+        ...(triangleCount ? [{ label: "Wypełnienie trójkąta bocznego", quantity: triangleCount, unit: "szt." }] : []),
+        ...(supportCount ? [{ label: "Profil podpierający kasetę rolety", quantity: supportCount, unit: "szt." }] : []),
+        { label: "Powierzchnia zadaszenia", quantity: round(values.width * values.depth, 2), unit: "m²" },
+      ],
+    };
+  }
+  if (configuration.productType === "window-screen") {
+    const values = configuration.values;
+    return {
+      demoOnly: true as const,
+      items: [
+        { label: "Kaseta screen", quantity: 1, unit: "szt." },
+        { label: "Prowadnica", quantity: 2, unit: "szt." },
+        { label: "Tkanina screen", quantity: round(values.width * values.height, 2), unit: "m²" },
+        { label: `Napęd ${values.drive}`, quantity: 1, unit: "szt." },
+      ],
+    };
+  }
+  if (configuration.productType === "external-roller-shutter") {
+    const values = configuration.values;
+    return {
+      demoOnly: true as const,
+      items: [
+        { label: "Skrzynka rolety", quantity: 1, unit: "szt." },
+        { label: "Prowadnica pancerza", quantity: 2, unit: "szt." },
+        { label: "Pancerz rolety", quantity: round(values.width * values.height, 2), unit: "m²" },
+        ...(values.integratedMosquitoNet ? [{ label: "Moskietiera zintegrowana", quantity: 1, unit: "szt." }] : []),
+      ],
+    };
+  }
   const values = configuration.values;
-  const triangleCount = [values.leftTriangle, values.rightTriangle].filter((value) => value !== "none").length;
-  const supportCount = Number(values.leftScreenSupport) + Number(values.rightScreenSupport);
   return {
     demoOnly: true as const,
     items: [
-      { label: "Belka przyścienna", quantity: 1, unit: "szt." },
-      { label: "Belka frontowa", quantity: 1, unit: "szt." },
-      { label: "Słup frontowy", quantity: values.postCount, unit: "szt." },
-      { label: "Krokiew", quantity: values.rafterCount, unit: "szt." },
-      { label: "Pole dachowe", quantity: values.roofFields, unit: "szt." },
-      ...(triangleCount ? [{ label: "Wypełnienie trójkąta bocznego", quantity: triangleCount, unit: "szt." }] : []),
-      ...(supportCount ? [{ label: "Profil podpierający kasetę rolety", quantity: supportCount, unit: "szt." }] : []),
-      { label: "Powierzchnia zadaszenia", quantity: round(values.width * values.depth, 2), unit: "m²" },
+      { label: `Markiza ${values.cassetteType}`, quantity: 1, unit: "zest." },
+      { label: "Tkanina markizowa", quantity: round(values.width * values.projection, 2), unit: "m²" },
+      { label: "Ramię składane", quantity: values.width > 5 ? 3 : 2, unit: "szt." },
+      ...(values.led ? [{ label: "Oświetlenie LED", quantity: 1, unit: "zest." }] : []),
     ],
   };
 }

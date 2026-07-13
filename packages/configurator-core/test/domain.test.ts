@@ -6,6 +6,10 @@ import { calculateLouvreCount, calculatePostPositions, calculateQuote, deriveVer
 
 const pergolaSeed = getProductSeed("bioclimatic-pergola")!;
 const verandaSeed = getProductSeed("veranda")!;
+const carportSeed = getProductSeed("carport")!;
+const screenSeed = getProductSeed("window-screen")!;
+const shutterSeed = getProductSeed("external-roller-shutter")!;
+const awningSeed = getProductSeed("awning")!;
 
 const pergola = (): PublicConfiguration => ({
   schemaVersion: "2.0",
@@ -55,6 +59,8 @@ const veranda = (): PublicConfiguration => {
       rightScreenSupport: false,
       frameColor: "anthracite",
       lighting: false,
+      rafterLeds: [],
+      extraLegs: [],
     },
   };
 };
@@ -105,6 +111,53 @@ test("validates the ZIP cassette support dependency and side triangle data", () 
   const invalid = validateConfiguration(configuration, verandaSeed.definition);
   assert.equal(invalid.valid, false);
   assert.ok(invalid.errors.some((issue) => issue.path === "values.leftScreenSupport" && issue.code === "dependency"));
+});
+
+test("assigns linear LED strips only to existing veranda rafters", () => {
+  const configuration = veranda();
+  configuration.values.rafterLeds = [0, 2, 4];
+  configuration.values.extraLegs = [{ x: 0, z: 1.53, side: "front" }];
+  const valid = validateConfiguration(configuration, verandaSeed.definition);
+  assert.equal(valid.valid, true);
+  assert.ok(generateBom(configuration, valid.derived).items.some((item) => item.label === "LED liniowy na krokwi" && item.quantity === 3));
+  configuration.values.rafterLeds = [5];
+  assert.ok(validateConfiguration(configuration, verandaSeed.definition).errors.some((issue) => issue.path === "values.rafterLeds"));
+});
+
+test("validates and prices all newly catalogued MVP products", () => {
+  const sides = { front: false, back: false, left: false, right: false };
+  const configurations: Array<[PublicConfiguration, typeof carportSeed]> = [
+    [{
+      schemaVersion: "2.0", tenantSlug: "visnex", productType: "carport", productVersionId: carportSeed.definition.version.id,
+      values: { construction: "freestanding", moduleWidths: [4], depth: 5.5, height: 2.7, frameColor: "anthracite", roofColor: "anthracite", screenColor: "piaskowy", antiCondensationLayer: true, ledLinear: false, screens: sides, glass: sides, extraLegs: [] },
+    }, carportSeed],
+    [{
+      schemaVersion: "2.0", tenantSlug: "visnex", productType: "window-screen", productVersionId: screenSeed.definition.version.id,
+      values: { width: 2, height: 2.2, mounting: "front", guideType: "zip", fabric: "transparent", fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", openingPercent: 80, windSensor: true },
+    }, screenSeed],
+    [{
+      schemaVersion: "2.0", tenantSlug: "visnex", productType: "external-roller-shutter", productVersionId: shutterSeed.definition.version.id,
+      values: { width: 1.6, height: 2.1, mounting: "front", slatProfile: "aluminium-foam", armorColor: "anthracite", boxColor: "anthracite", guideColor: "anthracite", drive: "radio", integratedMosquitoNet: true, openingPercent: 65 },
+    }, shutterSeed],
+    [{
+      schemaVersion: "2.0", tenantSlug: "visnex", productType: "awning", productVersionId: awningSeed.definition.version.id,
+      values: { width: 4.5, projection: 3, mounting: "wall", cassetteType: "full-cassette", pitch: 14, fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", led: true, windSensor: true, sunSensor: false, openingPercent: 85 },
+    }, awningSeed],
+  ];
+  for (const [configuration, seed] of configurations) {
+    const validation = validateConfiguration(configuration, seed.definition);
+    assert.equal(validation.valid, true, configuration.productType);
+    assert.ok(calculateQuote(configuration, seed.pricing).gross > 0);
+    assert.ok(generateBom(configuration, validation.derived).items.length > 0);
+  }
+});
+
+test("requires an electric awning drive for weather automation", () => {
+  const configuration: PublicConfiguration = {
+    schemaVersion: "2.0", tenantSlug: "visnex", productType: "awning", productVersionId: awningSeed.definition.version.id,
+    values: { width: 4.5, projection: 3, mounting: "wall", cassetteType: "full-cassette", pitch: 14, fabricColor: "piaskowy", frameColor: "anthracite", drive: "manual", led: false, windSensor: true, sunSensor: false, openingPercent: 85 },
+  };
+  assert.ok(validateConfiguration(configuration, awningSeed.definition).errors.some((issue) => issue.code === "dependency"));
 });
 
 test("calculates demo quote and public BOM without production codes", () => {

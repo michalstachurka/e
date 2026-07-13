@@ -8,6 +8,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { ProductRendererRegistry } from "./core/product-registry.js";
 import { profileMetres } from "./core/profile-definitions.js";
 import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
+import { createWindowCoverRenderer } from "./renderers/window-cover-renderer.js";
 
 /** Soft radial ground shadow texture. */
 function shadowTexture() {
@@ -253,6 +254,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     metalness: 0.35,
   });
   const slatMaterial = material.clone();
+  const antiCondensationMaterial = new THREE.MeshStandardMaterial({ color: "#D8D5CC", roughness: 0.98, metalness: 0 });
   // Crisp cool-white LED, like real pergola strips
   // Widoczna geometria LED z prawdziwą emisją. Dzięki temu światło pozostaje
   // czytelne również po eksporcie do GLB/USDZ, gdzie lampy sceny są pomijane.
@@ -376,7 +378,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
   };
 
   const rebuildPergola = (p) => {
-    resetRoot("PergolaVisualRoot");
+    resetRoot(p.productType === "carport" ? "CarportVisualRoot" : "PergolaVisualRoot");
     const slats = [];
 
     const H = p.height;
@@ -420,6 +422,32 @@ export function createPergolaCanvas(mountEl, initialParams) {
         mk(W - 2 * post, t, 0, (D - post) / 2 - inset);
         mk(t, D - 2 * post, -(W - post) / 2 + inset, 0);
         mk(t, D - 2 * post, (W - post) / 2 - inset, 0);
+      }
+
+      if (p.productType === "carport") {
+        const roofWidth = Math.max(0.2, W - 2 * post);
+        const roofDepth = Math.max(0.4, D - 2 * post);
+        const sheetThickness = Number(p.visual?.sheetThickness || 0.018);
+        const sheetPitch = Number(p.visual?.sheetPitch || 0.2);
+        const roofY = H - beam / 2;
+        const sheet = new THREE.Mesh(new THREE.BoxGeometry(roofWidth, sheetThickness, roofDepth), slatMaterial);
+        sheet.position.set(cx, roofY, 0);
+        sheet.name = "CarportTrapezoidalSheet";
+        sheet.userData.profileId = "roof-sheet";
+        group.add(sheet);
+        const fleece = new THREE.Mesh(new THREE.BoxGeometry(roofWidth - 0.02, 0.009, roofDepth - 0.02), antiCondensationMaterial);
+        fleece.position.set(cx, roofY - sheetThickness / 2 - 0.006, 0);
+        fleece.name = "CarportAntiCondensationLayer";
+        group.add(fleece);
+        const ribCount = Math.max(2, Math.floor(roofWidth / sheetPitch));
+        for (let index = 0; index <= ribCount; index += 1) {
+          const x = -roofWidth / 2 + roofWidth * index / ribCount;
+          const rib = new THREE.Mesh(new THREE.BoxGeometry(Math.min(0.045, sheetPitch * 0.28), 0.032, roofDepth), slatMaterial);
+          rib.position.set(cx + x, roofY + 0.02, 0);
+          rib.name = "CarportSheetRib";
+          group.add(rib);
+        }
+        return;
       }
 
       // Louvres (+ optional spots, ~1 per 1.5 m2)
@@ -787,7 +815,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     disposeScene: () => {},
     getBounds: () => new THREE.Box3().setFromObject(group),
   };
-  const verandaRenderer = createVerandaRenderer({
+  const rendererContext = {
     THREE,
     resetRoot,
     frameMaterial: material,
@@ -800,8 +828,22 @@ export function createPergolaCanvas(mountEl, initialParams) {
     shadow,
     frameScene,
     clearAnimationState,
-  });
-  rendererRegistry.register(pergolaRenderer).register(verandaRenderer);
+  };
+  const verandaRenderer = createVerandaRenderer(rendererContext);
+  const carportRenderer = {
+    productType: "carport",
+    createScene: rebuildPergola,
+    updateScene: (_scene, config) => rebuildPergola(config),
+    disposeScene: () => {},
+    getBounds: () => new THREE.Box3().setFromObject(group),
+  };
+  rendererRegistry
+    .register(pergolaRenderer)
+    .register(verandaRenderer)
+    .register(carportRenderer)
+    .register(createWindowCoverRenderer(rendererContext, "window-screen"))
+    .register(createWindowCoverRenderer(rendererContext, "external-roller-shutter"))
+    .register(createWindowCoverRenderer(rendererContext, "awning"));
   let activeRenderer = null;
   let activeProductScene = null;
   const rebuild = (p) => {
@@ -823,8 +865,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
   stateRef.rebuild = rebuild;
   stateRef.controls = controls;
   rebuild(initialParams);
-  material.color.set(initialParams.frameColor);
-  slatMaterial.color.set(initialParams.slatColor);
+  if (initialParams.frameColor) material.color.set(initialParams.frameColor);
+  if (initialParams.slatColor) slatMaterial.color.set(initialParams.slatColor);
   const applyScreenColor = (hex) => {
     screenMaterial.color.set(hex);
     screenMaterial.emissive.copy(screenMaterial.color).multiplyScalar(SCREEN_GLOW);
@@ -954,10 +996,30 @@ export function createPergolaCanvas(mountEl, initialParams) {
     rightWall: params.rightWall,
     frontWall: params.frontWall,
     lighting: params.lighting,
+    rafterLeds: params.rafterLeds,
     leftTriangle: params.leftTriangle,
     rightTriangle: params.rightTriangle,
     leftScreenSupport: params.leftScreenSupport,
     rightScreenSupport: params.rightScreenSupport,
+    roofColor: params.roofColor,
+    antiCondensationLayer: params.antiCondensationLayer,
+    mounting: params.mounting,
+    guideType: params.guideType,
+    fabric: params.fabric,
+    fabricColor: params.fabricColor,
+    drive: params.drive,
+    openingPercent: params.openingPercent,
+    windSensor: params.windSensor,
+    slatProfile: params.slatProfile,
+    armorColor: params.armorColor,
+    boxColor: params.boxColor,
+    guideColor: params.guideColor,
+    integratedMosquitoNet: params.integratedMosquitoNet,
+    projection: params.projection,
+    cassetteType: params.cassetteType,
+    pitch: params.pitch,
+    led: params.led,
+    sunSensor: params.sunSensor,
     profiles: params.profiles,
     visual: params.visual,
   });
@@ -970,8 +1032,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
       stateRef.rebuild?.(params);
       lastGeometrySignature = nextSignature;
     }
-    stateRef.material?.color.set(params.frameColor);
-    stateRef.slatMaterial?.color.set(params.slatColor);
+    if (params.frameColor) stateRef.material?.color.set(params.frameColor);
+    if (params.slatColor) stateRef.slatMaterial?.color.set(params.slatColor);
     if (params.screenColor) applyScreenColor(params.screenColor);
     if (stateRef.controls) stateRef.controls.autoRotate = params.spin;
     if (!params.spin && stateRef.slats) {
@@ -989,6 +1051,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     activeRenderer?.disposeScene(activeProductScene);
     pmrem.dispose();
     roofMaterial.dispose();
+    antiCondensationMaterial.dispose();
     renderer.dispose();
     el.removeEventListener("pointerdown", armZoom);
     el.removeEventListener("pointerleave", disarmZoom);
@@ -1066,7 +1129,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     };
 
     const root = cloneForExport(group) || new THREE.Group();
-    root.name = paramsRef.productType === "veranda" ? "VerandaRoot" : "PergolaRoot";
+    root.name = `${String(paramsRef.productType || "product").replaceAll("-", "_")}_Root`;
     root.visible = true;
     root.updateMatrixWorld(true);
 

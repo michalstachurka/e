@@ -212,8 +212,19 @@
                 </section>
                 <div class="pergola3d__group"><span class="pergola3d__label">Zabudowa frontu · demo</span><select class="configurator-select" id="verandaFrontWall"></select></div>
                 <div class="pergola3d__group"><span class="pergola3d__label">Kolor konstrukcji</span><div class="pergola3d__swatches" id="verandaFrameColor"></div></div>
-                <div class="pergola3d__group"><span class="pergola3d__label">Wyposażenie dodatkowe</span><div class="pergola3d__pills"><button type="button" id="verandaLighting" aria-pressed="false">Oświetlenie liniowe</button></div></div>
+                <div class="pergola3d__group">
+                  <span class="pergola3d__label">LED liniowy na krokwiach · wybierz konkretne</span>
+                  <div class="pergola3d__pills rafter-led-picker" id="verandaRafterLeds" role="group" aria-label="Krokwie z oświetleniem LED"></div>
+                </div>
+                <div class="pergola3d__group">
+                  <span class="pergola3d__label">Dodatkowe nogi · <b id="verandaLegCount">0</b></span>
+                  <div class="pergola3d__pills"><button type="button" id="verandaAddLeg">Dodaj nogę na froncie</button><button type="button" id="verandaClearLegs">Usuń wszystkie</button></div>
+                  <div class="veranda-leg-list" id="verandaLegList"></div>
+                  <p class="pergola3d__hint">Każdą dodatkową nogę możesz przesunąć suwakiem wzdłuż belki frontowej.</p>
+                </div>
               </div>
+
+              <div class="product-controls" id="catalogProductControls" data-product-controls="catalog" hidden></div>
 
               <section class="configuration-summary" id="configurationSummary" aria-live="polite">
                 <span class="pergola3d__label">Podsumowanie</span>

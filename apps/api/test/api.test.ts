@@ -78,7 +78,7 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
   assert.equal(catalog.statusCode, 200);
   assert.equal(catalog.json().tenant.name, "Pilot A");
   assert.equal(catalog.json().tenant.branding.companyName, "Pilot A");
-  assert.equal(catalog.json().products.length, 2);
+  assert.equal(catalog.json().products.length, 6);
   assert.ok(catalog.json().products.every((product: { id: string; version: { id: string } }) => product.id.includes("pilot-a") && product.version.id.startsWith("pilot-a-")));
 
   const configuration = structuredClone(pergolaConfiguration);
@@ -117,7 +117,10 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
 test("returns tenant catalog and product definition", async () => {
   const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
   assert.equal(catalog.statusCode, 200);
-  assert.equal(catalog.json().products.length, 2);
+  assert.equal(catalog.json().products.length, 6);
+  assert.deepEqual(catalog.json().products.map((item: { productType: string }) => item.productType), [
+    "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "awning",
+  ]);
   const product = await app.inject({ method: "GET", url: "/api/public/visnex/products/veranda" });
   assert.equal(product.statusCode, 200);
   assert.equal(product.json().product.productType, "veranda");

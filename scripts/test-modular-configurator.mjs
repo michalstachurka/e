@@ -117,9 +117,13 @@ async function runDesktop() {
   await page.locator("#verandaLeftTriangle").selectOption("solid");
   await page.locator("#verandaLeftScreenSupport").click();
   await page.locator("#verandaRightWall").selectOption("sliding-glass");
+  await page.locator('#verandaRafterLeds [data-rafter="0"]').click();
+  await page.locator('#verandaRafterLeds [data-rafter="2"]').click();
+  await page.locator("#verandaAddLeg").click();
   await page.waitForFunction(() => {
     const values = window.sunProtectionConfigurator.getConfiguration().values;
-    return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true;
+    return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true
+      && values.rafterLeds.join(",") === "0,2" && values.extraLegs.length === 1;
   });
   await page.locator("#verandaControls").screenshot({ path: path.join(resultsDir, "desktop-veranda-controls.png") });
   await page.locator("#pergolaSpin").click();
@@ -152,7 +156,31 @@ async function runDesktop() {
   await page.waitForFunction(() => document.querySelector("#arModal")?.hidden === true);
   await page.screenshot({ path: path.join(resultsDir, "desktop-veranda.png"), fullPage: false });
 
-  results.desktop = { shareUrl, consoleErrors, pageErrors, configuration: await page.evaluate(() => window.sunProtectionConfigurator.getConfiguration()) };
+  await page.locator('[data-product="carport"]').click();
+  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().productType === "carport");
+  await page.locator('[data-catalog-toggle="ledLinear"]').click();
+  await page.locator('[data-catalog-action="add-leg"]').click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.ledLinear === true && values.antiCondensationLayer === true && values.extraLegs.length === 1;
+  });
+  await page.locator('[data-product="window-screen"]').click();
+  await page.locator('[data-catalog-select="drive"]').selectOption("solar");
+  await page.locator('[data-catalog-range="openingPercent"]').evaluate((input) => { input.value = "45"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.openingPercent === 45);
+  await page.locator('[data-product="external-roller-shutter"]').click();
+  await page.locator('[data-catalog-toggle="integratedMosquitoNet"]').click();
+  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.integratedMosquitoNet === true);
+  await page.locator('[data-product="awning"]').click();
+  await page.locator('[data-catalog-toggle="led"]').click();
+  await page.locator('[data-catalog-toggle="sunSensor"]').click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.led === true && values.sunSensor === true && values.drive === "radio";
+  });
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-awning.png") });
+
+  results.desktop = { shareUrl, consoleErrors, pageErrors, registeredProducts: await page.evaluate(() => window.sunProtectionConfigurator.getRegisteredProducts()), configuration: await page.evaluate(() => window.sunProtectionConfigurator.getConfiguration()) };
   await context.close();
 }
 
@@ -256,6 +284,12 @@ async function runAdmin() {
   await page.waitForFunction(() => document.querySelector(".admin-profile-preview__marker")?.textContent === "Słup frontowy");
   if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error("Admin studio must keep exactly one live 3D renderer while switching products");
   await page.locator("#profileStudioSection").screenshot({ path: path.join(resultsDir, "admin-profile-studio-veranda.png") });
+  for (const index of [2, 3, 4, 5]) {
+    await page.locator(`[data-studio-product="${index}"]`).click();
+    await page.waitForFunction(() => document.querySelectorAll("#adminProfileStudio .admin-profile-card").length >= 3);
+    await page.waitForFunction(() => Boolean(document.querySelector(".admin-profile-preview__marker")?.textContent));
+    if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error(`Admin studio lost its single renderer for product ${index}`);
+  }
   await page.locator('[data-product-index="0"] [data-field="description"]').fill("Opis testowy wersji roboczej.");
   await page.locator('[data-product-index="0"] [data-action="save"]').click();
   await page.waitForFunction(() => document.querySelector("#adminToast")?.classList.contains("is-visible"));

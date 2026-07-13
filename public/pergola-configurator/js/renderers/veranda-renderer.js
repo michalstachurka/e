@@ -67,22 +67,24 @@ export function createVerandaRenderer(context) {
     const span = Math.max(0.4, config.depth - 0.1);
     const cassetteHeight = Number(config.visual?.screenCassetteHeight || 0.105);
     const cassetteDepth = Number(config.visual?.screenCassetteDepth || 0.11);
+    const beamHeight = profileMetres(config.profiles, "frame-beam", "b", Number(config.visual?.beamHeight || 0.17));
     const supportDepth = profileMetres(config.profiles, "screen-support", "a", 0.05);
     const supportHeight = profileMetres(config.profiles, "screen-support", "b", 0.08);
-    let cursorY = config.frontHeight;
+    // Kaseta i profil podpierający pozostają poziome. Cały zespół zaczyna się
+    // pod najniższym (frontowym) punktem skośnej belki, więc nie wchodzi w
+    // prowadnicę, a nad nim zostaje osobne pole trójkątne.
+    let cursorY = config.frontHeight - beamHeight;
 
     if (withSupport) {
-      const support = new THREE.Mesh(new THREE.BoxGeometry(span, supportHeight, supportDepth), frameMaterial);
+      const support = new THREE.Mesh(new THREE.BoxGeometry(supportDepth, supportHeight, span), frameMaterial);
       support.position.set(x, cursorY - supportHeight / 2, 0);
-      support.rotation.y = rotationY;
       support.name = `VerandaScreenSupport_${side}`;
       group.add(support);
       cursorY -= supportHeight;
     }
 
-    const cassette = new THREE.Mesh(new THREE.BoxGeometry(span, cassetteHeight, cassetteDepth), frameMaterial);
+    const cassette = new THREE.Mesh(new THREE.BoxGeometry(cassetteDepth, cassetteHeight, span), frameMaterial);
     cassette.position.set(x, cursorY - cassetteHeight / 2, 0);
-    cassette.rotation.y = rotationY;
     cassette.name = `VerandaScreenCassette_${side}`;
     group.add(cassette);
     cursorY -= cassetteHeight;
@@ -94,17 +96,15 @@ export function createVerandaRenderer(context) {
     fabric.name = `VerandaScreenFabric_${side}`;
     group.add(fabric);
 
-    const bottomBar = new THREE.Mesh(new THREE.BoxGeometry(span, 0.05, 0.075), frameMaterial);
+    const bottomBar = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.05, span), frameMaterial);
     bottomBar.position.set(x, 0.025, 0);
-    bottomBar.rotation.y = rotationY;
     bottomBar.name = `VerandaScreenBottomBar_${side}`;
     group.add(bottomBar);
 
-    const guideGeometry = new THREE.BoxGeometry(0.05, fabricHeight, 0.075);
     for (const z of [-span / 2, span / 2]) {
+      const guideGeometry = new THREE.BoxGeometry(0.075, fabricHeight, 0.05);
       const guide = new THREE.Mesh(guideGeometry, frameMaterial);
       guide.position.set(x, fabricHeight / 2, z);
-      guide.rotation.y = rotationY;
       guide.name = `VerandaScreenGuide_${side}`;
       group.add(guide);
     }
@@ -181,6 +181,15 @@ export function createVerandaRenderer(context) {
     posts.name = "VerandaPosts";
     root.add(posts);
 
+    for (const [index, leg] of (config.extraLegs || []).entries()) {
+      const z = THREE.MathUtils.clamp(Number(leg.z), -config.depth / 2 + postDepth / 2, config.depth / 2 - postDepth / 2);
+      const x = THREE.MathUtils.clamp(Number(leg.x), -config.width / 2 + postWidth / 2, config.width / 2 - postWidth / 2);
+      const depthRatio = (config.depth / 2 - z) / config.depth;
+      const legHeight = config.frontHeight + (config.backHeight - config.frontHeight) * depthRatio;
+      const extraPost = box(root, frameMaterial, postWidth, legHeight, postDepth, x, legHeight / 2, z);
+      extraPost.name = `VerandaExtraPost_${index + 1}`;
+    }
+
     const rafterGeometry = new THREE.BoxGeometry(rafterWidth, rafterHeight, roofLength - beamDepth * 1.3);
     const rafters = new THREE.InstancedMesh(rafterGeometry, frameMaterial, config.rafterCount);
     const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(angle, 0, 0));
@@ -192,6 +201,18 @@ export function createVerandaRenderer(context) {
     rafters.instanceMatrix.needsUpdate = true;
     rafters.name = "VerandaRafters";
     root.add(rafters);
+
+    const selectedRafters = config.rafterLeds?.length
+      ? config.rafterLeds
+      : config.lighting
+        ? Array.from({ length: config.rafterCount }, (_, index) => index)
+        : [];
+    for (const index of selectedRafters) {
+      if (index < 0 || index >= config.rafterCount) continue;
+      const x = config.rafterCount === 1 ? 0 : -config.width / 2 + post + ((config.width - 2 * post) * index) / (config.rafterCount - 1);
+      const led = box(root, glowMaterial, Math.max(0.018, rafterWidth * 0.42), 0.012, roofLength - beamDepth * 1.55, x, midHeight - rafterHeight / 2 - 0.008, 0, angle);
+      led.name = `VerandaRafterLED_${index + 1}`;
+    }
 
     const fieldWidth = (config.width - 2 * beamDepth) / config.roofFields;
     const panelGeometry = new THREE.BoxGeometry(Math.max(0.2, fieldWidth - 0.035), roofThickness, roofLength - beamDepth * 1.5);
@@ -214,10 +235,6 @@ export function createVerandaRenderer(context) {
     if (config.leftWall !== "top-wedge") addTriangleFill(root, "left", config.leftTriangle, config);
     if (config.rightWall !== "top-wedge") addTriangleFill(root, "right", config.rightTriangle, config);
     addFrontFill(root, config.frontWall, config);
-
-    if (config.lighting) {
-      box(root, glowMaterial, config.width - 2 * post, 0.012, 0.018, 0, config.frontHeight - beam - 0.01, config.depth / 2 - post * 0.8).name = "LED_Linear";
-    }
 
     ground.scale.setScalar(Math.max(config.width, config.depth) * 1.9);
     shadow.scale.set(config.width * 1.55, config.depth * 1.65, 1);
