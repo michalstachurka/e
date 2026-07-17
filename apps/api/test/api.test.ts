@@ -5,6 +5,8 @@ import { createApp } from "../src/app.js";
 import { ConfiguratorDatabase, TenantProvisionError } from "../src/database.js";
 import { parseTenantHostMap } from "../src/tenant-context.js";
 import { deriveVerandaSlope } from "../../../packages/configurator-core/src/domain.js";
+import { randomBytes } from "node:crypto";
+import sharp from "sharp";
 
 let app: FastifyInstance;
 let database: ConfiguratorDatabase;
@@ -161,6 +163,101 @@ test("saves and restores a project using an unpredictable share id", async () =>
   assert.deepEqual(restored.json().configuration.values.moduleWidths, [4]);
   const crossTenantRestore = await app.inject({ method: "GET", url: `/api/public/other-company/configurations/${body.shareId}` });
   assert.equal(crossTenantRestore.statusCode, 404);
+});
+
+test("enforces feature policy and keeps private photo projects tenant-safe and versioned", async () => {
+  const login = await app.inject({ method: "POST", url: "/api/admin/visnex/login", payload: { email: "admin@example.invalid", password: "local-test-password" } });
+  const cookie = login.headers["set-cookie"];
+  assert.ok(cookie);
+  const features = await app.inject({ method: "GET", url: "/api/admin/visnex/features", headers: { cookie } });
+  assert.equal(features.statusCode, 200);
+  const policy = features.json().settings;
+  assert.deepEqual(features.json().resolutionOrder, ["PLATFORM", "PLAN", "ORGANIZATION", "PRODUCT", "ROLE"]);
+
+  const created = await app.inject({ method: "POST", url: "/api/public/visnex/configurations", payload: { configuration: pergolaConfiguration, expiresInDays: 30 } });
+  assert.equal(created.statusCode, 201);
+  const { shareId } = created.json();
+
+  const disabledPolicy = structuredClone(policy);
+  disabledPolicy.public.customerPhoto = false;
+  assert.equal((await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: disabledPolicy })).statusCode, 200);
+  const blocked = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "dom.jpg", contentBase64: Buffer.from("not-an-image-not-an-image").toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(blocked.statusCode, 403);
+  assert.equal(blocked.json().error, "feature_disabled");
+
+  const enabledPolicy = structuredClone(policy);
+  enabledPolicy.public.customerPhoto = true;
+  enabledPolicy.public.basicPhotoFit = true;
+  assert.equal((await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: enabledPolicy })).statusCode, 200);
+  const invalid = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "dom.jpg", contentBase64: Buffer.from("not-an-image-not-an-image").toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(invalid.statusCode, 415);
+
+  const sourceJpeg = await sharp({ create: { width: 120, height: 80, channels: 3, background: "#b77952" } }).withMetadata({ orientation: 6 }).jpeg({ quality: 90 }).toBuffer();
+  assert.ok((await sharp(sourceJpeg).metadata()).exif);
+  const uploaded = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "taras.jpg", contentBase64: sourceJpeg.toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(uploaded.statusCode, 201);
+  const asset = uploaded.json().asset;
+  assert.equal(asset.mimeType, "image/webp");
+  const content = await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}/assets/${asset.id}/main` });
+  assert.equal(content.statusCode, 200);
+  const cleanMetadata = await sharp(content.rawPayload).metadata();
+  assert.equal(cleanMetadata.exif, undefined);
+  assert.equal(cleanMetadata.orientation, undefined);
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/pilot-a/configurations/${shareId}/assets/${asset.id}/main` })).statusCode, 404);
+
+  const project = created.json().project;
+  project.scene.photoAssetId = asset.id;
+  project.scene.photoTransform.rotationDeg = 4.5;
+  project.scene.photoTransform.offsetX = 0.18;
+  project.scene.camera.referenceLine = [{ x: 0.2, y: 0.7 }, { x: 0.8, y: 0.7 }];
+  project.scene.camera.referenceLengthMm = 4000;
+  const updated = await app.inject({ method: "PUT", url: `/api/public/visnex/configurations/${shareId}`, payload: { project, expectedVersion: 1 } });
+  assert.equal(updated.statusCode, 200);
+  assert.equal(updated.json().currentVersion, 2);
+  const restored = await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}` });
+  assert.equal(restored.json().document.scene.photoTransform.rotationDeg, 4.5);
+  assert.equal(restored.json().document.scene.camera.referenceLengthMm, 4000);
+
+  const publicAdvanced = structuredClone(project);
+  publicAdvanced.scene.camera.method = "ADVISOR_PERSPECTIVE";
+  publicAdvanced.scene.camera.groundPlane = [{ x: .1, y: .8 }, { x: .9, y: .8 }, { x: .8, y: .5 }, { x: .2, y: .5 }];
+  const rejectedAdvanced = await app.inject({ method: "PUT", url: `/api/public/visnex/configurations/${shareId}`, payload: { project: publicAdvanced, expectedVersion: 2 } });
+  assert.equal(rejectedAdvanced.statusCode, 403);
+  assert.equal(rejectedAdvanced.json().feature, "ADVANCED_CALIBRATION");
+
+  const advisorLoaded = await app.inject({ method: "GET", url: `/api/advisor/visnex/projects/${shareId}`, headers: { cookie } });
+  assert.equal(advisorLoaded.statusCode, 200);
+  assert.equal(advisorLoaded.json().document.scene.photoAssetId, asset.id);
+  const advisorUpdated = await app.inject({ method: "PUT", url: `/api/advisor/visnex/projects/${shareId}`, headers: { cookie }, payload: { project: publicAdvanced, expectedVersion: 2 } });
+  assert.equal(advisorUpdated.statusCode, 200);
+  assert.equal(advisorUpdated.json().currentVersion, 3);
+  const versions = await app.inject({ method: "GET", url: `/api/advisor/visnex/projects/${shareId}/versions`, headers: { cookie } });
+  assert.deepEqual(versions.json().versions.map((item: { version: number }) => item.version), [3, 2, 1]);
+
+  const calculation = await app.inject({ method: "POST", url: `/api/advisor/visnex/projects/${shareId}/calculations`, headers: { cookie }, payload: { project: publicAdvanced, discountPercent: 5, transportNet: 500, assemblyNet: 800, additionalItems: [] } });
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.json().calculation.demoOnly, true);
+  assert.ok(calculation.json().calculation.purchaseNet > 0);
+  assert.equal(JSON.stringify(restored.json()).includes("purchaseNet"), false);
+  assert.equal(JSON.stringify(restored.json()).includes("marginNet"), false);
+
+  const projectJson = await app.inject({ method: "POST", url: `/api/advisor/visnex/projects/${shareId}/exports`, headers: { cookie }, payload: { format: "JSON" } });
+  assert.equal(projectJson.statusCode, 201);
+  assert.equal(projectJson.json().project.projectFormatVersion, "1.0");
+  assert.equal(JSON.stringify(projectJson.json().project).includes("storageKey"), false);
+
+  const strictLimit = structuredClone(enabledPolicy);
+  strictLimit.limits.maxPhotoBytes = 100000;
+  await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: strictLimit });
+  const noisy = await sharp(randomBytes(600 * 600 * 3), { raw: { width: 600, height: 600, channels: 3 } }).png().toBuffer();
+  assert.ok(noisy.byteLength > 100000);
+  const tooLarge = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "duzy.png", contentBase64: noisy.toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(tooLarge.statusCode, 413);
+  await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: enabledPolicy });
+  const revoked = await app.inject({ method: "DELETE", url: `/api/advisor/visnex/projects/${shareId}/public-share`, headers: { cookie } });
+  assert.equal(revoked.statusCode, 204);
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}` })).statusCode, 404);
+  assert.equal((await app.inject({ method: "GET", url: `/api/advisor/visnex/projects/${shareId}`, headers: { cookie } })).statusCode, 200);
 });
 
 test("rejects a configuration whose tenant differs from the route", async () => {

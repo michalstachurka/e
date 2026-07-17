@@ -34,6 +34,10 @@ npm run dev
 - panel: `http://localhost:5173/admin.html`
 - API: `http://127.0.0.1:8787`
 
+Konfigurator ma jeden silnik i jeden format projektu. Widok publiczny działa pod zwykłym adresem projektu, a uwierzytelniony Tryb doradcy pod tym samym adresem z `mode=advisor`. Sam parametr nie nadaje uprawnień — backend sprawdza sesję, tenant, rolę i centralnie obliczone możliwości. W panelu sekcja „Dostępność funkcji” rozdziela ustawienia publiczne i doradcy dla prywatnego zdjęcia, kalibracji, maski, ceny, kalkulacji oraz eksportów.
+
+Zdjęcia JPG/PNG/WebP są sprawdzane po sygnaturze, obracane według EXIF, ponownie kodowane bez EXIF/GPS i zapisywane przez wymienny port prywatnego storage. Projekt zapisuje tylko identyfikatory zasobów i wersjonowane parametry sceny. Tryb doradcy udostępnia historię wersji, ręczną kalibrację, maskę, backendową kalkulację demo oraz eksport konstrukcji GLB i `project.json`.
+
 Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`, a kontrakt bezpiecznych profili SVG w `docs/svg-profile-assets.md`.
 
 Smoke test dowolnego wdrożenia lub przyszłej domeny white-label:

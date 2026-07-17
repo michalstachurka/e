@@ -18,6 +18,9 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 - przekroje SVG korzystają z tenantowych, niezmiennych zasobów, wymiennego object storage i wspólnej fabryki geometrii Three.js opisanej w [`svg-profile-assets.md`](svg-profile-assets.md);
 - definicje produktów i zakresy pochodzą z publicznego API, z jawnym fallbackiem demo dla statycznego GitHub Pages;
 - API waliduje, zapisuje i wersjonuje konfiguracje;
+- jeden wersjonowany dokument projektu jest współdzielony przez tryb publiczny i Tryb doradcy;
+- prywatne zdjęcia nieruchomości oraz maski pierwszego planu przechodzą kontrolowany pipeline obrazu i są pobierane wyłącznie przez autoryzowane trasy projektu;
+- centralny resolver możliwości łączy ustawienia platformy, planu, organizacji, produktu i roli;
 - wycena, publiczny BOM i PDF powstają po stronie serwera;
 - panel administratora edytuje wersję roboczą i publikuje nową wersję;
 - zapisane projekty wskazują niezmienną wersję produktu.
@@ -35,6 +38,7 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 - zebranie publicznego DTO;
 - walidację z debounce;
 - wysłanie konfiguracji do zapisu, wyceny i PDF;
+- podstawowe dopasowanie prywatnego zdjęcia oraz wspólne komponowanie zdjęcia, WebGL i maski do podglądu i snapshotu;
 - eksport aktualnej sceny do AR;
 - zachowanie odczytu starszych linków pergoli wyłącznie jako kompatybilność wsteczna.
 
@@ -44,7 +48,7 @@ Publiczny panel nie pokazuje przekrojów profili ani technicznych oznaczeń `a`/
 
 ### Wspólny rdzeń
 
-`packages/contracts` zawiera schematy Zod publicznych DTO i bezpiecznych danych administracyjnych.
+`packages/contracts` zawiera schematy Zod publicznych DTO, bezpiecznych danych administracyjnych, polityk możliwości i dokumentu projektu `1.0`.
 
 `packages/configurator-core` zawiera:
 
@@ -80,7 +84,7 @@ Na bokach werandy prostokątna zabudowa i górny trójkąt są osobnymi decyzjam
 - HTTP-only cookies, `SameSite=Strict` i wygaśnięcia sesji;
 - rate limiting logowania;
 - konfigurowalnego CORS;
-- limitu body 5 MB;
+- limitu body 13 MB oraz niższych, konfigurowalnych limitów pliku i pikseli w procesorze zdjęć;
 - sanityzacji edytowalnych tekstów;
 - filtrowania danych po `tenantSlug`.
 
@@ -91,6 +95,9 @@ Publiczne endpointy:
 - `POST /api/public/:tenantSlug/validate`
 - `POST /api/public/:tenantSlug/configurations`
 - `GET /api/public/:tenantSlug/configurations/:shareId`
+- `PUT /api/public/:tenantSlug/configurations/:shareId`
+- `GET|POST|DELETE /api/public/:tenantSlug/configurations/:shareId/assets/...`
+- `GET /api/public/:tenantSlug/capabilities`
 - `POST /api/public/:tenantSlug/quotes`
 - `POST /api/public/:tenantSlug/pdf`
 - `GET /api/public/:tenantSlug/profile-assets/:assetId`
@@ -108,12 +115,32 @@ Administracyjne endpointy:
 - `GET /api/admin/:tenantSlug/profile-assets/:assetId/content`
 - `GET /api/admin/:tenantSlug/profile-assets/audit`
 - `DELETE /api/admin/:tenantSlug/profile-assets/:assetId`
+- `GET|PUT /api/admin/:tenantSlug/features`
+
+Endpointy Trybu doradcy wymagają sesji oraz uprawnienia roli:
+
+- `GET|PUT /api/advisor/:tenantSlug/projects/:shareId`
+- `GET /api/advisor/:tenantSlug/projects/:shareId/versions`
+- `GET|POST|DELETE /api/advisor/:tenantSlug/projects/:shareId/assets/...`
+- `POST /api/advisor/:tenantSlug/projects/:shareId/calculations`
+- `POST /api/advisor/:tenantSlug/projects/:shareId/exports`
+- `DELETE /api/advisor/:tenantSlug/projects/:shareId/public-share`
+
+Parametr `mode=advisor` wybiera interfejs, ale nie nadaje dostępu. Frontend pobiera możliwości z chronionego endpointu, a każda operacja zdjęcia, kalibracji, kalkulacji i eksportu jest ponownie sprawdzana przez backend.
+
+### Role i możliwości
+
+Kontrakt aplikacyjny przewiduje role `platform_admin`, `organization_admin`, `advisor` i `public_customer`. Bieżące konta pilota zachowują kompatybilne role bazowe: `OWNER`/`ADMIN` są mapowane na `organization_admin`, `EDITOR`/`VIEWER` na `advisor`, a anonimowy posiadacz tokenu na `public_customer`. `platform_admin` jest rolą zarezerwowaną dla przyszłej warstwy operatorskiej i nie otrzymał w Stage 1 publicznego panelu.
+
+`resolveEffectiveCapabilities` jest jedynym miejscem rozstrzygania możliwości. Efektywna wartość to przecięcie polityki platformy, przyszłego planu, ustawień organizacji, opcjonalnej polityki produktu i roli. Panel rozdziela ustawienia trybu publicznego i doradcy dla zdjęcia, dopasowania, kalibracji, maski, ceny, kalkulacji oraz eksportów. Limity obejmują wielkość i rozdzielczość zdjęcia, liczbę zasobów i wersji projektu. Ukrycie kontrolki jest wyłącznie prezentacją wyniku; API niezależnie odrzuca niedozwolone wywołanie.
 
 ### Niezmienniki izolacji klientów
 
 - każda publiczna operacja przyjmująca konfigurację porównuje `configuration.tenantSlug` z `:tenantSlug` w adresie i odrzuca rozbieżność jako `tenant_mismatch`;
 - każdy administracyjny endpoint z `:tenantSlug` korzysta ze wspólnego `requireTenantPermission`, który porównuje klienta sesji z klientem trasy i sprawdza wymagane uprawnienie roli przed uruchomieniem logiki endpointu;
 - odczyt zapisanej konfiguracji wymaga jednocześnie poprawnego `shareId` i zgodnego klienta;
+- wszystkie prywatne zasoby są wiązane jednocześnie z `tenant_id`, projektem i zasobem; trasa innego tenanta zwraca 404;
+- publiczny token jest losowy, wygasa i może zostać trwale unieważniony przez uprawnionego administratora organizacji bez utraty dostępu doradcy do projektu;
 - zapytania do danych produktowych, brandingu, konfiguracji i wycen muszą zawierać filtr klienta. Nowych endpointów nie wolno zabezpieczać wyłącznie identyfikatorem przekazanym przez frontend.
 - wspólna domena może wybrać klienta przez zwalidowany `?tenant=slug`, ale host obecny w serwerowej `TENANT_HOST_MAP` jest zablokowany do wskazanego klienta i ma pierwszeństwo przed parametrem URL;
 - frontend nie używa katalogu fallback `visnex` dla innego klienta. Brak katalogu lub błędna mapa domeny kończy się stanem fail-closed bez renderowania cudzych produktów.
@@ -130,6 +157,16 @@ Najpierw sprawdzany jest aktywny wpis w `tenant_domains`, a dopiero potem przej�
 
 Schematy SQLite i PostgreSQL mają logiczne tabele dla: `Tenant`, `TenantDomain`, `AdminUser`, `BrandingSettings`, `ProductCategory`, `ProductType`, `ProductDefinition`, `ProductVersion`, `ParameterDefinition`, `ProfileDefinition`, `MaterialDefinition`, `ColorDefinition`, `OptionGroup`, `OptionValue`, `DependencyRule`, `ValidationRule`, `PricingRule`, `BomRule`, `PdfTemplate`, `SavedConfiguration`, `Quote` i `BomDocument`.
 
+Rozszerzenie projektowe dodaje `FeaturePolicySet`, `ProjectDocument`, `ProjectVersion`, `ProjectShareRevocation`, `PrivateAsset`, `PrivateAssetVariant`, `PrivateAssetObject`, `ProjectAuditEvent`, `AdvisorCalculation` i `ExportJob`. PostgreSQL dostaje je w migracji `3 / advisor_projects_private_assets_and_capabilities`; SQLite tworzy równoważny schemat idempotentnie. Istniejący `SavedConfiguration` bez dokumentu projektu jest odczytywany przez adapter zgodności jako projekt `1.0` z domyślną sceną.
+
+Jeden dokument projektu przechowuje wersję formatu, konfigurację produktu oraz scenę: identyfikatory prywatnych zasobów, transformację zdjęcia, transformację modelu, kamerę, linie i płaszczyzny kalibracji, punkt montażu, światło, shadow catcher i maskę. Nie zawiera bajtów obrazu, kluczy storage, podpisanych adresów ani kalkulacji. Każdy zapis stosuje optimistic locking przez `expectedVersion`, tworzy niezmienną wersję z autorem i datą oraz zdarzenie audytowe.
+
+### Prywatne zdjęcia i maski
+
+`PrivateAssetService` oddziela metadane, storage i przetwarzanie. `PrivateAssetStorage` można zastąpić adapterem S3 bez zmiany tras lub dokumentu projektu; obecny adapter Stage 1 przechowuje obiekty w dedykowanej, tenantowej tabeli bazy, a nie w lokalnym systemie plików ani JSON projektu. `PrivateAssetProcessor` jest osobnym portem, więc przetwarzanie może zostać przekierowane do workera.
+
+Procesor sprawdza sygnaturę JPG/PNG/WebP, restrykcyjny base64, limit bajtów i pikseli, wykonuje rotację EXIF, po czym ponownie koduje obraz. Re-encoding usuwa EXIF i GPS. Zdjęcie otrzymuje wariant główny WebP oraz podgląd, maska osobny PNG. Oryginalne bajty nie są zachowywane. Dostęp prowadzi przez trasę wymagającą tokenu projektu albo sesji doradcy; odpowiedź ma `private, no-store` i `nosniff`. Usunięcie zdjęcia trwale usuwa obiekty wszystkich wariantów i zależne maski oraz zapisuje audyt.
+
 `ConfiguratorStore` oddziela trasy Fastify od dialektu bazy i od synchronicznego API `node:sqlite`. Wszystkie wywołania w warstwie HTTP są `await`-owane. `ConfiguratorDatabase` implementuje SQLite, a `PostgresConfiguratorDatabase` ten sam kontrakt dla PostgreSQL. `DATASTORE=sqlite|postgres` wybiera adapter jawnie; obecność samego `DATABASE_URL` nie zmienia aktywnego magazynu.
 
 Operatorskie `npm run tenant:provision` tworzy nowego tenanta w jednej transakcji: branding, administratora, kategorię, osobne definicje i identyfikatory wersji obu produktów oraz aktywne domeny. Nie ma publicznego endpointu onboardingu. Niepowodzenie, w tym konflikt domeny, wycofuje całą operację.
@@ -144,6 +181,8 @@ Backend obsługuje demonstracyjnie cenę bazową, stawkę za m², dopłatę za m
 
 BOM obsługuje w pionowym wycinku elementy stałe, na moduł, słup, krokiew, lamelę i powierzchnię. Wynik publiczny zawiera nazwy ogólne, ilości i jednostki, bez kodów, kosztów i instrukcji technologicznych.
 
+Tryb doradcy ma osobny backendowy kalkulator demo. Bierze wersjonowane reguły produktu i wylicza zakup, sprzedaż, marżę, rabat ograniczony rolą, VAT, transport, montaż, pozycje dodatkowe, walutę, ważność oraz identyfikator wersji cennika. Dane przysłane przez przeglądarkę nie są uznawane za wynik ceny. Publiczne API otrzymuje wyłącznie `HIDDEN`, `FROM` albo bezpieczny detal `EXACT`; nie serializuje kosztu zakupu, marży ani wewnętrznych reguł. Nie jest to zatwierdzony algorytm handlowy.
+
 ## PDF
 
 Endpoint PDF ponownie waliduje konfigurację, wylicza aktualną wycenę i BOM, a następnie tworzy dokument przez `pdf-lib`. Frontend może przesłać PNG sceny. Dokument zawiera branding, numer projektu, datę, produkt, wymiary, cenę demo, publiczny BOM i informację o weryfikacji technicznej.
@@ -153,6 +192,12 @@ Gdy API nie jest dostępne, zachowany jest dotychczasowy lokalny wydruk jako wyr
 ## Zapis i udostępnianie
 
 Nowy projekt jest walidowany i zapisywany przez aktywny `ConfiguratorStore`. Link zawiera tylko `tenant` i losowy `project`. Domyślne wygaśnięcie ustawione przez frontend wynosi 30 dni. Starsze linki pergoli z parametrami mogą zostać odczytane, ale aplikacja nie tworzy nowych linków tego typu.
+
+Tryb publiczny i doradcy modyfikują ten sam projekt. Doradca widzi historię wersji, może uzupełnić kalibrację, maskę i światło, wykonać kalkulację oraz autoryzować eksport. Unieważnienie publicznego linku tworzy oddzielny rekord i audyt; projekt oraz dostęp sesyjny organizacji pozostają zachowane.
+
+## Eksport projektu
+
+Autoryzacja eksportu odbywa się na backendzie i tworzy tenantowy `ExportJob` w stanie `READY`. JSON zawiera wersjonowany dokument potrzebny do ponownego otwarcia projektu, bez sekretów, adresów storage i kalkulacji. GLB jest tworzony z klona aktywnej sceny przez `GLTFExporter`: bez zdjęcia, maski, shadow catchera, prowadnic i danych cenowych. Eksport zachowuje jednostki Three.js, gdzie 1000 mm reprezentowane w scenie jako 1 odpowiada 1 metrowi glTF. Do `extras` trafiają wyłącznie identyfikator projektu i produktu, wersja eksportu oraz podstawowe wymiary. `ExportJob` jest granicą pod przyszłą kolejkę; Stage 1 wykonuje mały eksport synchronicznie w przeglądarce po autoryzacji.
 
 ## AR
 
@@ -198,6 +243,11 @@ Onboarding pilota korzysta z `NEW_TENANT_NAME`, `NEW_TENANT_ADMIN_PASSWORD` i ar
 - Panel edytuje podstawowe dane produktu, zakresy, wartości domyślne, widoczność pól, uproszczone profile, ceny demo, branding i publikację. Pełne edytory materiałów, opcji, zależności, BOM i szablonów PDF wymagają kolejnego etapu.
 - Reguły ceny i BOM są demonstracyjne, nie handlowe ani produkcyjne.
 - GitHub Pages nie hostuje API; bez `VITE_API_BASE_URL` działa jawny tryb statyczny z podglądem i AR, ale zapis, wycena i serwerowy PDF są niedostępne.
+- Obecny adapter prywatnych zasobów jest bazodanowy. Przed większym ruchem należy wdrożyć adapter S3, podpisane krótkotrwałe URL-e/CDN, retencję i skanowanie antywirusowe; dokument projektu i API nie wymagają w tym celu migracji formatu.
+- Przetwarzanie obrazu i eksport ma port procesora oraz rekord zadania, ale w Stage 1 działa synchronicznie. Worker, retry, idempotency key, monitoring kolejki i limit przestrzeni rozliczany dla planu pozostają kolejnym etapem.
+- Role aplikacyjne i centralne możliwości są gotowe na plany, ale UI zarządzania członkostwami, billing, `platform_admin` oraz produktowe nadpisania polityk nie są jeszcze zbudowane.
+- Izolacja opiera się na filtrach aplikacyjnych i testach obu adapterów; PostgreSQL RLS nadal jest wymaganym dodatkowym zabezpieczeniem przed samoobsługowym SaaS.
+- Kalibracja jest świadomie wspomagana ręcznie. Nie estymuje automatycznie pełnej kamery z niedostatecznej liczby punktów, nie wykonuje segmentacji AI i nie obiecuje dokładności pomiarowej.
 - PDF MVP używa bezpiecznego fontu bazowego i transliteracji znaków w warstwie serwerowej. Produkcyjny szablon wymaga zatwierdzonego fontu TTF/OTF i finalnego brandingu.
 - Pergola nadal przebudowuje część geometrii po zmianach konstrukcyjnych. Dalsza optymalizacja lameli do jednego `InstancedMesh` pozostaje osobnym zadaniem wydajnościowym.
 - Przekroje seedów, w tym profil podpierający kasetę ZIP, pozostają danymi demonstracyjnymi do czasu przekazania kart technicznych producenta. Interfejs nie przedstawia ich jako zatwierdzonych danych wykonawczych.

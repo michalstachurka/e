@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFile, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFile, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
@@ -71,6 +71,8 @@ const chromeCandidates = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "/usr/bin/google-chrome",
   "/usr/bin/chromium",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ].filter(Boolean);
 const executablePath = chromeCandidates.find(existsSync);
 if (!executablePath) throw new Error("Set CHROME_PATH to run browser tests.");
@@ -98,10 +100,24 @@ async function runDesktop() {
   await page.waitForFunction(() => window.sunProtectionConfigurator?.getConfiguration);
   const tenantContext = await page.evaluate(() => window.__VISNEX_TENANT_CONTEXT__);
   if (tenantContext?.tenantSlug !== "visnex" || tenantContext?.hostLocked !== false) throw new Error(`Unexpected tenant context: ${JSON.stringify(tenantContext)}`);
-  await page.waitForSelector("#pergolaMount canvas");
+  await page.waitForSelector("#pergolaMount canvas:not(.photo-stage-layer)");
   await page.waitForFunction(() => document.querySelector("#pergolaMount")?.getAttribute("aria-busy") === "false");
   await page.waitForFunction(() => document.querySelector("#configuratorNotice")?.classList.contains("is-valid"));
   if (await page.locator(".dimension-guide, .profile-specs, .profile-card").count()) throw new Error("Technical profile tooling leaked into the public configurator");
+
+  const photoInput = page.locator("#propertyPhotoInput");
+  await photoInput.setInputFiles({
+    name: "taras-test.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP4z8DAwMDAxMDAwMAAAAwAAf9bF4cAAAAASUVORK5CYII=", "base64"),
+  });
+  await page.waitForFunction(() => Boolean(window.sunProtectionConfigurator?.getProject().scene.photoAssetId));
+  await page.waitForFunction(() => document.querySelector("#pergolaMount")?.classList.contains("has-property-photo"));
+  await page.locator("#photoScale").evaluate((input) => { input.value = "1.18"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator("#photoRotation").evaluate((input) => { input.value = "2.5"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator("#savePhotoFit").click();
+  await page.waitForFunction(() => window.sunProtectionConfigurator.getProject().scene.photoTransform.rotationDeg === 2.5);
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-property-photo.png") });
 
   await page.locator('[data-modules="2"]').click();
   await page.locator('#pergolaScreens [data-side="front"]').click();
@@ -125,6 +141,8 @@ async function runDesktop() {
     return values.roofAngle === 9 && values.leftWall === "zip-screen" && values.leftTriangle === "solid" && values.leftScreenSupport === true
       && values.rafterLeds.join(",") === "0,2" && values.extraLegs.length === 1;
   });
+  await page.waitForFunction(() => document.querySelector("#pergolaMount")?.classList.contains("has-property-photo"));
+  if (await page.evaluate(() => window.sunProtectionConfigurator.getProject().scene.photoTransform.rotationDeg) !== 2.5) throw new Error("Photo transform was not restored");
   await page.locator("#verandaControls").screenshot({ path: path.join(resultsDir, "desktop-veranda-controls.png") });
   await page.locator("#pergolaSpin").click();
   await page.locator('[data-view="left"]').click();
@@ -218,7 +236,7 @@ async function runMobile() {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`http://127.0.0.1:${webPort}/e/konfigurator.html`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#pergolaMount canvas");
+  await page.waitForSelector("#pergolaMount canvas:not(.photo-stage-layer)");
   await page.locator("#pergolaOptionsToggle").click();
   await page.waitForFunction(() => document.querySelector("#pergolaOptionsToggle")?.getAttribute("aria-expanded") === "true");
   await page.waitForTimeout(900);
@@ -241,7 +259,7 @@ async function runMobile() {
   await page.locator("#pergolaPanelClose").click({ force: true });
   await page.waitForFunction(() => document.querySelector("#pergolaOptionsToggle")?.getAttribute("aria-expanded") === "false");
   await page.screenshot({ path: path.join(resultsDir, "mobile-veranda.png"), fullPage: false });
-  results.mobile = { pageErrors, canvas: await page.locator("#pergolaMount canvas").count() === 1, configuration: await page.evaluate(() => window.sunProtectionConfigurator.getConfiguration()) };
+  results.mobile = { pageErrors, canvas: await page.locator("#pergolaMount canvas:not(.photo-stage-layer)").count() === 1, configuration: await page.evaluate(() => window.sunProtectionConfigurator.getConfiguration()) };
   await context.close();
 }
 
@@ -262,6 +280,14 @@ async function runAdmin() {
   await page.locator('[name="password"]').fill("local-e2e-password");
   await page.locator("#adminLoginForm button").click();
   await page.waitForSelector("#adminWorkspace:not([hidden])");
+  await page.waitForSelector("#featureAvailabilityForm .admin-feature-policy__row");
+  const publicPhotoFeature = page.locator('input[name="public.customerPhoto"]');
+  if (!(await publicPhotoFeature.isChecked())) throw new Error("Public photo feature should be enabled in the pilot policy");
+  await publicPhotoFeature.uncheck();
+  await page.locator("#featureAvailabilityForm > .admin-action").click();
+  await page.waitForFunction(() => document.querySelector("#adminToast")?.textContent.includes("Dostępność"));
+  await publicPhotoFeature.check();
+  await page.locator("#featureAvailabilityForm > .admin-action").click();
   await page.waitForSelector("#adminProfileCanvas canvas");
   const profileCards = page.locator("#adminProfileStudio .admin-profile-card");
   if (await profileCards.count() < 3) throw new Error("Admin profile studio does not show all pergola profiles");
@@ -298,6 +324,98 @@ async function runAdmin() {
   await context.close();
 }
 
+function inspectGlb(bytes) {
+  if (bytes.subarray(0, 4).toString("ascii") !== "glTF" || bytes.readUInt32LE(4) !== 2) throw new Error("Downloaded file is not a glTF 2.0 binary");
+  const jsonLength = bytes.readUInt32LE(12);
+  const jsonType = bytes.readUInt32LE(16);
+  if (jsonType !== 0x4e4f534a) throw new Error("GLB is missing its JSON chunk");
+  return JSON.parse(bytes.subarray(20, 20 + jsonLength).toString("utf8").trim());
+}
+
+async function parseGlbWithThree(bytes) {
+  const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return new Promise((resolve, reject) => new GLTFLoader().parse(arrayBuffer, "", resolve, reject));
+}
+
+async function runAdvisor(shareUrl) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+  await configurePage(context);
+  const page = await context.newPage();
+  const pageErrors = [];
+  const consoleErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error" && !message.text().includes("Multiple instances of Three.js")) consoleErrors.push(message.text()); });
+  await page.goto(`http://127.0.0.1:${webPort}/e/admin.html`, { waitUntil: "domcontentloaded" });
+  await page.locator('[name="email"]').fill("admin@example.invalid");
+  await page.locator('[name="password"]').fill("local-e2e-password");
+  await page.locator("#adminLoginForm button").click();
+  await page.waitForSelector("#adminWorkspace:not([hidden])");
+  const advisorUrl = new URL(shareUrl); advisorUrl.searchParams.set("mode", "advisor");
+  await page.goto(advisorUrl.toString(), { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.sunProtectionConfigurator?.getProject);
+  await page.waitForSelector("#advisorProjectTools:not([hidden])");
+  if (await page.locator("#configuratorModeLabel").textContent() !== "Tryb doradcy") throw new Error("Advisor mode label is missing");
+  await page.locator("#advisorFov").evaluate((input) => { input.value = "44"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator('[data-click-tool="groundPlane"]').click();
+  const guide = page.locator(".photo-stage-layer--guides");
+  const box = await guide.boundingBox();
+  for (const [x, y] of [[.2, .8], [.8, .8], [.7, .55], [.3, .55]]) await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
+  await page.locator("#saveAdvisorProject").click();
+  await page.waitForFunction(() => window.sunProtectionConfigurator.getProject().scene.camera.fovDeg === 44 && window.sunProtectionConfigurator.getProject().scene.camera.groundPlane.length === 4);
+  await page.locator("#maskToggle").click();
+  const foreground = page.locator(".photo-stage-layer--foreground");
+  const foregroundBox = await foreground.boundingBox();
+  await page.mouse.move(foregroundBox.x + foregroundBox.width * .45, foregroundBox.y + foregroundBox.height * .58);
+  await page.mouse.down();
+  await page.mouse.move(foregroundBox.x + foregroundBox.width * .56, foregroundBox.y + foregroundBox.height * .58, { steps: 8 });
+  await page.mouse.up();
+  const maskAlpha = await foreground.evaluate((layer) => layer.getContext("2d").getImageData(Math.round(layer.width * .5), Math.round(layer.height * .58), 1, 1).data[3]);
+  if (!maskAlpha) throw new Error("Foreground mask did not occlude the model layer");
+  await page.locator("#maskSave").click();
+  await page.waitForFunction(() => Boolean(window.sunProtectionConfigurator.getProject().scene.foregroundMaskAssetId));
+  await page.locator("#refreshProjectHistory").click();
+  await page.waitForFunction(() => document.querySelectorAll("#projectVersionHistory li").length >= 3);
+  await page.locator("#advisorCalculate").click();
+  await page.waitForSelector("#advisorCalculationResult:not([hidden])");
+  const beforeExport = await page.evaluate(() => JSON.stringify(window.sunProtectionConfigurator.getProject()));
+
+  const jsonDownloadPromise = page.waitForEvent("download");
+  await page.locator("#exportProjectJson").click();
+  const jsonDownload = await jsonDownloadPromise;
+  const jsonPath = await jsonDownload.path();
+  const exportedProject = JSON.parse(readFileSync(jsonPath, "utf8"));
+  if (exportedProject.projectFormatVersion !== "1.0" || exportedProject.scene.camera.fovDeg !== 44) throw new Error("project.json cannot restore advisor calibration");
+  if (JSON.stringify(exportedProject).includes("storageKey") || JSON.stringify(exportedProject).includes("purchaseNet")) throw new Error("project.json leaked private storage or calculation data");
+
+  const glbDownloadPromise = page.waitForEvent("download");
+  await page.locator("#exportProjectGlb").click();
+  const glbDownload = await glbDownloadPromise;
+  const glbPath = await glbDownload.path();
+  const glbBytes = readFileSync(glbPath);
+  const glbJson = inspectGlb(glbBytes);
+  const parsed = await parseGlbWithThree(glbBytes);
+  if (!parsed.scene || !glbJson.meshes?.length) throw new Error("GLB could not be loaded back by GLTFLoader");
+  const glbText = JSON.stringify(glbJson);
+  if (glbText.includes("photoAssetId") || glbText.includes("purchaseNet") || glbText.includes("storageKey")) throw new Error("GLB leaked excluded project data");
+  if (glbJson.nodes?.some((node) => /helper|ground|shadow/i.test(node.name || ""))) throw new Error("GLB contains helper objects");
+  const afterExport = await page.evaluate(() => JSON.stringify(window.sunProtectionConfigurator.getProject()));
+  if (afterExport !== beforeExport) throw new Error("GLB export modified the active configurator project");
+
+  const unitBytes = await page.evaluate(async () => {
+    const THREE = await import("/e/pergola-configurator/assets/vendor/three/three.module.js");
+    const { GLTFExporter } = await import("/e/pergola-configurator/assets/vendor/three/examples/jsm/exporters/GLTFExporter.js");
+    const root = new THREE.Group(); root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial()));
+    return Array.from(new Uint8Array(await new GLTFExporter().parseAsync(root, { binary: true })));
+  });
+  const unitJson = inspectGlb(Buffer.from(unitBytes));
+  const positionAccessor = unitJson.accessors[unitJson.meshes[0].primitives[0].attributes.POSITION];
+  if (Math.abs((positionAccessor.max[0] - positionAccessor.min[0]) - 1) > 1e-6) throw new Error("1000 mm did not remain 1 metre in GLB");
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-advisor-calibration.png") });
+  results.advisor = { pageErrors, consoleErrors, glbMeshes: glbJson.meshes.length, projectVersion: exportedProject.projectFormatVersion, unitMetres: positionAccessor.max[0] - positionAccessor.min[0], maskAlpha };
+  await context.close();
+}
+
 try {
   if (process.env.E2E_ONLY_ADMIN === "1") await runAdmin();
   else {
@@ -306,6 +424,7 @@ try {
     await runDesktop();
     await runMobile();
     await runAdmin();
+    await runAdvisor(results.desktop.shareUrl);
   }
   const errors = Object.values(results).flatMap((result) => [...(result.pageErrors || []), ...(result.consoleErrors || [])]);
   console.log(JSON.stringify(results, null, 2));

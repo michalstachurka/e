@@ -78,6 +78,7 @@ test("PostgreSQL adapter preserves tenant isolation and version ownership", asyn
     assert.deepEqual(migrations.rows, [
       { version: 1, name: "initial_configurator_schema" },
       { version: 2, name: "tenant_profile_svg_assets" },
+      { version: 3, name: "advisor_projects_private_assets_and_capabilities" },
     ]);
     assert.equal((await app.inject({ method: "GET", url: "/health" })).statusCode, 200);
 
@@ -101,6 +102,15 @@ test("PostgreSQL adapter preserves tenant isolation and version ownership", asyn
     const cookie = login.headers["set-cookie"];
     assert.ok(cookie);
     assert.equal((await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } })).statusCode, 403);
+    const featurePolicy = await app.inject({ method: "GET", url: "/api/admin/pilot-pg/features", headers: { cookie } });
+    assert.equal(featurePolicy.statusCode, 200);
+    assert.equal(featurePolicy.json().settings.advisor.advancedCalibration, true);
+    const projectDocument = saved.json().project;
+    projectDocument.scene.photoTransform.offsetY = 0.12;
+    const projectUpdate = await app.inject({ method: "PUT", url: `/api/advisor/pilot-pg/projects/${shareId}`, headers: { cookie }, payload: { project: projectDocument, expectedVersion: 1 } });
+    assert.equal(projectUpdate.statusCode, 200, projectUpdate.body);
+    assert.equal(projectUpdate.json().currentVersion, 2);
+    assert.equal((await app.inject({ method: "GET", url: `/api/advisor/pilot-pg/projects/${shareId}/versions`, headers: { cookie } })).json().versions.length, 2);
 
     const uploadedProfile = await app.inject({
       method: "POST",
