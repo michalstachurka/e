@@ -5,7 +5,7 @@ import { createPergolaCanvas } from "./pergola-canvas.js";
 import { setupPergolaAR } from "./ar-controller.js";
 import { ConfiguratorApi } from "./core/configurator-api.js";
 import { fallbackCatalog } from "./core/fallback-catalog.js";
-import { resolveProfileDefinitions } from "./core/profile-definitions.js";
+import { hydrateProfileAssets } from "./core/profile-definitions.js";
 import { resolveTenantContext } from "./core/tenant-context.js";
 
 const mount = document.getElementById("pergolaMount");
@@ -50,10 +50,13 @@ if (mount) {
     document.body.dataset.tenantStatus = "unavailable";
     return;
   }
-  const products = [...catalog.products]
+  const visibleProducts = [...catalog.products]
     .filter((product) => product.enabled)
-    .sort((a, b) => a.order - b.order)
-    .map((product) => ({ ...product, profiles: resolveProfileDefinitions(product) }));
+    .sort((a, b) => a.order - b.order);
+  const products = await Promise.all(visibleProducts.map(async (product) => ({
+    ...product,
+    profiles: await hydrateProfileAssets(product, api),
+  })));
   const productDefinitions = new Map(products.map((product) => [product.productType, product]));
   const COLORS = (productDefinitions.get("bioclimatic-pergola")?.colors || fallbackCatalog.products[0].colors).map((color) => ({ ...color }));
   const colorAliases = { antracyt: "anthracite", bialy: "warm-white", czarny: "black", braz: "bronze" };

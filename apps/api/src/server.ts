@@ -5,6 +5,16 @@ import { resolve } from "node:path";
 import { createApp } from "./app.js";
 import { createConfiguredStore } from "./create-store.js";
 import { parseTenantHostMap } from "./tenant-context.js";
+import { StaticProfileAssetLimitProvider } from "./profile-assets.js";
+import { defaultProfileAssetLimits } from "./profile-svg.js";
+
+function positiveEnvNumber(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
+  return value;
+}
 
 const adminPassword = process.env.ADMIN_SEED_PASSWORD;
 if (!adminPassword || adminPassword.length < 12 || adminPassword.startsWith("replace-")) {
@@ -39,6 +49,13 @@ const app = await createApp({
   logger: true,
   defaultTenantSlug: process.env.DEFAULT_TENANT_SLUG || "visnex",
   tenantHostMap: parseTenantHostMap(process.env.TENANT_HOST_MAP),
+  profileAssetLimitProvider: new StaticProfileAssetLimitProvider({
+    maxFileBytes: positiveEnvNumber("PROFILE_ASSET_MAX_BYTES", defaultProfileAssetLimits.maxFileBytes),
+    maxProfilesPerTenant: positiveEnvNumber("PROFILE_ASSET_MAX_COUNT", defaultProfileAssetLimits.maxProfilesPerTenant),
+    maxStorageBytesPerTenant: positiveEnvNumber("PROFILE_ASSET_MAX_TOTAL_BYTES", defaultProfileAssetLimits.maxStorageBytesPerTenant),
+    maxDimensionMm: positiveEnvNumber("PROFILE_MAX_DIMENSION_MM", defaultProfileAssetLimits.maxDimensionMm),
+    maxExtrusionLengthMm: positiveEnvNumber("PROFILE_MAX_EXTRUSION_MM", defaultProfileAssetLimits.maxExtrusionLengthMm),
+  }),
   store,
 });
 

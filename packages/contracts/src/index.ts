@@ -183,15 +183,56 @@ export const ColorDefinitionSchema = z.object({
   demoOnly: z.boolean().default(false),
 });
 
+export const AdminRoleSchema = z.enum(["OWNER", "ADMIN", "EDITOR", "VIEWER"]);
+export type AdminRole = z.infer<typeof AdminRoleSchema>;
+
+export const ProfileGeometryTypeSchema = z.enum(["BOX", "SVG_PROFILE"]);
+export const ProfileRotationSchema = z.union([
+  z.literal(0),
+  z.literal(90),
+  z.literal(180),
+  z.literal(270),
+]);
+
+export const SvgProfileReferenceSchema = z.object({
+  assetId: z.string().uuid(),
+  extrusionLengthMm: z.number().finite().positive().max(100_000),
+  widthMm: z.number().finite().positive().max(100_000),
+  heightMm: z.number().finite().positive().max(100_000),
+  viewBox: z.object({
+    minX: z.number().finite(),
+    minY: z.number().finite(),
+    width: z.number().finite().positive().max(100_000),
+    height: z.number().finite().positive().max(100_000),
+  }),
+  rotationDeg: ProfileRotationSchema.default(0),
+  mirrorX: z.boolean().default(false),
+  mirrorY: z.boolean().default(false),
+  profileFormatVersion: z.literal("1.0"),
+  geometryFormatVersion: z.literal("1.0"),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+});
+export type SvgProfileReference = z.infer<typeof SvgProfileReferenceSchema>;
+
 export const ProfileDefinitionSchema = z.object({
   id: z.string().min(1).max(80),
   label: z.string().min(1).max(120),
   usage: z.string().min(1).max(180),
-  aMm: z.number().int().positive().max(2000),
-  bMm: z.number().int().positive().max(2000),
+  aMm: z.number().finite().positive().max(100_000),
+  bMm: z.number().finite().positive().max(100_000),
   shape: z.enum(["rectangular", "louvre"]).default("rectangular"),
+  geometryType: ProfileGeometryTypeSchema.default("BOX"),
+  svgProfile: SvgProfileReferenceSchema.optional(),
   demoOnly: z.boolean().default(false),
+}).superRefine((profile, context) => {
+  if (profile.geometryType === "SVG_PROFILE" && !profile.svgProfile) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["svgProfile"], message: "Profil SVG wymaga przesłanego i zweryfikowanego pliku." });
+  }
+  if (profile.geometryType === "BOX" && profile.svgProfile) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["svgProfile"], message: "Kształt uproszczony nie może jednocześnie wskazywać profilu SVG." });
+  }
 });
+export type ProfileDefinition = z.infer<typeof ProfileDefinitionSchema>;
 
 export const ProductDefinitionSchema = z.object({
   id: z.string().min(1).max(100),
@@ -243,6 +284,13 @@ export const AdminLoginSchema = z.object({
   email: z.string().email().max(200),
   password: z.string().min(12).max(200),
 });
+
+export const AdminProfileAssetUploadSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  svg: z.string().min(1).max(1_500_000),
+  profileFormatVersion: z.literal("1.0").default("1.0"),
+});
+export type AdminProfileAssetUpload = z.infer<typeof AdminProfileAssetUploadSchema>;
 
 export const AdminProductUpdateSchema = z.object({
   name: z.string().min(1).max(120),

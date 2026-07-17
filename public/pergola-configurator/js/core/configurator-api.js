@@ -23,15 +23,16 @@ export class ConfiguratorApi {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeout || 9000);
     try {
+      const { responseType, timeout, ...fetchOptions } = options;
       const response = await fetch(`${this.baseUrl}${path}`, {
         credentials: "include",
         headers: options.body ? { "Content-Type": "application/json", ...options.headers } : options.headers,
-        ...options,
+        ...fetchOptions,
         body: options.body && typeof options.body !== "string" ? JSON.stringify(options.body) : options.body,
         signal: controller.signal,
       });
       const contentType = response.headers.get("content-type") || "";
-      const payload = contentType.includes("application/json") ? await response.json() : await response.blob();
+      const payload = contentType.includes("application/json") ? await response.json() : responseType === "text" ? await response.text() : await response.blob();
       if (!response.ok) {
         const error = new Error(payload?.error || `HTTP_${response.status}`);
         error.status = response.status;
@@ -42,6 +43,18 @@ export class ConfiguratorApi {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  requestText(path, options = {}) {
+    return this.request(path, { ...options, responseType: "text" });
+  }
+
+  publicProfileAssetContent(assetId) {
+    return this.requestText(`/api/public/${encodeURIComponent(this.tenantSlug)}/profile-assets/${encodeURIComponent(assetId)}`);
+  }
+
+  adminProfileAssetContent(assetId) {
+    return this.requestText(`/api/admin/${encodeURIComponent(this.tenantSlug)}/profile-assets/${encodeURIComponent(assetId)}/content`);
   }
 
   getCatalog() {

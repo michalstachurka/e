@@ -34,7 +34,7 @@ npm run dev
 - panel: `http://localhost:5173/admin.html`
 - API: `http://127.0.0.1:8787`
 
-Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`.
+Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`, a kontrakt bezpiecznych profili SVG w `docs/svg-profile-assets.md`.
 
 Smoke test dowolnego wdrożenia lub przyszłej domeny white-label:
 

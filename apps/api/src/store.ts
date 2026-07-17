@@ -1,4 +1,4 @@
-import type { AdminProductUpdate, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
+import type { AdminProductUpdate, AdminRole, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
 import type { PricingRules } from "../../../packages/configurator-core/src/catalog.js";
 
 export type Awaitable<T> = T | Promise<T>;
@@ -20,6 +20,7 @@ export interface AdminAccountRecord {
   id: string;
   email: string;
   passwordHash: string;
+  role: AdminRole;
 }
 
 export interface SessionRecord {
@@ -27,7 +28,42 @@ export interface SessionRecord {
   adminUserId: string;
   tenantSlug: string;
   email: string;
+  role: AdminRole;
   expiresAt: string;
+}
+
+export interface ProfileAssetRecord {
+  id: string;
+  tenantId: string;
+  storageKey: string;
+  fileName: string;
+  mimeType: "image/svg+xml";
+  byteSize: number;
+  contentHash: string;
+  widthMm: number;
+  heightMm: number;
+  viewBox: { minX: number; minY: number; width: number; height: number };
+  profileFormatVersion: "1.0";
+  geometryFormatVersion: "1.0";
+  status: "ACTIVE" | "RETIRED";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProfileAssetAuditRecord {
+  id: string;
+  assetId: string;
+  action: "CREATED" | "RETIRED" | "CONFIGURED";
+  actorId: string;
+  actorEmail: string;
+  details: unknown;
+  createdAt: string;
+}
+
+export interface ProfileAssetStats {
+  activeCount: number;
+  activeBytes: number;
 }
 
 export interface SavedConfigurationRecord {
@@ -66,7 +102,7 @@ export interface ConfiguratorStore {
   getProducts(tenantSlug: string, status?: "published" | "draft"): Awaitable<ProductRecord[]>;
   getProduct(tenantSlug: string, productType: string, status?: "published" | "draft"): Awaitable<ProductRecord | null>;
   getProductVersion(tenantSlug: string, productType: string, versionId: string): Awaitable<ProductRecord | null>;
-  updateDraftProduct(tenantSlug: string, productType: string, update: AdminProductUpdate): Awaitable<ProductRecord | null>;
+  updateDraftProduct(tenantSlug: string, productType: string, update: AdminProductUpdate, actorId?: string): Awaitable<ProductRecord | null>;
   publishProduct(tenantSlug: string, productType: string): Awaitable<ProductDefinition | null>;
   updateBranding(tenantSlug: string, branding: unknown): Awaitable<boolean>;
   saveConfiguration(tenantSlug: string, id: string, shareId: string, configuration: PublicConfiguration, expiresAt: string | null): Awaitable<void>;
@@ -76,5 +112,15 @@ export interface ConfiguratorStore {
   createSession(id: string, adminUserId: string, token: string, expiresAt: string): Awaitable<void>;
   getSession(token: string): Awaitable<SessionRecord | null>;
   deleteSession(token: string): Awaitable<void>;
+  getProfileAssetStats(tenantSlug: string): Awaitable<ProfileAssetStats>;
+  createProfileAsset(tenantSlug: string, asset: ProfileAssetRecord): Awaitable<boolean>;
+  listProfileAssets(tenantSlug: string): Awaitable<ProfileAssetRecord[]>;
+  getProfileAsset(tenantSlug: string, assetId: string): Awaitable<ProfileAssetRecord | null>;
+  putProfileAssetObject(tenantSlug: string, storageKey: string, content: string): Awaitable<void>;
+  getProfileAssetObject(tenantSlug: string, storageKey: string): Awaitable<string | null>;
+  deleteProfileAssetObject(tenantSlug: string, storageKey: string): Awaitable<void>;
+  retireProfileAsset(tenantSlug: string, assetId: string, actorId: string): Awaitable<"retired" | "referenced" | "not_found">;
+  listProfileAssetAudit(tenantSlug: string, assetId?: string): Awaitable<ProfileAssetAuditRecord[]>;
+  isProfileAssetPublic(tenantSlug: string, assetId: string): Awaitable<boolean>;
   provisionTenant(input: TenantProvisionInput): Awaitable<TenantProvisionResult>;
 }

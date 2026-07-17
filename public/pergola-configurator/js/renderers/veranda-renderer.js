@@ -1,4 +1,5 @@
 import { profileMetres } from "../core/profile-definitions.js";
+import { createProfileGeometry, createProfileMesh } from "../core/svg-profile-geometry.js";
 
 export function createVerandaRenderer(context) {
   const {
@@ -16,9 +17,15 @@ export function createVerandaRenderer(context) {
     clearAnimationState,
   } = context;
   let root = null;
+  let activeProfiles = [];
 
-  const box = (group, material, width, height, depth, x, y, z, rotationX = 0) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+  const box = (group, material, width, height, depth, x, y, z, rotationX = 0, profileId = "", axis = "z") => {
+    const length = axis === "x" ? width : axis === "y" ? height : depth;
+    const fallbackA = axis === "x" ? depth : width;
+    const fallbackB = axis === "y" ? depth : height;
+    const mesh = profileId
+      ? createProfileMesh(THREE, activeProfiles, profileId, material, length, axis, fallbackA, fallbackB)
+      : new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
     mesh.position.set(x, y, z);
     mesh.rotation.x = rotationX;
     group.add(mesh);
@@ -76,7 +83,7 @@ export function createVerandaRenderer(context) {
     let cursorY = config.frontHeight - beamHeight;
 
     if (withSupport) {
-      const support = new THREE.Mesh(new THREE.BoxGeometry(supportDepth, supportHeight, span), frameMaterial);
+      const support = createProfileMesh(THREE, activeProfiles, "screen-support", frameMaterial, span, "z", supportDepth, supportHeight);
       support.position.set(x, cursorY - supportHeight / 2, 0);
       support.name = `VerandaScreenSupport_${side}`;
       group.add(support);
@@ -151,6 +158,7 @@ export function createVerandaRenderer(context) {
   const createScene = (config) => {
     root = resetRoot("VerandaVisualRoot");
     clearAnimationState();
+    activeProfiles = config.profiles || [];
     configureRoofMaterial(config.roofMaterial);
     const postWidth = profileMetres(config.profiles, "structural-post", "a", Number(config.visual?.postSize || 0.13));
     const postDepth = profileMetres(config.profiles, "structural-post", "b", Number(config.visual?.postSize || 0.13));
@@ -164,12 +172,12 @@ export function createVerandaRenderer(context) {
     const roofLength = Math.hypot(config.depth, config.backHeight - config.frontHeight);
     const midHeight = (config.backHeight + config.frontHeight) / 2;
 
-    box(root, frameMaterial, config.width, beam, beamDepth, 0, config.backHeight - beam / 2, -config.depth / 2 + beamDepth / 2);
-    box(root, frameMaterial, config.width, beam, beamDepth, 0, config.frontHeight - beam / 2, config.depth / 2 - beamDepth / 2);
-    box(root, frameMaterial, beamDepth, beam, roofLength, -config.width / 2 + beamDepth / 2, midHeight - beam / 2, 0, angle);
-    box(root, frameMaterial, beamDepth, beam, roofLength, config.width / 2 - beamDepth / 2, midHeight - beam / 2, 0, angle);
+    box(root, frameMaterial, config.width, beam, beamDepth, 0, config.backHeight - beam / 2, -config.depth / 2 + beamDepth / 2, 0, "frame-beam", "x");
+    box(root, frameMaterial, config.width, beam, beamDepth, 0, config.frontHeight - beam / 2, config.depth / 2 - beamDepth / 2, 0, "frame-beam", "x");
+    box(root, frameMaterial, beamDepth, beam, roofLength, -config.width / 2 + beamDepth / 2, midHeight - beam / 2, 0, angle, "frame-beam", "z");
+    box(root, frameMaterial, beamDepth, beam, roofLength, config.width / 2 - beamDepth / 2, midHeight - beam / 2, 0, angle, "frame-beam", "z");
 
-    const postGeometry = new THREE.BoxGeometry(postWidth, config.frontHeight, postDepth);
+    const postGeometry = createProfileGeometry(THREE, activeProfiles, "structural-post", config.frontHeight, "y", postWidth, postDepth);
     const posts = new THREE.InstancedMesh(postGeometry, frameMaterial, config.postCount);
     const matrix = new THREE.Matrix4();
     for (let index = 0; index < config.postCount; index += 1) {
@@ -186,11 +194,11 @@ export function createVerandaRenderer(context) {
       const x = THREE.MathUtils.clamp(Number(leg.x), -config.width / 2 + postWidth / 2, config.width / 2 - postWidth / 2);
       const depthRatio = (config.depth / 2 - z) / config.depth;
       const legHeight = config.frontHeight + (config.backHeight - config.frontHeight) * depthRatio;
-      const extraPost = box(root, frameMaterial, postWidth, legHeight, postDepth, x, legHeight / 2, z);
+      const extraPost = box(root, frameMaterial, postWidth, legHeight, postDepth, x, legHeight / 2, z, 0, "structural-post", "y");
       extraPost.name = `VerandaExtraPost_${index + 1}`;
     }
 
-    const rafterGeometry = new THREE.BoxGeometry(rafterWidth, rafterHeight, roofLength - beamDepth * 1.3);
+    const rafterGeometry = createProfileGeometry(THREE, activeProfiles, "roof-rafter", roofLength - beamDepth * 1.3, "z", rafterWidth, rafterHeight);
     const rafters = new THREE.InstancedMesh(rafterGeometry, frameMaterial, config.rafterCount);
     const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(angle, 0, 0));
     for (let index = 0; index < config.rafterCount; index += 1) {

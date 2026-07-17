@@ -7,6 +7,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ProductRendererRegistry } from "./core/product-registry.js";
 import { profileMetres } from "./core/profile-definitions.js";
+import { createProfileMesh } from "./core/svg-profile-geometry.js";
 import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
 import { createWindowCoverRenderer } from "./renderers/window-cover-renderer.js";
 
@@ -393,8 +394,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
     const totalW = p.widths.reduce((a, b) => a + b, 0);
 
     const buildModule = (cx, W) => {
-      const box = (w, h, d, x, y, z) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      const box = (w, h, d, x, y, z, profileId, axis) => {
+        const length = axis === "x" ? w : d;
+        const fallbackA = axis === "x" ? d : w;
+        const m = createProfileMesh(THREE, p.profiles, profileId, material, length, axis, fallbackA, h);
         m.position.set(cx + x, y, z);
         group.add(m);
       };
@@ -402,10 +405,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
       // Nogi budowane są globalnie po złożeniu modułów (patrz niżej), żeby
       // na styku dwóch modułów stała JEDNA wspólna noga, a nie dwie obok siebie.
       // Top frame
-      box(W, beam, beamDepth, 0, H - beam / 2, -(D - beamDepth) / 2);
-      box(W, beam, beamDepth, 0, H - beam / 2, (D - beamDepth) / 2);
-      box(beamDepth, beam, D - 2 * beamDepth, -(W - beamDepth) / 2, H - beam / 2, 0);
-      box(beamDepth, beam, D - 2 * beamDepth, (W - beamDepth) / 2, H - beam / 2, 0);
+      box(W, beam, beamDepth, 0, H - beam / 2, -(D - beamDepth) / 2, "frame-beam", "x");
+      box(W, beam, beamDepth, 0, H - beam / 2, (D - beamDepth) / 2, "frame-beam", "x");
+      box(beamDepth, beam, D - 2 * beamDepth, -(W - beamDepth) / 2, H - beam / 2, 0, "frame-beam", "z");
+      box(beamDepth, beam, D - 2 * beamDepth, (W - beamDepth) / 2, H - beam / 2, 0, "frame-beam", "z");
 
       // Linear LED: hairline strip along the inner bottom edge of the frame
       if (p.ledLinear) {
@@ -442,7 +445,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
         const ribCount = Math.max(2, Math.floor(roofWidth / sheetPitch));
         for (let index = 0; index <= ribCount; index += 1) {
           const x = -roofWidth / 2 + roofWidth * index / ribCount;
-          const rib = new THREE.Mesh(new THREE.BoxGeometry(Math.min(0.045, sheetPitch * 0.28), 0.032, roofDepth), slatMaterial);
+          const rib = createProfileMesh(THREE, p.profiles, "roof-sheet", slatMaterial, roofDepth, "z", Math.min(0.045, sheetPitch * 0.28), 0.032);
           rib.position.set(cx + x, roofY + 0.02, 0);
           rib.name = "CarportSheetRib";
           group.add(rib);
@@ -472,7 +475,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
       for (let i = 0; i < n; i++) {
         const z = -(D - 2 * post) / 2 + (i + 0.5) * ((D - 2 * post) / n);
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, louvreThickness, slatW * 1.01), slatMaterial);
+        const slat = createProfileMesh(THREE, p.profiles, "roof-louvre", slatMaterial, span, "x", slatW * 1.01, louvreThickness);
         slat.name = "RoofLouvre";
         slat.userData.arRole = "slat";
         slat.position.set(cx, H - beam / 2, z);
@@ -523,7 +526,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
           : j === last ? edges[last] - postWidth / 2
           : edges[j];
         for (const sz of zSides) {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(postWidth, H, postDepth), material);
+          const leg = createProfileMesh(THREE, p.profiles, "structural-post", material, H, "y", postWidth, postDepth);
           leg.position.set(px, H / 2, (sz * (D - postDepth)) / 2);
           group.add(leg);
         }
@@ -758,7 +761,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     // ziemi do belki, w kolorze konstrukcji, z drobną stopką.
     if (p.extraLegs) {
       for (const leg of p.extraLegs) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(postWidth, H, postDepth), material);
+        const m = createProfileMesh(THREE, p.profiles, "structural-post", material, H, "y", postWidth, postDepth);
         m.position.set(leg.x, H / 2, leg.z);
         group.add(m);
         const footPlate = new THREE.Mesh(new THREE.BoxGeometry(postWidth * 1.6, 0.02, postDepth * 1.6), material);

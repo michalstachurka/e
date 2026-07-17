@@ -75,7 +75,10 @@ test("PostgreSQL adapter preserves tenant isolation and version ownership", asyn
 
   try {
     const migrations = await pool.query("SELECT version,name FROM schema_migrations ORDER BY version");
-    assert.deepEqual(migrations.rows, [{ version: 1, name: "initial_configurator_schema" }]);
+    assert.deepEqual(migrations.rows, [
+      { version: 1, name: "initial_configurator_schema" },
+      { version: 2, name: "tenant_profile_svg_assets" },
+    ]);
     assert.equal((await app.inject({ method: "GET", url: "/health" })).statusCode, 200);
 
     const runtime = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "pilot.pg.test" } });
@@ -99,12 +102,41 @@ test("PostgreSQL adapter preserves tenant isolation and version ownership", asyn
     assert.ok(cookie);
     assert.equal((await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } })).statusCode, 403);
 
+    const uploadedProfile = await app.inject({
+      method: "POST",
+      url: "/api/admin/pilot-pg/profile-assets",
+      headers: { cookie },
+      payload: { fileName: "postgres-profile.svg", svg: `<svg viewBox="0 0 120 80"><rect width="120" height="80"/></svg>`, profileFormatVersion: "1.0" },
+    });
+    assert.equal(uploadedProfile.statusCode, 201, uploadedProfile.body);
+    const profileAsset = uploadedProfile.json().asset;
+    assert.equal(profileAsset.widthMm, 120);
+    assert.equal((await app.inject({ method: "GET", url: `/api/admin/pilot-pg/profile-assets/${profileAsset.id}/content`, headers: { cookie } })).statusCode, 200);
+    assert.equal((await app.inject({ method: "GET", url: `/api/public/pilot-pg/profile-assets/${profileAsset.id}` })).statusCode, 404);
+
     const drafts = await app.inject({ method: "GET", url: "/api/admin/pilot-pg/products", headers: { cookie } });
     const pergolaDraft = drafts.json().products.find((product: { definition: { productType: string } }) => product.definition.productType === "bioclimatic-pergola");
     const updatedDefinition = {
       ...pergolaDraft.definition,
       name: "Pergola Pilot PG",
       pricing: pergolaDraft.pricing,
+    };
+    updatedDefinition.profiles[0] = {
+      ...updatedDefinition.profiles[0],
+      geometryType: "SVG_PROFILE",
+      svgProfile: {
+        assetId: profileAsset.id,
+        extrusionLengthMm: 1000,
+        widthMm: profileAsset.widthMm,
+        heightMm: profileAsset.heightMm,
+        viewBox: profileAsset.viewBox,
+        rotationDeg: 0,
+        mirrorX: false,
+        mirrorY: false,
+        profileFormatVersion: profileAsset.profileFormatVersion,
+        geometryFormatVersion: profileAsset.geometryFormatVersion,
+        contentHash: profileAsset.contentHash,
+      },
     };
     const updated = await app.inject({ method: "PUT", url: "/api/admin/pilot-pg/products/bioclimatic-pergola", headers: { cookie }, payload: updatedDefinition });
     assert.equal(updated.statusCode, 200, updated.body);
@@ -119,6 +151,7 @@ test("PostgreSQL adapter preserves tenant isolation and version ownership", asyn
 
     await store.publishProduct("visnex", "bioclimatic-pergola");
     await store.publishProduct("pilot-pg", "bioclimatic-pergola");
+    assert.equal((await app.inject({ method: "GET", url: `/api/public/pilot-pg/profile-assets/${profileAsset.id}` })).statusCode, 200);
     const visnexDraft = await store.getProduct("visnex", "bioclimatic-pergola", "draft");
     const pilotDraft = await store.getProduct("pilot-pg", "bioclimatic-pergola", "draft");
     assert.equal(visnexDraft?.definition.version.id, "visnex-bioclimatic-pergola-draft-v3");

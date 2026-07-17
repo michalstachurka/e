@@ -22,9 +22,15 @@ export function createWindowCoverRenderer(context, productType) {
   const armorMaterial = frameMaterial.clone();
   const mosquitoMaterial = new THREE.MeshBasicMaterial({ color: "#555555", transparent: true, opacity: 0.3, side: THREE.DoubleSide, wireframe: true });
   let root = null;
+  let activeProfiles = [];
 
-  const box = (group, material, width, height, depth, x, y, z, name = "") => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+  const box = (group, material, width, height, depth, x, y, z, name = "", profileId = "", axis = "z") => {
+    const length = axis === "x" ? width : axis === "y" ? height : depth;
+    const fallbackA = axis === "x" ? depth : width;
+    const fallbackB = axis === "y" ? depth : height;
+    const mesh = profileId
+      ? createProfileMesh(THREE, activeProfiles, profileId, material, length, axis, fallbackA, fallbackB)
+      : new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
     mesh.position.set(x, y, z);
     mesh.name = name;
     group.add(mesh);
@@ -58,19 +64,16 @@ export function createWindowCoverRenderer(context, productType) {
     const depthOffset = config.mounting === "front" ? 0.1 : config.mounting === "reveal" ? 0.045 : 0.015;
     addTechnicalWall(width, height + cassette);
     addWindow(width, height);
-    const cassetteMesh = box(root, coverMaterial, width + guideWidth * 2, cassette, cassette, 0, height + cassette / 2, depthOffset, "WindowScreenCassette");
-    cassetteMesh.userData.profileId = "screen-cassette";
+    box(root, coverMaterial, width + guideWidth * 2, cassette, cassette, 0, height + cassette / 2, depthOffset, "WindowScreenCassette", "screen-cassette", "x");
     for (const x of [-width / 2 - guideWidth / 2, width / 2 + guideWidth / 2]) {
-      const guide = box(root, coverMaterial, guideWidth, height, 0.055, x, height / 2, depthOffset, "WindowScreenGuide");
-      guide.userData.profileId = "screen-guide";
+      box(root, coverMaterial, guideWidth, height, 0.055, x, height / 2, depthOffset, "WindowScreenGuide", "screen-guide", "y");
     }
     const lowered = Math.max(0.002, height * config.openingPercent / 100);
     const fabric = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.1, width - 0.02), lowered), textileMaterial);
     fabric.position.set(0, height - lowered / 2, depthOffset + 0.032);
     fabric.name = "WindowScreenFabric";
     root.add(fabric);
-    const bottom = box(root, coverMaterial, width, Number(config.visual?.bottomBarHeight || 0.03), 0.045, 0, height - lowered, depthOffset + 0.035, "WindowScreenBottomBar");
-    bottom.userData.profileId = "screen-bottom";
+    box(root, coverMaterial, width, Number(config.visual?.bottomBarHeight || 0.03), 0.045, 0, height - lowered, depthOffset + 0.035, "WindowScreenBottomBar", "screen-bottom", "x");
     ground.scale.setScalar(Math.max(width, height) * 2.3);
     shadow.scale.set(width * 1.7, 1.1, 1);
     frameScene(width, 0.7, height + cassette);
@@ -87,19 +90,16 @@ export function createWindowCoverRenderer(context, productType) {
     const depthOffset = config.mounting === "front" ? 0.11 : 0.035;
     addTechnicalWall(width, height + boxSize);
     addWindow(width, height);
-    const shutterBox = box(root, coverMaterial, width + guideWidth * 2, boxSize, boxSize, 0, height + boxSize / 2, depthOffset, "RollerShutterBox");
-    shutterBox.userData.profileId = "shutter-box";
+    box(root, coverMaterial, width + guideWidth * 2, boxSize, boxSize, 0, height + boxSize / 2, depthOffset, "RollerShutterBox", "shutter-box", "x");
     for (const x of [-width / 2 - guideWidth / 2, width / 2 + guideWidth / 2]) {
-      const guide = box(root, guideMaterial, guideWidth, height, 0.06, x, height / 2, depthOffset, "RollerShutterGuide");
-      guide.userData.profileId = "shutter-guide";
+      box(root, guideMaterial, guideWidth, height, 0.06, x, height / 2, depthOffset, "RollerShutterGuide", "shutter-guide", "y");
     }
     const lowered = height * config.openingPercent / 100;
     const slatCount = Math.max(0, Math.ceil(lowered / slatPitch));
     for (let index = 0; index < slatCount; index += 1) {
       const visibleHeight = Math.min(slatPitch * 0.9, lowered - index * slatPitch);
       if (visibleHeight <= 0) continue;
-      const slat = box(root, armorMaterial, width, visibleHeight, 0.025, 0, height - index * slatPitch - visibleHeight / 2, depthOffset + 0.035, "RollerShutterSlat");
-      slat.userData.profileId = "shutter-slat";
+      box(root, armorMaterial, width, visibleHeight, 0.025, 0, height - index * slatPitch - visibleHeight / 2, depthOffset + 0.035, "RollerShutterSlat", "shutter-slat", "x");
     }
     if (config.integratedMosquitoNet) {
       const net = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.03, height), mosquitoMaterial);
@@ -122,20 +122,17 @@ export function createWindowCoverRenderer(context, productType) {
     textileMaterial.opacity = 0.98;
     addTechnicalWall(config.width, wallHeight);
     const cassetteHeight = config.cassetteType === "full-cassette" ? 0.16 : config.cassetteType === "semi-cassette" ? 0.12 : 0.075;
-    const cassette = box(root, coverMaterial, config.width + 0.12, cassetteHeight, 0.22, 0, mountHeight, 0, "AwningCassette");
-    cassette.userData.profileId = "awning-cassette";
+    box(root, coverMaterial, config.width + 0.12, cassetteHeight, 0.22, 0, mountHeight, 0, "AwningCassette", "awning-cassette", "x");
     const moving = new THREE.Group();
     moving.position.set(0, mountHeight - cassetteHeight / 2, 0.08);
     moving.rotation.x = pitch;
     root.add(moving);
     const cloth = box(moving, textileMaterial, Math.max(0.2, config.width - 0.08), 0.018, Math.max(0.02, actualProjection), 0, 0, actualProjection / 2, "AwningFabric");
     cloth.position.y = -0.015;
-    const front = box(moving, coverMaterial, config.width, 0.08, 0.07, 0, -0.04, actualProjection, "AwningFrontBar");
-    front.userData.profileId = "awning-front";
+    box(moving, coverMaterial, config.width, 0.08, 0.07, 0, -0.04, actualProjection, "AwningFrontBar", "awning-front", "x");
     const armXs = config.width > 5 ? [-config.width * 0.32, 0, config.width * 0.32] : [-config.width * 0.3, config.width * 0.3];
     for (const x of armXs) {
-      const arm = box(moving, coverMaterial, 0.045, 0.035, Math.max(0.02, actualProjection), x, -0.075, actualProjection / 2, "AwningFoldingArm");
-      arm.userData.profileId = "awning-arm";
+      box(moving, coverMaterial, 0.045, 0.035, Math.max(0.02, actualProjection), x, -0.075, actualProjection / 2, "AwningFoldingArm", "awning-arm", "z");
       if (actualProjection > 0.4) {
         const joint = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 8), coverMaterial);
         joint.position.set(x, -0.075, actualProjection / 2);
@@ -152,6 +149,7 @@ export function createWindowCoverRenderer(context, productType) {
   const createScene = (config) => {
     root = resetRoot(`${productType}VisualRoot`);
     clearAnimationState();
+    activeProfiles = config.profiles || [];
     if (productType === "window-screen") createScreen(config);
     else if (productType === "external-roller-shutter") createShutter(config);
     else createAwning(config);
@@ -166,3 +164,4 @@ export function createWindowCoverRenderer(context, productType) {
     getBounds: () => root ? new THREE.Box3().setFromObject(root) : new THREE.Box3(),
   };
 }
+import { createProfileMesh } from "../core/svg-profile-geometry.js";

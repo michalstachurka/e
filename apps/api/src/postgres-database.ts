@@ -1,11 +1,12 @@
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg";
-import type { AdminProductUpdate, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
+import { randomUUID } from "node:crypto";
+import type { AdminProductUpdate, AdminRole, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
 import { productSeeds, tenantSeed, type PricingRules } from "../../../packages/configurator-core/src/catalog.js";
 import { hashPassword, hashToken } from "./security.js";
 import { normalizeHostname } from "./tenant-context.js";
 import { isoDate, nextDraftVersionId, parseStoredJson, prepareTenantProvision, TenantProvisionError } from "./tenant-provisioning.js";
 import { postgresMigrations } from "./postgres-schema.js";
-import type { ConfiguratorStore, ProductRecord, TenantProvisionInput, TenantProvisionResult } from "./store.js";
+import type { ConfiguratorStore, ProductRecord, ProfileAssetAuditRecord, ProfileAssetRecord, TenantProvisionInput, TenantProvisionResult } from "./store.js";
 
 type Queryable = Pool | PoolClient;
 type PgRow = QueryResultRow;
@@ -30,6 +31,33 @@ function productFromRow(row: PgRow): ProductRecord {
     pricing: parseStoredJson<PricingRules>(row.pricing_json),
     bom: parseStoredJson<unknown>(row.bom_json),
   };
+}
+
+function profileAssetFromRow(row: PgRow): ProfileAssetRecord {
+  return {
+    id: asString(row.id),
+    tenantId: asString(row.tenant_id),
+    storageKey: asString(row.storage_key),
+    fileName: asString(row.file_name),
+    mimeType: "image/svg+xml",
+    byteSize: Number(row.byte_size),
+    contentHash: asString(row.content_hash),
+    widthMm: Number(row.width_mm),
+    heightMm: Number(row.height_mm),
+    viewBox: parseStoredJson<ProfileAssetRecord["viewBox"]>(row.viewbox_json),
+    profileFormatVersion: "1.0",
+    geometryFormatVersion: "1.0",
+    status: asString(row.status) as ProfileAssetRecord["status"],
+    createdBy: asString(row.created_by),
+    createdAt: isoDate(row.created_at),
+    updatedAt: isoDate(row.updated_at),
+  };
+}
+
+function svgAssetLinks(update: AdminProductUpdate) {
+  return update.profiles.flatMap((profile) => profile.geometryType === "SVG_PROFILE" && profile.svgProfile
+    ? [{ profileId: profile.id, assetId: profile.svgProfile.assetId, geometryType: profile.geometryType, extrusionLengthMm: profile.svgProfile.extrusionLengthMm, rotationDeg: profile.svgProfile.rotationDeg, mirrorX: profile.svgProfile.mirrorX, mirrorY: profile.svgProfile.mirrorY }]
+    : []);
 }
 
 export interface PostgresDatabaseOptions {
@@ -284,7 +312,7 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
     return result.rows[0] ? productFromRow(result.rows[0]) : null;
   }
 
-  async updateDraftProduct(tenantSlug: string, productType: string, update: AdminProductUpdate) {
+  async updateDraftProduct(tenantSlug: string, productType: string, update: AdminProductUpdate, actorId?: string) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -294,8 +322,28 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
         return null;
       }
       const definition = { ...product.definition, ...update, version: product.definition.version };
+      const tenantResult = await client.query<PgRow>("SELECT id FROM tenants WHERE slug=$1", [tenantSlug]);
+      const tenantId = asString(tenantResult.rows[0]?.id);
       await client.query("UPDATE product_definitions SET name=$1,description=$2,enabled=$3,sort_order=$4 WHERE id=$5", [update.name, update.description, update.enabled, update.order, definition.id]);
       await client.query("UPDATE product_versions SET definition_json=$1::jsonb,pricing_json=$2::jsonb WHERE id=$3", [JSON.stringify(definition), JSON.stringify(update.pricing), definition.version.id]);
+      await client.query("DELETE FROM profile_asset_links WHERE product_version_id=$1", [definition.version.id]);
+      const now = new Date().toISOString();
+      for (const link of svgAssetLinks(update)) {
+        const availableAsset = await client.query(
+          "SELECT id FROM profile_assets WHERE tenant_id=$1 AND id=$2 AND status='ACTIVE'",
+          [tenantId, link.assetId],
+        );
+        if (!availableAsset.rowCount) throw new Error(`profile_asset_unavailable:${link.assetId}`);
+        await client.query(`
+          INSERT INTO profile_asset_links (tenant_id,asset_id,product_version_id,profile_id,created_at)
+          VALUES ($1,$2,$3,$4,$5::timestamptz)
+        `, [tenantId, link.assetId, definition.version.id, link.profileId, now]);
+        if (actorId) {
+          await client.query("INSERT INTO profile_asset_audit (id,tenant_id,asset_id,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,'CONFIGURED',$5::jsonb,$6)", [
+            randomUUID(), tenantId, link.assetId, actorId, JSON.stringify({ productVersionId: definition.version.id, ...link }), now,
+          ]);
+        }
+      }
       await client.query("COMMIT");
       return { definition, pricing: update.pricing, bom: product.bom };
     } catch (error) {
@@ -336,6 +384,16 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
         "INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES ($1,$2,$3,'draft',$4,$5,$6,NULL,$7)",
         [nextDefinition.version.id, draft.definition.id, nextNumber, JSON.stringify(nextDefinition), JSON.stringify(draft.pricing), JSON.stringify(draft.bom), now],
       );
+      const sourceAssetLinks = await client.query<PgRow>(
+        "SELECT tenant_id,asset_id,profile_id FROM profile_asset_links WHERE product_version_id=$1",
+        [draft.definition.version.id],
+      );
+      for (const link of sourceAssetLinks.rows) {
+        await client.query(`
+          INSERT INTO profile_asset_links (tenant_id,asset_id,product_version_id,profile_id,created_at)
+          VALUES ($1,$2,$3,$4,$5::timestamptz)
+        `, [link.tenant_id, link.asset_id, nextDefinition.version.id, link.profile_id, now]);
+      }
       await client.query("COMMIT");
       return publishedDefinition;
     } catch (error) {
@@ -398,11 +456,11 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
 
   async findAdmin(tenantSlug: string, email: string) {
     const result = await this.pool.query<PgRow>(`
-      SELECT au.id,au.email,au.password_hash FROM admin_users au JOIN tenants t ON t.id=au.tenant_id
+      SELECT au.id,au.email,au.password_hash,au.role FROM admin_users au JOIN tenants t ON t.id=au.tenant_id
       WHERE t.slug=$1 AND au.email=$2 AND au.active=TRUE
     `, [tenantSlug, email.toLowerCase()]);
     const row = result.rows[0];
-    return row ? { id: asString(row.id), email: asString(row.email), passwordHash: asString(row.password_hash) } : null;
+    return row ? { id: asString(row.id), email: asString(row.email), passwordHash: asString(row.password_hash), role: asString(row.role) as AdminRole } : null;
   }
 
   async createSession(id: string, adminUserId: string, token: string, expiresAt: string) {
@@ -411,7 +469,7 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
 
   async getSession(token: string) {
     const result = await this.pool.query<PgRow>(`
-      SELECT s.id,s.admin_user_id,s.expires_at,t.slug tenant_slug,au.email
+      SELECT s.id,s.admin_user_id,s.expires_at,t.slug tenant_slug,au.email,au.role
       FROM sessions s JOIN admin_users au ON au.id=s.admin_user_id JOIN tenants t ON t.id=au.tenant_id
       WHERE s.token_hash=$1 AND s.expires_at>NOW()
     `, [hashToken(token)]);
@@ -421,11 +479,149 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
       adminUserId: asString(row.admin_user_id),
       tenantSlug: asString(row.tenant_slug),
       email: asString(row.email),
+      role: asString(row.role) as AdminRole,
       expiresAt: isoDate(row.expires_at),
     } : null;
   }
 
   async deleteSession(token: string) {
     await this.pool.query("DELETE FROM sessions WHERE token_hash=$1", [hashToken(token)]);
+  }
+
+  async getProfileAssetStats(tenantSlug: string) {
+    const result = await this.pool.query<PgRow>(`
+      SELECT COUNT(pa.id) active_count,COALESCE(SUM(pa.byte_size),0) active_bytes
+      FROM tenants t LEFT JOIN profile_assets pa ON pa.tenant_id=t.id AND pa.status='ACTIVE'
+      WHERE t.slug=$1 GROUP BY t.id
+    `, [tenantSlug]);
+    return { activeCount: Number(result.rows[0]?.active_count || 0), activeBytes: Number(result.rows[0]?.active_bytes || 0) };
+  }
+
+  async createProfileAsset(tenantSlug: string, asset: ProfileAssetRecord) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(`
+        INSERT INTO profile_assets (id,tenant_id,storage_key,file_name,mime_type,byte_size,content_hash,width_mm,height_mm,viewbox_json,profile_format_version,geometry_format_version,status,created_by,created_at,updated_at)
+        SELECT $1,t.id,$2,$3,$4,$5::integer,$6,$7::double precision,$8::double precision,$9::jsonb,$10,$11,$12,$13,$14::timestamptz,$15::timestamptz FROM tenants t
+        JOIN admin_users au ON au.tenant_id=t.id AND au.id=$13 AND au.active=TRUE
+        WHERE t.slug=$16 AND t.id=$17
+      `, [
+        asset.id, asset.storageKey, asset.fileName, asset.mimeType, asset.byteSize, asset.contentHash,
+        asset.widthMm, asset.heightMm, JSON.stringify(asset.viewBox), asset.profileFormatVersion,
+        asset.geometryFormatVersion, asset.status, asset.createdBy, asset.createdAt, asset.updatedAt,
+        tenantSlug, asset.tenantId,
+      ]);
+      if (!inserted.rowCount) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      await client.query("INSERT INTO profile_asset_audit (id,tenant_id,asset_id,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,'CREATED',$5::jsonb,$6)", [
+        randomUUID(), asset.tenantId, asset.id, asset.createdBy,
+        JSON.stringify({ fileName: asset.fileName, byteSize: asset.byteSize, contentHash: asset.contentHash }), asset.createdAt,
+      ]);
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listProfileAssets(tenantSlug: string) {
+    const result = await this.pool.query<PgRow>(`
+      SELECT pa.* FROM profile_assets pa JOIN tenants t ON t.id=pa.tenant_id
+      WHERE t.slug=$1 AND pa.status='ACTIVE' ORDER BY pa.created_at DESC,pa.id
+    `, [tenantSlug]);
+    return result.rows.map(profileAssetFromRow);
+  }
+
+  async getProfileAsset(tenantSlug: string, assetId: string) {
+    const result = await this.pool.query<PgRow>(`
+      SELECT pa.* FROM profile_assets pa JOIN tenants t ON t.id=pa.tenant_id WHERE t.slug=$1 AND pa.id=$2
+    `, [tenantSlug, assetId]);
+    return result.rows[0] ? profileAssetFromRow(result.rows[0]) : null;
+  }
+
+  async putProfileAssetObject(tenantSlug: string, storageKey: string, content: string) {
+    const now = new Date().toISOString();
+    const result = await this.pool.query(`
+      INSERT INTO profile_asset_objects (tenant_id,storage_key,content,created_at,updated_at)
+      SELECT t.id,$1,$2,$3::timestamptz,$3::timestamptz FROM tenants t WHERE t.slug=$4
+      ON CONFLICT(tenant_id,storage_key) DO UPDATE SET content=EXCLUDED.content,updated_at=EXCLUDED.updated_at
+    `, [storageKey, content, now, tenantSlug]);
+    if (!result.rowCount) throw new Error("Tenant not found");
+  }
+
+  async getProfileAssetObject(tenantSlug: string, storageKey: string) {
+    const result = await this.pool.query<PgRow>(`
+      SELECT pao.content FROM profile_asset_objects pao JOIN tenants t ON t.id=pao.tenant_id
+      WHERE t.slug=$1 AND pao.storage_key=$2
+    `, [tenantSlug, storageKey]);
+    return result.rows[0] ? asString(result.rows[0].content) : null;
+  }
+
+  async deleteProfileAssetObject(tenantSlug: string, storageKey: string) {
+    await this.pool.query(`
+      DELETE FROM profile_asset_objects WHERE storage_key=$1 AND tenant_id=(SELECT id FROM tenants WHERE slug=$2)
+    `, [storageKey, tenantSlug]);
+  }
+
+  async retireProfileAsset(tenantSlug: string, assetId: string, actorId: string) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const asset = await client.query<PgRow>(`
+        SELECT pa.tenant_id FROM profile_assets pa JOIN tenants t ON t.id=pa.tenant_id
+        WHERE t.slug=$1 AND pa.id=$2 AND pa.status='ACTIVE' FOR UPDATE
+      `, [tenantSlug, assetId]);
+      if (!asset.rows[0]) {
+        await client.query("ROLLBACK");
+        return "not_found" as const;
+      }
+      const tenantId = asString(asset.rows[0].tenant_id);
+      if ((await client.query("SELECT 1 FROM profile_asset_links WHERE tenant_id=$1 AND asset_id=$2 LIMIT 1", [tenantId, assetId])).rowCount) {
+        await client.query("ROLLBACK");
+        return "referenced" as const;
+      }
+      const now = new Date().toISOString();
+      await client.query("UPDATE profile_assets SET status='RETIRED',updated_at=$1 WHERE tenant_id=$2 AND id=$3", [now, tenantId, assetId]);
+      await client.query("INSERT INTO profile_asset_audit (id,tenant_id,asset_id,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,'RETIRED','{}'::jsonb,$5)", [randomUUID(), tenantId, assetId, actorId, now]);
+      await client.query("COMMIT");
+      return "retired" as const;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listProfileAssetAudit(tenantSlug: string, assetId?: string) {
+    const result = await this.pool.query<PgRow>(`
+      SELECT paa.*,au.email actor_email FROM profile_asset_audit paa
+      JOIN tenants t ON t.id=paa.tenant_id JOIN admin_users au ON au.id=paa.actor_id
+      WHERE t.slug=$1 AND ($2::text IS NULL OR paa.asset_id=$2) ORDER BY paa.created_at DESC,paa.id
+    `, [tenantSlug, assetId ?? null]);
+    return result.rows.map((row): ProfileAssetAuditRecord => ({
+      id: asString(row.id),
+      assetId: asString(row.asset_id),
+      action: asString(row.action) as ProfileAssetAuditRecord["action"],
+      actorId: asString(row.actor_id),
+      actorEmail: asString(row.actor_email),
+      details: parseStoredJson<unknown>(row.details_json),
+      createdAt: isoDate(row.created_at),
+    }));
+  }
+
+  async isProfileAssetPublic(tenantSlug: string, assetId: string) {
+    const result = await this.pool.query(`
+      SELECT 1 FROM profile_asset_links pal JOIN tenants t ON t.id=pal.tenant_id
+      JOIN product_versions pv ON pv.id=pal.product_version_id
+      WHERE t.slug=$1 AND pal.asset_id=$2 AND pv.status IN ('published','archived') LIMIT 1
+    `, [tenantSlug, assetId]);
+    return Boolean(result.rowCount);
   }
 }

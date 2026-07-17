@@ -1,5 +1,5 @@
 import { ConfiguratorApi } from "./core/configurator-api.js";
-import { resolveProfileDefinitions } from "./core/profile-definitions.js";
+import { hydrateProfileAssets, resolveProfileDefinitions } from "./core/profile-definitions.js";
 import { buildTenantUrl, resolveTenantContext } from "./core/tenant-context.js";
 import { createPergolaCanvas } from "./pergola-canvas.js";
 
@@ -35,6 +35,10 @@ let catalog = null;
 let profilePreview = null;
 let activeStudioProduct = 0;
 let activeStudioProfile = 0;
+let profileAssets = [];
+let currentAdmin = null;
+
+const can = (permission) => currentAdmin?.permissions?.includes(permission);
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
 const showToast = (message) => {
@@ -152,6 +156,15 @@ function buildProfilePreviewParams(definition) {
 }
 
 function profileDiagram(profile) {
+  if (profile.geometryType === "SVG_PROFILE" && profile.svgContent) {
+    return `<div class="admin-profile-card__drawing admin-profile-card__drawing--svg" role="img" aria-label="Przekrój SVG ${escapeHtml(profile.label)}">
+      <div class="admin-profile-card__svg-source">${profile.svgContent}</div>
+      <span class="admin-profile-axis admin-profile-axis--front">FRONT · Z = 0</span>
+      <span class="admin-profile-axis admin-profile-axis--x">X →</span>
+      <span class="admin-profile-axis admin-profile-axis--y">Y ↓</span>
+      <span class="admin-profile-axis admin-profile-axis--z">+Z ↘</span>
+    </div>`;
+  }
   const maxWidth = 108;
   const maxHeight = 94;
   const scale = Math.min(maxWidth / profile.aMm, maxHeight / profile.bMm);
@@ -271,6 +284,70 @@ function updateProfileAnnotation() {
   }
 }
 
+function profileGeometryControls(profile) {
+  const reference = profile.svgProfile;
+  const assetOptions = profileAssets.map((asset) => `<option value="${asset.id}" ${reference?.assetId === asset.id ? "selected" : ""}>${escapeHtml(asset.fileName)} · ${asset.widthMm} × ${asset.heightMm} mm</option>`).join("");
+  return `<div class="admin-profile-card__geometry">
+    <label>Typ geometrii<select data-studio-geometry-type>
+      <option value="BOX" ${profile.geometryType !== "SVG_PROFILE" ? "selected" : ""}>Kształt uproszczony</option>
+      <option value="SVG_PROFILE" ${profile.geometryType === "SVG_PROFILE" ? "selected" : ""}>Profil z pliku SVG</option>
+    </select></label>
+    <div class="admin-profile-card__box-fields" ${profile.geometryType === "SVG_PROFILE" ? "hidden" : ""}>
+      <output>${profile.aMm} × ${profile.bMm} mm</output>
+      <label>a · mm<input data-studio-profile-value="aMm" type="number" min="1" max="100000" step="0.01" value="${profile.aMm}" /></label>
+      <label>b · mm<input data-studio-profile-value="bMm" type="number" min="1" max="100000" step="0.01" value="${profile.bMm}" /></label>
+    </div>
+    <div class="admin-profile-card__svg-fields" ${profile.geometryType !== "SVG_PROFILE" && !reference ? "hidden" : ""}>
+      <div class="admin-profile-card__asset-row">
+        <label>Biblioteka organizacji<select data-studio-existing-asset><option value="">Wybierz zapisany profil…</option>${assetOptions}</select></label>
+        <label>Nowy plik SVG<input data-studio-svg-file type="file" accept=".svg,image/svg+xml" ${can("profiles:create") ? "" : "disabled"} /></label>
+      </div>
+      ${reference ? `<div class="admin-profile-card__svg-meta"><span>Przekrój źródłowy <strong>${reference.widthMm} × ${reference.heightMm} mm</strong></span><span>Po orientacji <strong>${profile.aMm} × ${profile.bMm} mm</strong></span><span>Długość gotowa <strong>${reference.extrusionLengthMm} mm</strong></span></div>` : `<p class="admin-profile-card__empty">Prześlij plik lub wybierz zweryfikowany profil z biblioteki tej organizacji.</p>`}
+      <div class="admin-profile-card__orientation">
+        <label>Długość wyciągnięcia · mm<input data-studio-svg-setting="extrusionLengthMm" type="number" min="1" max="20000" step="1" value="${reference?.extrusionLengthMm || 1000}" ${reference ? "" : "disabled"} /></label>
+        <label>Obrót<select data-studio-svg-setting="rotationDeg" ${reference ? "" : "disabled"}><option value="0" ${reference?.rotationDeg === 0 ? "selected" : ""}>0°</option><option value="90" ${reference?.rotationDeg === 90 ? "selected" : ""}>90°</option><option value="180" ${reference?.rotationDeg === 180 ? "selected" : ""}>180°</option><option value="270" ${reference?.rotationDeg === 270 ? "selected" : ""}>270°</option></select></label>
+        <label class="admin-profile-card__toggle"><input data-studio-svg-setting="mirrorX" type="checkbox" ${reference?.mirrorX ? "checked" : ""} ${reference ? "" : "disabled"} /> Odbicie poziome</label>
+        <label class="admin-profile-card__toggle"><input data-studio-svg-setting="mirrorY" type="checkbox" ${reference?.mirrorY ? "checked" : ""} ${reference ? "" : "disabled"} /> Odbicie pionowe</label>
+      </div>
+      ${reference && can("profiles:delete") ? `<button type="button" class="admin-profile-card__delete" data-studio-delete-asset="${reference.assetId}">Usuń nieużywany plik</button>` : ""}
+      <details class="admin-profile-card__help"><summary>Jak przygotować przekrój SVG</summary><p>Plik SVG przedstawia przekrój elementu widziany od przodu.</p><ul>
+        <li>Oś X pliku SVG biegnie w prawo.</li><li>Oś Y pliku SVG biegnie w dół.</li><li>Jedna jednostka viewBox odpowiada 1 mm.</li><li>Przednia powierzchnia elementu znajduje się na lokalnej płaszczyźnie Z = 0.</li><li>Profil jest wyciągany od przodu w głąb, wzdłuż lokalnej osi +Z.</li><li>Długość wyciągnięcia podawana jest osobno w milimetrach.</li><li>Geometrię tworzą zamknięte, wypełnione kontury.</li><li>Otwarta linia lub sam stroke nie tworzy powierzchni ani bryły.</li><li>Otwory wewnętrzne należy zapisać jako zamknięte kontury, najlepiej z fill-rule=&quot;evenodd&quot;.</li><li>Plik nie powinien zawierać tekstu, obrazów rastrowych, skryptów ani odwołań do zewnętrznych zasobów.</li>
+      </ul><pre>&lt;svg width=&quot;145.5mm&quot; height=&quot;85.36mm&quot; viewBox=&quot;0 0 145.5 85.36&quot;&gt;
+  &lt;path fill-rule=&quot;evenodd&quot; d=&quot;M 0 0 H 145.5 V 85.36 H 0 Z&quot; /&gt;
+&lt;/svg&gt;</pre></details>
+    </div>
+  </div>`;
+}
+
+function applyAssetToProfile(profile, asset, svgContent) {
+  const previous = profile.svgProfile;
+  const rotationDeg = previous?.rotationDeg || 0;
+  profile.svgProfile = {
+    assetId: asset.id,
+    extrusionLengthMm: previous?.extrusionLengthMm || 1000,
+    widthMm: asset.widthMm,
+    heightMm: asset.heightMm,
+    viewBox: asset.viewBox,
+    rotationDeg,
+    mirrorX: previous?.mirrorX || false,
+    mirrorY: previous?.mirrorY || false,
+    profileFormatVersion: asset.profileFormatVersion,
+    geometryFormatVersion: asset.geometryFormatVersion,
+    contentHash: asset.contentHash,
+  };
+  profile.geometryType = "SVG_PROFILE";
+  profile.svgContent = svgContent;
+  updateEffectiveProfileDimensions(profile);
+}
+
+function updateEffectiveProfileDimensions(profile) {
+  const reference = profile.svgProfile;
+  if (!reference) return;
+  const rotated = reference.rotationDeg === 90 || reference.rotationDeg === 270;
+  profile.aMm = rotated ? reference.heightMm : reference.widthMm;
+  profile.bMm = rotated ? reference.widthMm : reference.heightMm;
+}
+
 function renderProfileStudio() {
   profilePreview?.destroy();
   profilePreview = null;
@@ -299,16 +376,16 @@ function renderProfileStudio() {
         <span class="admin-profile-preview__marker" hidden></span>
       </div>
       <nav class="admin-profile-preview__views" aria-label="Widok modelu"><button type="button" data-studio-view="front">Przód</button><button type="button" data-studio-view="left">Lewo</button><button type="button" data-studio-view="top">Góra</button><button type="button" data-studio-view="reset">Perspektywa</button></nav>
-      <p>Obracaj model. Pomarańczowe osie pokazują dokładnie, gdzie na wybranym profilu mierzone są <strong>a</strong> i <strong>b</strong>.</p>
+      <p>Obracaj model. Pomarańczowe osie pokazują dokładnie, gdzie na wybranym profilu mierzone są <strong>a</strong> i <strong>b</strong>. Dla SVG miniatura FRONT pokazuje źródłowe X/Y, a bryła biegnie od Z = 0 wzdłuż +Z.</p>
     </section>
     <section class="admin-profile-editor">
       <div class="admin-profile-tabs" role="tablist">${products.map((product, index) => `<button type="button" role="tab" data-studio-product="${index}" aria-selected="${index === activeStudioProduct}">${escapeHtml(product.definition.name)}</button>`).join("")}</div>
       <div class="admin-profile-editor__intro"><span>Przekroje produktu</span><p>Wybierz profil, a model wskaże konkretny element. Wartości zapisujemy zawsze w formacie <strong>a × b mm</strong>.</p></div>
       <div class="admin-profile-cards">${definition.profiles.map((profile, index) => `<article class="admin-profile-card ${index === activeStudioProfile ? "is-active" : ""}" data-studio-profile="${index}">
         <button class="admin-profile-card__select" type="button" data-studio-select-profile="${index}" aria-pressed="${index === activeStudioProfile}">${profileDiagram(profile)}<span><strong>${escapeHtml(profile.label)}</strong><small>${escapeHtml(profile.usage)}</small></span></button>
-        <div class="admin-profile-card__values"><output>${profile.aMm} × ${profile.bMm} mm</output><label>a · mm<input data-studio-profile-value="aMm" type="number" min="1" max="1000" step="1" value="${profile.aMm}" /></label><label>b · mm<input data-studio-profile-value="bMm" type="number" min="1" max="1000" step="1" value="${profile.bMm}" /></label></div>
+        ${profileGeometryControls(profile)}
       </article>`).join("")}</div>
-      <button class="admin-action admin-profile-editor__save" type="button" data-studio-action="save">Zapisz profile w wersji roboczej</button>
+      <button class="admin-action admin-profile-editor__save" type="button" data-studio-action="save" ${can("products:write") ? "" : "disabled"}>Zapisz profile w wersji roboczej</button>
     </section>
   </div>`;
   const mount = document.getElementById("adminProfileCanvas");
@@ -328,7 +405,7 @@ function renderProducts() {
       <section><h4>Parametry</h4><table class="admin-table"><thead><tr><th>Etykieta</th><th>Klucz</th><th>Min</th><th>Max</th><th>Krok</th><th>Domyślna</th><th>Ukryj</th></tr></thead><tbody>${parameterRows(product)}</tbody></table></section>
       <section><h4>Wymiary wizualne · demo</h4><div class="admin-grid">${visualEntries.map(([key, value]) => `<label class="admin-field">${escapeHtml(key)}<input data-visual="${escapeHtml(key)}" type="number" step="0.001" value="${value}" /></label>`).join("")}</div></section>
       <section><h4>Podstawowe reguły ceny · demo</h4><div class="admin-grid">${Object.entries(product.pricing).filter(([, value]) => typeof value === "number").map(([key, value]) => `<label class="admin-field">${escapeHtml(key)}<input data-pricing="${escapeHtml(key)}" type="number" step="any" value="${value}" /></label>`).join("")}</div></section>
-      <div class="admin-actions"><button class="admin-action" data-action="save" type="button">Zapisz draft</button><button class="admin-action admin-action--publish" data-action="publish" type="button">Publikuj nową wersję</button></div>
+      <div class="admin-actions"><button class="admin-action" data-action="save" type="button" ${can("products:write") ? "" : "disabled"}>Zapisz draft</button><button class="admin-action admin-action--publish" data-action="publish" type="button" ${can("products:publish") ? "" : "disabled"}>Publikuj nową wersję</button></div>
     </div></article>`;
   }).join("");
 }
@@ -352,13 +429,26 @@ function readProductCard(card, source) {
   card.querySelectorAll("[data-visual]").forEach((input) => { definition.visual[input.dataset.visual] = Number(input.value); });
   const pricing = structuredClone(source.pricing);
   card.querySelectorAll("[data-pricing]").forEach((input) => { pricing[input.dataset.pricing] = Number(input.value); });
-  return { name: definition.name, description: definition.description, enabled: definition.enabled, order: definition.order, steps: definition.steps, parameters: definition.parameters, profiles: definition.profiles, colors: definition.colors, visual: definition.visual, pricing: { ...pricing, demoOnly: true } };
+  const profiles = definition.profiles.map(({ svgContent: _runtimeContent, ...profile }) => profile);
+  return { name: definition.name, description: definition.description, enabled: definition.enabled, order: definition.order, steps: definition.steps, parameters: definition.parameters, profiles, colors: definition.colors, visual: definition.visual, pricing: { ...pricing, demoOnly: true } };
 }
 
-async function loadWorkspace() {
-  [catalog, { products }] = await Promise.all([api.getCatalog(), api.request(`/api/admin/${tenantSlug}/products`)]);
+async function loadWorkspace(session) {
+  currentAdmin = session?.authenticated ? session : await api.request("/api/admin/me");
+  const [nextCatalog, productsResponse, assetsResponse] = await Promise.all([
+    api.getCatalog(),
+    api.request(`/api/admin/${tenantSlug}/products`),
+    can("profiles:read") ? api.request(`/api/admin/${tenantSlug}/profile-assets`) : Promise.resolve({ assets: [] }),
+  ]);
+  catalog = nextCatalog;
+  products = productsResponse.products;
+  profileAssets = assetsResponse.assets;
+  await Promise.all(products.map(async (product) => {
+    product.definition.profiles = await hydrateProfileAssets(product.definition, api, { admin: true });
+  }));
   window.__adminProducts = products;
   renderBranding();
+  brandingForm.querySelectorAll("input,textarea,button").forEach((control) => { control.disabled = !can("branding:write"); });
   renderProducts();
   showWorkspace(true);
   renderProfileStudio();
@@ -369,9 +459,9 @@ loginForm.addEventListener("submit", async (event) => {
   loginStatus.textContent = "Loguję…";
   try {
     const form = new FormData(loginForm);
-    await api.request(`/api/admin/${tenantSlug}/login`, { method: "POST", body: { email: form.get("email"), password: form.get("password") } });
+    const session = await api.request(`/api/admin/${tenantSlug}/login`, { method: "POST", body: { email: form.get("email"), password: form.get("password") } });
     loginStatus.textContent = "";
-    await loadWorkspace();
+    await loadWorkspace(session);
   } catch (error) {
     loginStatus.textContent = error.message === "API_UNAVAILABLE" ? "API nie jest skonfigurowane." : "Nieprawidłowe dane lub limit prób logowania.";
   }
@@ -397,6 +487,7 @@ productsHost.addEventListener("click", async (event) => {
       const payload = readProductCard(card, source);
       const response = await api.request(`/api/admin/${tenantSlug}/products/${source.definition.productType}`, { method: "PUT", body: payload });
       products[index] = response.product;
+      products[index].definition.profiles = await hydrateProfileAssets(products[index].definition, api, { admin: true });
       showToast("Wersja robocza zapisana.");
     } else {
       await api.request(`/api/admin/${tenantSlug}/products/${source.definition.productType}/publish`, { method: "POST" });
@@ -433,6 +524,27 @@ profileStudioHost.addEventListener("click", async (event) => {
     updateProfileAnnotation();
     return;
   }
+  const deleteAssetButton = event.target.closest("[data-studio-delete-asset]");
+  if (deleteAssetButton) {
+    deleteAssetButton.disabled = true;
+    try {
+      await api.request(`/api/admin/${tenantSlug}/profile-assets/${encodeURIComponent(deleteAssetButton.dataset.studioDeleteAsset)}`, { method: "DELETE" });
+      profileAssets = profileAssets.filter((asset) => asset.id !== deleteAssetButton.dataset.studioDeleteAsset);
+      const profile = products[activeStudioProduct].definition.profiles[activeStudioProfile];
+      if (profile.svgProfile?.assetId === deleteAssetButton.dataset.studioDeleteAsset) {
+        delete profile.svgProfile;
+        delete profile.svgContent;
+        profile.geometryType = "BOX";
+      }
+      renderProfileStudio();
+      showToast("Nieużywany plik profilu został usunięty.");
+    } catch (error) {
+      showToast(error.payload?.message || "Najpierw odłącz profil od wersji produktu i zapisz draft.");
+    } finally {
+      deleteAssetButton.disabled = false;
+    }
+    return;
+  }
   const saveButton = event.target.closest('[data-studio-action="save"]');
   if (!saveButton) return;
   const source = products[activeStudioProduct];
@@ -442,6 +554,7 @@ profileStudioHost.addEventListener("click", async (event) => {
     const payload = readProductCard(productCard, source);
     const response = await api.request(`/api/admin/${tenantSlug}/products/${source.definition.productType}`, { method: "PUT", body: payload });
     products[activeStudioProduct] = response.product;
+    products[activeStudioProduct].definition.profiles = await hydrateProfileAssets(products[activeStudioProduct].definition, api, { admin: true });
     window.__adminProducts = products;
     renderProducts();
     renderProfileStudio();
@@ -467,6 +580,65 @@ profileStudioHost.addEventListener("input", (event) => {
   card.querySelector(".admin-profile-card__drawing").outerHTML = profileDiagram(profile);
   profilePreview?.update(buildProfilePreviewParams(products[activeStudioProduct].definition));
   updateProfileAnnotation();
+});
+
+profileStudioHost.addEventListener("change", async (event) => {
+  const card = event.target.closest("[data-studio-profile]");
+  if (!card) return;
+  const profile = products[activeStudioProduct].definition.profiles[Number(card.dataset.studioProfile)];
+  const geometryType = event.target.closest("[data-studio-geometry-type]");
+  if (geometryType) {
+    profile.geometryType = geometryType.value;
+    if (profile.geometryType === "BOX") {
+      delete profile.svgProfile;
+      delete profile.svgContent;
+    }
+    renderProfileStudio();
+    return;
+  }
+  const setting = event.target.closest("[data-studio-svg-setting]");
+  if (setting && profile.svgProfile) {
+    const key = setting.dataset.studioSvgSetting;
+    profile.svgProfile[key] = setting.type === "checkbox" ? setting.checked : Number(setting.value);
+    updateEffectiveProfileDimensions(profile);
+    renderProfileStudio();
+    return;
+  }
+  const library = event.target.closest("[data-studio-existing-asset]");
+  if (library?.value) {
+    const asset = profileAssets.find((item) => item.id === library.value);
+    if (!asset) return;
+    try {
+      const svgContent = await api.adminProfileAssetContent(asset.id);
+      applyAssetToProfile(profile, asset, svgContent);
+      renderProfileStudio();
+      showToast("Profil z biblioteki został przypisany.");
+    } catch (error) {
+      console.error(error);
+      showToast("Nie udało się wczytać profilu z biblioteki.");
+    }
+    return;
+  }
+  const fileInput = event.target.closest("[data-studio-svg-file]");
+  const file = fileInput?.files?.[0];
+  if (!file) return;
+  fileInput.disabled = true;
+  try {
+    const response = await api.request(`/api/admin/${tenantSlug}/profile-assets`, {
+      method: "POST",
+      body: { fileName: file.name, svg: await file.text(), profileFormatVersion: "1.0" },
+      timeout: 30000,
+    });
+    const svgContent = await api.adminProfileAssetContent(response.asset.id);
+    profileAssets.unshift(response.asset);
+    applyAssetToProfile(profile, response.asset, svgContent);
+    renderProfileStudio();
+    showToast(`Profil sprawdzony: ${response.validation.contourCount} konturów.`);
+  } catch (error) {
+    console.error(error);
+    showToast(error.payload?.message || "Plik SVG nie przeszedł walidacji.");
+    fileInput.disabled = false;
+  }
 });
 
 logoutButton.addEventListener("click", async () => {

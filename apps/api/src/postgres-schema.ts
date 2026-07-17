@@ -111,4 +111,61 @@ export const postgresMigrations: PostgresMigration[] = [
       `CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(token_hash,expires_at)`,
     ],
   },
+  {
+    version: 2,
+    name: "tenant_profile_svg_assets",
+    statements: [
+      `ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'OWNER' CHECK(role IN ('OWNER','ADMIN','EDITOR','VIEWER'))`,
+      `CREATE TABLE IF NOT EXISTS profile_assets (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        storage_key TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL CHECK(mime_type='image/svg+xml'),
+        byte_size INTEGER NOT NULL,
+        content_hash TEXT NOT NULL,
+        width_mm DOUBLE PRECISION NOT NULL,
+        height_mm DOUBLE PRECISION NOT NULL,
+        viewbox_json JSONB NOT NULL,
+        profile_format_version TEXT NOT NULL,
+        geometry_format_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('ACTIVE','RETIRED')),
+        created_by TEXT NOT NULL REFERENCES admin_users(id),
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(tenant_id,id),
+        UNIQUE(tenant_id,storage_key)
+      )`,
+      `CREATE TABLE IF NOT EXISTS profile_asset_objects (
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        storage_key TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY(tenant_id,storage_key)
+      )`,
+      `CREATE TABLE IF NOT EXISTS profile_asset_links (
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        asset_id TEXT NOT NULL,
+        product_version_id TEXT NOT NULL REFERENCES product_versions(id),
+        profile_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY(product_version_id,profile_id),
+        FOREIGN KEY(tenant_id,asset_id) REFERENCES profile_assets(tenant_id,id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS profile_asset_audit (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        asset_id TEXT NOT NULL,
+        actor_id TEXT NOT NULL REFERENCES admin_users(id),
+        action TEXT NOT NULL CHECK(action IN ('CREATED','RETIRED','CONFIGURED')),
+        details_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        FOREIGN KEY(tenant_id,asset_id) REFERENCES profile_assets(tenant_id,id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS profile_assets_tenant_status_idx ON profile_assets(tenant_id,status,created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS profile_asset_links_asset_idx ON profile_asset_links(tenant_id,asset_id)`,
+      `CREATE INDEX IF NOT EXISTS profile_asset_audit_lookup_idx ON profile_asset_audit(tenant_id,asset_id,created_at DESC)`,
+    ],
+  },
 ];

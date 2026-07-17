@@ -15,6 +15,7 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 - istniejąca pergola jest adapterem pierwszego modułu;
 - weranda jest osobnym rendererem parametrycznym;
 - profile konstrukcyjne są wersjonowaną częścią definicji produktu, natomiast ich przekroje i narzędzia edycji są prezentowane wyłącznie administratorowi;
+- przekroje SVG korzystają z tenantowych, niezmiennych zasobów, wymiennego object storage i wspólnej fabryki geometrii Three.js opisanej w [`svg-profile-assets.md`](svg-profile-assets.md);
 - definicje produktów i zakresy pochodzą z publicznego API, z jawnym fallbackiem demo dla statycznego GitHub Pages;
 - API waliduje, zapisuje i wersjonuje konfiguracje;
 - wycena, publiczny BOM i PDF powstają po stronie serwera;
@@ -92,6 +93,7 @@ Publiczne endpointy:
 - `GET /api/public/:tenantSlug/configurations/:shareId`
 - `POST /api/public/:tenantSlug/quotes`
 - `POST /api/public/:tenantSlug/pdf`
+- `GET /api/public/:tenantSlug/profile-assets/:assetId`
 
 Administracyjne endpointy:
 
@@ -102,11 +104,15 @@ Administracyjne endpointy:
 - `PUT /api/admin/:tenantSlug/products/:productType`
 - `POST /api/admin/:tenantSlug/products/:productType/publish`
 - `PUT /api/admin/:tenantSlug/branding`
+- `GET|POST /api/admin/:tenantSlug/profile-assets`
+- `GET /api/admin/:tenantSlug/profile-assets/:assetId/content`
+- `GET /api/admin/:tenantSlug/profile-assets/audit`
+- `DELETE /api/admin/:tenantSlug/profile-assets/:assetId`
 
 ### Niezmienniki izolacji klientów
 
 - każda publiczna operacja przyjmująca konfigurację porównuje `configuration.tenantSlug` z `:tenantSlug` w adresie i odrzuca rozbieżność jako `tenant_mismatch`;
-- każdy administracyjny endpoint z `:tenantSlug` korzysta ze wspólnego `requireTenantAdmin`, który porównuje klienta sesji z klientem trasy przed uruchomieniem logiki endpointu;
+- każdy administracyjny endpoint z `:tenantSlug` korzysta ze wspólnego `requireTenantPermission`, który porównuje klienta sesji z klientem trasy i sprawdza wymagane uprawnienie roli przed uruchomieniem logiki endpointu;
 - odczyt zapisanej konfiguracji wymaga jednocześnie poprawnego `shareId` i zgodnego klienta;
 - zapytania do danych produktowych, brandingu, konfiguracji i wycen muszą zawierać filtr klienta. Nowych endpointów nie wolno zabezpieczać wyłącznie identyfikatorem przekazanym przez frontend.
 - wspólna domena może wybrać klienta przez zwalidowany `?tenant=slug`, ale host obecny w serwerowej `TENANT_HOST_MAP` jest zablokowany do wskazanego klienta i ma pierwszeństwo przed parametrem URL;
