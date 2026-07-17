@@ -65,12 +65,81 @@ export class ConfiguratorApi {
     return this.request(`/api/public/${encodeURIComponent(this.tenantSlug)}/validate`, { method: "POST", body: { configuration } });
   }
 
-  save(configuration, expiresInDays) {
-    return this.request(`/api/public/${encodeURIComponent(this.tenantSlug)}/configurations`, { method: "POST", body: { configuration, expiresInDays } });
+  save(configuration, expiresInDays, project) {
+    return this.request(`/api/public/${encodeURIComponent(this.tenantSlug)}/configurations`, { method: "POST", body: { configuration, expiresInDays, project } });
   }
 
   load(shareId) {
     return this.request(`/api/public/${encodeURIComponent(this.tenantSlug)}/configurations/${encodeURIComponent(shareId)}`);
+  }
+
+  publicCapabilities(productType) {
+    const query = productType ? `?productType=${encodeURIComponent(productType)}` : "";
+    return this.request(`/api/public/${encodeURIComponent(this.tenantSlug)}/capabilities${query}`);
+  }
+
+  advisorCapabilities(productType) {
+    const query = productType ? `?productType=${encodeURIComponent(productType)}` : "";
+    return this.request(`/api/advisor/${encodeURIComponent(this.tenantSlug)}/capabilities${query}`);
+  }
+
+  advisorLoad(shareId) {
+    return this.request(`/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}`);
+  }
+
+  updateProject(shareId, project, expectedVersion, advisor = false) {
+    const path = advisor
+      ? `/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}`
+      : `/api/public/${encodeURIComponent(this.tenantSlug)}/configurations/${encodeURIComponent(shareId)}`;
+    return this.request(path, { method: "PUT", body: { project, expectedVersion } });
+  }
+
+  projectVersions(shareId) {
+    return this.request(`/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}/versions`);
+  }
+
+  uploadProjectAsset(shareId, payload, advisor, onProgress) {
+    if (!this.available) return Promise.reject(new Error("API_UNAVAILABLE"));
+    const prefix = this.baseUrl;
+    const path = advisor
+      ? `/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}/assets`
+      : `/api/public/${encodeURIComponent(this.tenantSlug)}/configurations/${encodeURIComponent(shareId)}/assets`;
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${prefix}${path}`);
+      xhr.withCredentials = true;
+      xhr.responseType = "json";
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+        else {
+          const error = new Error(xhr.response?.error || `HTTP_${xhr.status}`);
+          error.status = xhr.status;
+          error.payload = xhr.response;
+          reject(error);
+        }
+      });
+      xhr.addEventListener("error", () => reject(new Error("NETWORK_ERROR")));
+      xhr.send(JSON.stringify(payload));
+    });
+  }
+
+  deleteProjectAsset(shareId, assetId, advisor) {
+    const path = advisor
+      ? `/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}/assets/${encodeURIComponent(assetId)}`
+      : `/api/public/${encodeURIComponent(this.tenantSlug)}/configurations/${encodeURIComponent(shareId)}/assets/${encodeURIComponent(assetId)}`;
+    return this.request(path, { method: "DELETE" });
+  }
+
+  advisorCalculation(shareId, body) {
+    return this.request(`/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}/calculations`, { method: "POST", body });
+  }
+
+  authorizeExport(shareId, format) {
+    return this.request(`/api/advisor/${encodeURIComponent(this.tenantSlug)}/projects/${encodeURIComponent(shareId)}/exports`, { method: "POST", body: { format }, timeout: 30000 });
   }
 
   quote(configuration) {

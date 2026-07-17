@@ -7,6 +7,8 @@ import { ConfiguratorApi } from "./core/configurator-api.js";
 import { fallbackCatalog } from "./core/fallback-catalog.js";
 import { hydrateProfileAssets } from "./core/profile-definitions.js";
 import { resolveTenantContext } from "./core/tenant-context.js";
+import { createPhotoProjectTools } from "./photo-project.js";
+import { generateProjectGlb } from "./ar-export.js";
 
 const mount = document.getElementById("pergolaMount");
 if (mount) {
@@ -27,6 +29,9 @@ if (mount) {
   window.__VISNEX_TENANT_CONTEXT__ = tenantContext;
   document.documentElement.dataset.tenantSlug = tenantSlug;
   const api = new ConfiguratorApi({ baseUrl: runtimeConfig.apiBaseUrl, tenantSlug });
+  const advisorMode = new URLSearchParams(window.location.search).get("mode") === "advisor";
+  document.body.dataset.configuratorMode = advisorMode ? "advisor" : "public";
+  document.getElementById("configuratorModeLabel").textContent = advisorMode ? "Tryb doradcy" : "Konfigurator publiczny";
   let catalog = null;
   let catalogSource = "api";
   if (api.available) {
@@ -50,6 +55,20 @@ if (mount) {
     document.body.dataset.tenantStatus = "unavailable";
     return;
   }
+  let capabilities = catalog.capabilities;
+  if (api.available) {
+    try {
+      capabilities = advisorMode ? await api.advisorCapabilities() : await api.publicCapabilities();
+    } catch (error) {
+      if (advisorMode) {
+        const errorCard = document.createElement("div");
+        errorCard.className = "configurator-tenant-error";
+        errorCard.innerHTML = "<span>Tryb doradcy</span><strong>Wymagana jest aktywna sesja organizacji.</strong><p>Zaloguj się w panelu administratora, a następnie ponownie otwórz Tryb doradcy.</p><a href=\"./admin.html\">Przejdź do panelu →</a>";
+        mount.replaceChildren(errorCard); mount.setAttribute("aria-busy", "false"); return;
+      }
+    }
+  }
+  capabilities ||= { mode: "PUBLIC", role: "public_customer", features: { CUSTOMER_PHOTO: false, BASIC_PHOTO_FIT: false, ADVANCED_CALIBRATION: false, OBSTACLE_MASKING: false, PUBLIC_PRICE: false, INTERNAL_CALCULATION: false, GLB_EXPORT: false, JSON_EXPORT: false }, publicPriceVisibility: "HIDDEN", limits: { maxPhotoBytes: 8000000, maxPhotoDimension: 4096, maxPhotosPerProject: 3, maxProjectVersions: 100 }, maxDiscountPercent: 0 };
   const visibleProducts = [...catalog.products]
     .filter((product) => product.enabled)
     .sort((a, b) => a.order - b.order);
@@ -174,6 +193,11 @@ if (mount) {
   const textileColor = (id) => SCREEN_COLORS.find((color) => color.id === id) || SCREEN_COLORS[0];
   let savedShareUrl = null;
   let savedShareId = null;
+  let savedProjectId = null;
+  let savedProjectVersion = 0;
+  let loadedProjectScene = null;
+  let loadedProjectAssets = [];
+  let photoTools = null;
 
   const applyBranding = () => {
     const branding = catalog.tenant?.branding;
@@ -300,10 +324,16 @@ if (mount) {
   const requestedProject = new URLSearchParams(window.location.search).get("project");
   if (requestedProject && api.available) {
     try {
-      const saved = await api.load(requestedProject);
+      const saved = advisorMode ? await api.advisorLoad(requestedProject) : await api.load(requestedProject);
       if (hydrateConfiguration(saved.configuration)) {
         savedShareId = saved.shareId;
-        savedShareUrl = window.location.href;
+        savedProjectId = saved.id;
+        savedProjectVersion = saved.currentVersion || 1;
+        loadedProjectScene = saved.document?.scene || null;
+        loadedProjectAssets = saved.assets || [];
+        const publicUrl = new URL(window.location.href);
+        publicUrl.searchParams.delete("mode");
+        savedShareUrl = publicUrl.toString();
       }
     } catch (error) {
       console.error("Saved configuration could not be loaded.", error);
@@ -496,6 +526,18 @@ if (mount) {
     productVersionId: activeDefinition().version.id,
     values: configurationBuilders.get(state.productType)(),
   });
+  const projectPayload = () => ({
+    projectFormatVersion: "1.0",
+    configuration: configurationPayload(),
+    scene: photoTools?.getScene() || loadedProjectScene || {
+      photoAssetId: null,
+      photoTransform: { crop: { x: 0, y: 0, width: 1, height: 1 }, offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, brightness: 1, contrast: 1 },
+      modelTransform: { position: { x: 0, y: 0, z: 0 }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: 1 },
+      camera: { method: "MANUAL_ASSISTED", horizonY: .5, groundLine: null, referenceLine: null, referenceLengthMm: null, groundPlane: [], facadePlane: [], perspectiveLines: [], mountPoint: null, fovDeg: 38, helpersVisible: false },
+      lighting: { azimuthDeg: 35, elevationDeg: 48, shadowSoftness: .65, shadowIntensity: .45, modelBrightness: 1, colorTemperatureK: 6500 },
+      foregroundMaskAssetId: null,
+    },
+  });
 
   const emitConfigurationChange = () => {
     const detail = configurationPayload();
@@ -506,6 +548,7 @@ if (mount) {
   const publicApi = Object.freeze({
     version: "2.1.0",
     getConfiguration: configurationPayload,
+    getProject: projectPayload,
     getShareUrl: () => savedShareUrl,
     save: () => saveProject(),
     getRegisteredProducts: () => canvas.registeredProducts,
@@ -526,9 +569,8 @@ if (mount) {
   };
 
   const push = () => {
-    savedShareUrl = null;
-    savedShareId = null;
     canvas.update(params());
+    photoTools?.setProductType(state.productType);
     updateSpec();
     updateSummary();
     emitConfigurationChange();
@@ -1406,6 +1448,63 @@ if (mount) {
     notice.classList.toggle("is-error", tone === "error");
   };
 
+  const downloadBlob = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = fileName; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  const applySavedProject = (saved) => {
+    savedShareId = saved.shareId || savedShareId;
+    savedProjectId = saved.id || savedProjectId;
+    savedProjectVersion = saved.currentVersion || savedProjectVersion || 1;
+    if (saved.shareUrl) savedShareUrl = saved.shareUrl;
+    loadedProjectScene = saved.project?.scene || saved.document?.scene || photoTools?.getScene() || loadedProjectScene;
+  };
+
+  photoTools = createPhotoProjectTools({
+    mount,
+    publicHost: document.getElementById("photoProjectTools"),
+    advisorHost: document.getElementById("advisorProjectTools"),
+    canvas,
+    api,
+    advisor: advisorMode,
+    capabilities,
+    productType: state.productType,
+    initialScene: loadedProjectScene,
+    initialAssets: loadedProjectAssets,
+    ensureProject: async () => { if (!savedShareId) await saveProject(); return { shareId: savedShareId, currentVersion: savedProjectVersion }; },
+    saveDocument: async (nextScene) => { loadedProjectScene = nextScene; return saveProject(); },
+    getProjectContext: () => ({ shareId: savedShareId, projectId: savedProjectId, currentVersion: savedProjectVersion }),
+    setNotice,
+    onCalculate: async (input) => {
+      await saveProject();
+      return api.advisorCalculation(savedShareId, { project: projectPayload(), ...input });
+    },
+    onExport: async (format) => {
+      try {
+        await saveProject();
+        setNotice(format === "GLB" ? "Przygotowuję eksport konstrukcji…" : "Przygotowuję dane projektu…");
+        const authorization = await api.authorizeExport(savedShareId, format);
+        if (format === "JSON") {
+          downloadBlob(new Blob([JSON.stringify(authorization.project, null, 2)], { type: "application/json" }), `visnex-${state.productType}-project.json`);
+        } else {
+          const root = canvas.createExportClone({
+            projectId: authorization.metadata.projectId,
+            productId: authorization.metadata.productId,
+            exportFormatVersion: authorization.metadata.exportFormatVersion,
+            dimensions: authorization.metadata.dimensions,
+          });
+          const exported = await generateProjectGlb(root);
+          downloadBlob(exported.blob, `visnex-${state.productType}.glb`);
+        }
+        setNotice(`Eksport ${format} został przygotowany bez zdjęcia, maski i danych cenowych.`, "valid");
+      } catch (error) {
+        console.error(error); setNotice(`Eksport ${format} nie powiódł się.`, "error");
+      }
+    },
+  });
+
   async function validateCurrent() {
     if (!api.available) {
       setNotice("Tryb statyczny GitHub Pages · uruchom API, aby walidować, zapisywać i wyceniać.");
@@ -1441,11 +1540,20 @@ if (mount) {
     try {
       const validation = await validateCurrent();
       if (!validation.valid) throw new Error("CONFIGURATION_INVALID");
-      const saved = await api.save(configurationPayload(), 30);
-      savedShareId = saved.shareId;
-      savedShareUrl = saved.shareUrl;
-      saveLabel.textContent = "Projekt zapisany ✓";
-      setNotice("Projekt zapisany pod nieprzewidywalnym identyfikatorem. Link wygasa po 30 dniach.", "valid");
+      let saved;
+      if (savedShareId) {
+        try {
+          saved = await api.updateProject(savedShareId, projectPayload(), savedProjectVersion, advisorMode);
+        } catch (error) {
+          if (error.status === 409) { const conflict = new Error("version_conflict"); conflict.payload = error.payload; throw conflict; }
+          throw error;
+        }
+      } else {
+        saved = await api.save(configurationPayload(), 30, projectPayload());
+      }
+      applySavedProject(saved);
+      saveLabel.textContent = `Projekt zapisany · v${savedProjectVersion}`;
+      setNotice(savedProjectVersion > 1 ? `Zapisano wersję ${savedProjectVersion} projektu.` : "Projekt zapisany pod nieprzewidywalnym identyfikatorem. Link wygasa po 30 dniach.", "valid");
       return saved;
     } finally {
       saveButton.classList.remove("is-busy");
@@ -1572,7 +1680,9 @@ if (mount) {
         window.dispatchEvent(new CustomEvent("configurator:quote-request", { detail: quoteDraft }));
         if (state.productType === "bioclimatic-pergola") window.dispatchEvent(new CustomEvent("pergola:quote-request", { detail: quoteDraft }));
         quotePreview.hidden = false;
-        quotePreview.innerHTML = `<small>Wycena demonstracyjna · ${result.quoteId}</small><strong>${result.quote.gross.toLocaleString("pl-PL")} ${result.quote.currency}</strong><small>brutto · wymaga weryfikacji technicznej</small>`;
+        if (result.priceVisibility === "EXACT") quotePreview.innerHTML = `<small>Wycena demonstracyjna · ${result.quoteId}</small><strong>${result.quote.gross.toLocaleString("pl-PL")} ${result.quote.currency}</strong><small>brutto · wymaga weryfikacji technicznej</small>`;
+        else if (result.priceVisibility === "FROM") quotePreview.innerHTML = `<small>Cena orientacyjna · ${result.quoteId}</small><strong>od ${result.displayPrice.amount.toLocaleString("pl-PL")} ${result.displayPrice.currency}</strong><small>wymaga potwierdzenia przez doradcę</small>`;
+        else quotePreview.innerHTML = `<small>Zapytanie · ${result.quoteId}</small><strong>Cena u doradcy</strong><small>Konfiguracja została zapisana bez ujawniania reguł wewnętrznych.</small>`;
         inquiryLabel.textContent = "Konfiguracja gotowa do wyceny ✓";
         setNotice("Wycena i publiczny BOM zostały wygenerowane na backendzie.", "valid");
       } catch (error) {

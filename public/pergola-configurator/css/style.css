@@ -811,6 +811,52 @@ body.is-loaded .hero__actions.reveal-line > span { opacity: 1; transform: none; 
 }
 .pergola3d__canvas { width: 100%; height: 100%; }
 .pergola3d__canvas canvas { display: block; }
+.pergola3d__canvas > canvas:not(.photo-stage-layer) { position: relative; z-index: 2; }
+.photo-stage-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+.photo-stage-layer--background { z-index: 1; background: #e6ded2; }
+.photo-stage-layer--foreground { z-index: 3; pointer-events: none; }
+.photo-stage-layer--guides { z-index: 4; pointer-events: none; cursor: crosshair; }
+.pergola3d__canvas.has-property-photo { background: #d8d0c3; }
+
+.photo-project-tools, .advisor-project-tools { display: grid; gap: 16px; padding: 20px; border: 1px solid rgba(241,235,224,.16); background: linear-gradient(145deg,rgba(241,235,224,.055),rgba(185,127,82,.035)); }
+.photo-tool__head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding-bottom: 14px; border-bottom: 1px solid rgba(241,235,224,.12); }
+.photo-tool__head div { display: grid; gap: 4px; }
+.photo-tool__head span, .photo-tool__head small { color: var(--copper-hi); font-family: var(--font-mono); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
+.photo-tool__head strong { font-family: var(--font-impact); font-size: 1.25rem; line-height: 1.05; letter-spacing: .02em; text-transform: uppercase; }
+.photo-tool__head--advisor { margin: -20px -20px 0; padding: 18px 20px; color: #171411; background: var(--copper-hi); border-bottom: 0; }
+.photo-tool__head--advisor span, .photo-tool__head--advisor small { color: #633019; }
+.photo-tool__head--advisor button { padding: 8px 11px; border: 1px solid rgba(23,20,17,.35); font-family: var(--font-mono); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.photo-tool__upload { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.photo-tool__upload label, .photo-tool__upload button, .photo-tool__actions button, .advisor-project-tools details > button { min-height: 38px; padding: 9px 12px; color: #f1ebe0; border: 1px solid rgba(241,235,224,.22); font-family: var(--font-mono); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.photo-tool__upload label { position: relative; overflow: hidden; color: #171411; background: var(--copper-hi); border-color: var(--copper-hi); cursor: pointer; }
+.photo-tool__upload input[type="file"] { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.photo-tool__upload progress { flex: 1 1 110px; height: 5px; accent-color: var(--copper-hi); }
+.photo-tool__privacy, .photo-tool__assist { color: rgba(241,235,224,.55); font-size: 10px; line-height: 1.55; }
+.photo-tool__controls, .advisor-tool-grid { display: grid; gap: 12px; }
+.photo-tool__controls details, .advisor-tool-grid details { border-top: 1px solid rgba(241,235,224,.14); }
+.photo-tool__controls summary, .advisor-tool-grid summary { padding: 13px 0 10px; color: var(--copper-hi); font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.photo-tool__range { display: grid; gap: 7px; padding: 8px 0; }
+.photo-tool__range > span { display: flex; justify-content: space-between; gap: 10px; color: rgba(241,235,224,.65); font-size: 10px; }
+.photo-tool__range output { color: var(--copper-hi); font-family: var(--font-mono); }
+.photo-tool__range input { width: 100%; accent-color: var(--copper-hi); }
+.photo-tool__actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0; }
+.photo-tool__actions button[aria-pressed="true"] { color: #171411; background: var(--copper-hi); border-color: var(--copper-hi); }
+.photo-tool__actions button:disabled { opacity: .35; cursor: not-allowed; }
+.photo-tool__number, .advisor-calculation-form label { display: grid; gap: 6px; color: rgba(241,235,224,.62); font-size: 10px; }
+.photo-tool__number input, .advisor-calculation-form input { width: 100%; min-height: 38px; padding: 8px 10px; color: #f1ebe0; background: #28231f; border: 1px solid rgba(241,235,224,.2); }
+.photo-tool__save { width: 100%; min-height: 45px; padding: 11px 14px; color: #171411; background: var(--copper-hi); font-family: var(--font-mono); font-size: 9px; letter-spacing: .11em; text-transform: uppercase; }
+.advisor-tool-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.advisor-tool-grid details { min-width: 0; padding: 0 13px 14px; border: 1px solid rgba(241,235,224,.13); }
+.advisor-calculation-form { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.advisor-calculation-result { display: grid; gap: 3px; margin-top: 10px; padding: 12px; color: #171411; background: #e7dac9; }
+.advisor-calculation-result span, .advisor-calculation-result small { font-family: var(--font-mono); font-size: 8px; letter-spacing: .06em; }
+.advisor-calculation-result strong { color: #77331e; font-family: var(--font-impact); font-size: 1.45rem; }
+.project-version-history { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.project-version-history li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 10px; border: 1px solid rgba(241,235,224,.13); background: rgba(255,255,255,.035); }
+.project-version-history strong { color: var(--copper-hi); font-size: 11px; }
+.project-version-history span { color: rgba(241,235,224,.55); font-family: var(--font-mono); font-size: 8px; text-align: right; }
+@media (max-width: 1180px) { .advisor-tool-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .photo-project-tools, .advisor-project-tools { padding: 15px; } .photo-tool__head--advisor { margin: -15px -15px 0; } .advisor-calculation-form { grid-template-columns: 1fr; } }
 
 /* Wybór boku dla nowej nogi — znaczniki na środku każdej ściany pergoli,
    pozycjonowane skryptem na rzucie lica ściany. */

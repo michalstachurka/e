@@ -2,12 +2,14 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { AdminProductUpdate, AdminRole, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
+import type { AdminProductUpdate, AdminRole, FeatureAvailabilitySettings, ProductDefinition, ProjectDocument, PublicConfiguration } from "../../../packages/contracts/src/index.js";
 import { productSeeds, tenantSeed, type PricingRules } from "../../../packages/configurator-core/src/catalog.js";
+import { defaultProjectScene } from "../../../packages/contracts/src/index.js";
 import { hashPassword, hashToken } from "./security.js";
 import { normalizeHostname } from "./tenant-context.js";
 import { nextDraftVersionId, prepareTenantProvision, TenantProvisionError } from "./tenant-provisioning.js";
-import type { ConfiguratorStore, ProfileAssetAuditRecord, ProfileAssetRecord, TenantProvisionInput, TenantProvisionResult } from "./store.js";
+import { defaultOrganizationFeaturePolicy, platformFeaturePolicy, stageOnePlanFeaturePolicy } from "./capabilities.js";
+import type { ConfiguratorStore, PrivateAssetRecord, ProfileAssetAuditRecord, ProfileAssetRecord, ProjectAuthor, ProjectRecord, ProjectVersionRecord, TenantProvisionInput, TenantProvisionResult } from "./store.js";
 
 export { TenantProvisionError } from "./tenant-provisioning.js";
 
@@ -86,9 +88,114 @@ CREATE TABLE IF NOT EXISTS profile_asset_audit (
   created_at TEXT NOT NULL,
   FOREIGN KEY(tenant_id,asset_id) REFERENCES profile_assets(tenant_id,id)
 );
+CREATE TABLE IF NOT EXISTS feature_policy_sets (
+  scope_type TEXT NOT NULL CHECK(scope_type IN ('PLATFORM','PLAN','ORGANIZATION','PRODUCT')),
+  scope_key TEXT NOT NULL,
+  settings_json TEXT NOT NULL,
+  updated_by TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(scope_type,scope_key)
+);
+CREATE TABLE IF NOT EXISTS project_documents (
+  project_id TEXT PRIMARY KEY REFERENCES saved_configurations(id) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  current_version INTEGER NOT NULL,
+  project_json TEXT NOT NULL,
+  created_by_kind TEXT NOT NULL CHECK(created_by_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+  created_by_id TEXT,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_versions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  version_number INTEGER NOT NULL,
+  project_json TEXT NOT NULL,
+  author_kind TEXT NOT NULL CHECK(author_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+  author_id TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(project_id,version_number)
+);
+CREATE TABLE IF NOT EXISTS project_share_revocations (
+  project_id TEXT PRIMARY KEY REFERENCES saved_configurations(id) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  revoked_by_kind TEXT NOT NULL CHECK(revoked_by_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+  revoked_by_id TEXT,
+  revoked_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS private_assets (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('CUSTOMER_PHOTO','FOREGROUND_MASK')),
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL CHECK(mime_type IN ('image/webp','image/png')),
+  byte_size INTEGER NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  asset_format_version TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('ACTIVE','DELETED')),
+  created_by_kind TEXT NOT NULL CHECK(created_by_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+  created_by_id TEXT,
+  created_at TEXT NOT NULL,
+  deleted_at TEXT,
+  UNIQUE(tenant_id,storage_key)
+);
+CREATE TABLE IF NOT EXISTS private_asset_variants (
+  asset_id TEXT NOT NULL REFERENCES private_assets(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  PRIMARY KEY(asset_id,name)
+);
+CREATE TABLE IF NOT EXISTS private_asset_objects (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  storage_key TEXT NOT NULL,
+  content BLOB NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(tenant_id,storage_key)
+);
+CREATE TABLE IF NOT EXISTS project_audit_events (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  project_id TEXT,
+  actor_kind TEXT NOT NULL CHECK(actor_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+  actor_id TEXT,
+  action TEXT NOT NULL,
+  details_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS advisor_calculations (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+  project_version INTEGER NOT NULL,
+  price_list_version_id TEXT NOT NULL,
+  calculation_json TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS export_jobs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+  format TEXT NOT NULL CHECK(format IN ('GLB','JSON')),
+  status TEXT NOT NULL CHECK(status IN ('READY','COMPLETED','FAILED')),
+  requested_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
 CREATE INDEX IF NOT EXISTS profile_assets_tenant_status_idx ON profile_assets(tenant_id,status,created_at);
 CREATE INDEX IF NOT EXISTS profile_asset_links_asset_idx ON profile_asset_links(tenant_id,asset_id);
 CREATE INDEX IF NOT EXISTS profile_asset_audit_lookup_idx ON profile_asset_audit(tenant_id,asset_id,created_at);
+CREATE INDEX IF NOT EXISTS project_versions_lookup_idx ON project_versions(tenant_id,project_id,version_number DESC);
+CREATE INDEX IF NOT EXISTS private_assets_project_idx ON private_assets(tenant_id,project_id,status);
+CREATE INDEX IF NOT EXISTS project_audit_lookup_idx ON project_audit_events(tenant_id,project_id,created_at DESC);
 `;
 
 function asString(value: SqlValue | undefined) {
@@ -114,6 +221,32 @@ function profileAssetFromRow(row: Row): ProfileAssetRecord {
     createdAt: asString(row.created_at),
     updatedAt: asString(row.updated_at),
   };
+}
+
+function privateAssetFromRow(row: Row): PrivateAssetRecord {
+  return {
+    id: asString(row.id),
+    tenantId: asString(row.tenant_id),
+    projectId: asString(row.project_id),
+    kind: asString(row.kind) as PrivateAssetRecord["kind"],
+    fileName: asString(row.file_name),
+    mimeType: asString(row.mime_type) as PrivateAssetRecord["mimeType"],
+    byteSize: Number(row.byte_size),
+    width: Number(row.width),
+    height: Number(row.height),
+    contentHash: asString(row.content_hash),
+    storageKey: asString(row.storage_key),
+    assetFormatVersion: "1.0",
+    status: asString(row.status) as PrivateAssetRecord["status"],
+    createdByKind: asString(row.created_by_kind) as PrivateAssetRecord["createdByKind"],
+    createdById: row.created_by_id ? asString(row.created_by_id) : null,
+    createdAt: asString(row.created_at),
+    deletedAt: row.deleted_at ? asString(row.deleted_at) : null,
+  };
+}
+
+function legacyProject(configuration: PublicConfiguration): ProjectDocument {
+  return { projectFormatVersion: "1.0", configuration, scene: structuredClone(defaultProjectScene) };
 }
 
 function svgAssetLinks(update: AdminProductUpdate) {
@@ -158,6 +291,7 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
     this.connection.prepare("INSERT OR IGNORE INTO tenants (id,slug,name,created_at) VALUES (?,?,?,?)").run(tenantId, tenantSeed.slug, tenantSeed.name, now);
     this.connection.prepare("INSERT OR IGNORE INTO branding_settings (id,tenant_id,settings_json,updated_at) VALUES (?,?,?,?)").run(`branding-${tenantSeed.slug}`, tenantId, JSON.stringify(tenantSeed.branding), now);
     this.connection.prepare("INSERT OR IGNORE INTO product_categories (id,tenant_id,name,sort_order) VALUES (?,?,?,?)").run(`category-${tenantSeed.slug}-covers`, tenantId, "Zadaszenia", 10);
+    this.seedFeaturePolicies(tenantId, now);
 
     for (const seed of productSeeds) {
       const typeId = `type-${seed.definition.productType}`;
@@ -180,6 +314,13 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
     }
   }
 
+  private seedFeaturePolicies(tenantId: string, now: string) {
+    const statement = this.connection.prepare("INSERT OR IGNORE INTO feature_policy_sets (scope_type,scope_key,settings_json,updated_by,updated_at) VALUES (?,?,?,?,?)");
+    statement.run("PLATFORM", "global", JSON.stringify(platformFeaturePolicy), null, now);
+    statement.run("PLAN", "stage1", JSON.stringify(stageOnePlanFeaturePolicy), null, now);
+    statement.run("ORGANIZATION", tenantId, JSON.stringify(defaultOrganizationFeaturePolicy), null, now);
+  }
+
   async provisionTenant(input: TenantProvisionInput): Promise<TenantProvisionResult> {
     const { slug, name, adminEmail, passwordHash, domains, branding, tenantId, now } = await prepareTenantProvision(input);
     if (this.connection.prepare("SELECT 1 FROM tenants WHERE slug=?").get(slug)) {
@@ -192,6 +333,7 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
         .run(`branding-${slug}`, tenantId, JSON.stringify(branding), now);
       this.connection.prepare("INSERT INTO product_categories (id,tenant_id,name,sort_order) VALUES (?,?,?,?)")
         .run(`category-${slug}-covers`, tenantId, "Zadaszenia", 10);
+      this.seedFeaturePolicies(tenantId, now);
 
       for (const seed of productSeeds) {
         const productType = seed.definition.productType;
@@ -393,6 +535,37 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
     return true;
   }
 
+  getFeaturePolicyBundle(tenantSlug: string, productType?: string) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) return null;
+    const read = (scopeType: string, scopeKey: string) => {
+      const row = this.connection.prepare("SELECT settings_json FROM feature_policy_sets WHERE scope_type=? AND scope_key=?").get(scopeType, scopeKey) as Row | undefined;
+      return row ? JSON.parse(asString(row.settings_json)) as FeatureAvailabilitySettings : null;
+    };
+    let product: FeatureAvailabilitySettings | null = null;
+    if (productType) {
+      const row = this.connection.prepare(`SELECT pd.id FROM product_definitions pd JOIN product_types pt ON pt.id=pd.product_type_id WHERE pd.tenant_id=? AND pt.code=?`).get(tenant.id, productType) as Row | undefined;
+      if (row) product = read("PRODUCT", asString(row.id));
+    }
+    return {
+      platform: read("PLATFORM", "global") || structuredClone(platformFeaturePolicy),
+      plan: read("PLAN", "stage1") || structuredClone(stageOnePlanFeaturePolicy),
+      organization: read("ORGANIZATION", tenant.id) || structuredClone(defaultOrganizationFeaturePolicy),
+      product,
+    };
+  }
+
+  updateOrganizationFeaturePolicy(tenantSlug: string, settings: FeatureAvailabilitySettings, actorId: string) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) return false;
+    this.connection.prepare(`
+      INSERT INTO feature_policy_sets (scope_type,scope_key,settings_json,updated_by,updated_at)
+      VALUES ('ORGANIZATION',?,?,?,?)
+      ON CONFLICT(scope_type,scope_key) DO UPDATE SET settings_json=excluded.settings_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at
+    `).run(tenant.id, JSON.stringify(settings), actorId, new Date().toISOString());
+    return true;
+  }
+
   saveConfiguration(tenantSlug: string, id: string, shareId: string, configuration: PublicConfiguration, expiresAt: string | null) {
     const tenant = this.getTenant(tenantSlug);
     if (!tenant) throw new Error("Tenant not found");
@@ -406,6 +579,209 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
     const expiresAt = row.expires_at ? asString(row.expires_at) : null;
     if (expiresAt && Date.parse(expiresAt) <= Date.now()) return null;
     return { id: asString(row.id), shareId: asString(row.share_id), configuration: JSON.parse(asString(row.configuration_json)) as PublicConfiguration, createdAt: asString(row.created_at), expiresAt };
+  }
+
+  saveProject(tenantSlug: string, id: string, shareId: string, document: ProjectDocument, expiresAt: string | null, author: ProjectAuthor) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) throw new Error("Tenant not found");
+    const now = new Date().toISOString();
+    this.connection.exec("BEGIN IMMEDIATE");
+    try {
+      this.connection.prepare("INSERT INTO saved_configurations (id,tenant_id,share_id,product_version_id,configuration_json,expires_at,created_at) VALUES (?,?,?,?,?,?,?)")
+        .run(id, tenant.id, shareId, document.configuration.productVersionId, JSON.stringify(document.configuration), expiresAt, now);
+      this.connection.prepare("INSERT INTO project_documents (project_id,tenant_id,current_version,project_json,created_by_kind,created_by_id,updated_at) VALUES (?,?,?,?,?,?,?)")
+        .run(id, tenant.id, 1, JSON.stringify(document), author.kind, author.id, now);
+      this.connection.prepare("INSERT INTO project_versions (id,project_id,tenant_id,version_number,project_json,author_kind,author_id,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), id, tenant.id, 1, JSON.stringify(document), author.kind, author.id, now);
+      this.connection.prepare("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), tenant.id, id, author.kind, author.id, "PROJECT_CREATED", JSON.stringify({ version: 1 }), now);
+      this.connection.exec("COMMIT");
+    } catch (error) {
+      this.connection.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getProject(tenantSlug: string, shareId: string): ProjectRecord | null {
+    const row = this.connection.prepare(`
+      SELECT sc.*,pd.current_version,pd.project_json,pd.updated_at
+      FROM saved_configurations sc JOIN tenants t ON t.id=sc.tenant_id
+      LEFT JOIN project_documents pd ON pd.project_id=sc.id AND pd.tenant_id=sc.tenant_id
+      WHERE t.slug=? AND sc.share_id=?
+    `).get(tenantSlug, shareId) as Row | undefined;
+    if (!row) return null;
+    const expiresAt = row.expires_at ? asString(row.expires_at) : null;
+    if (expiresAt && Date.parse(expiresAt) <= Date.now()) return null;
+    const configuration = JSON.parse(asString(row.configuration_json)) as PublicConfiguration;
+    return {
+      id: asString(row.id),
+      shareId: asString(row.share_id),
+      configuration,
+      document: row.project_json ? JSON.parse(asString(row.project_json)) as ProjectDocument : legacyProject(configuration),
+      currentVersion: Number(row.current_version || 1),
+      createdAt: asString(row.created_at),
+      updatedAt: row.updated_at ? asString(row.updated_at) : asString(row.created_at),
+      expiresAt,
+    };
+  }
+
+  isProjectShareTokenRevoked(tenantSlug: string, projectId: string) {
+    return Boolean(this.connection.prepare(`
+      SELECT 1 FROM project_share_revocations psr
+      JOIN tenants t ON t.id=psr.tenant_id
+      WHERE t.slug=? AND psr.project_id=?
+    `).get(tenantSlug, projectId));
+  }
+
+  revokeProjectShareToken(tenantSlug: string, projectId: string, actor: ProjectAuthor) {
+    const tenant = this.connection.prepare("SELECT id FROM tenants WHERE slug=?").get(tenantSlug) as Row | undefined;
+    if (!tenant) return false;
+    const owned = this.connection.prepare("SELECT 1 FROM saved_configurations WHERE id=? AND tenant_id=?").get(projectId, tenant.id);
+    if (!owned) return false;
+    const now = new Date().toISOString();
+    this.connection.exec("BEGIN IMMEDIATE");
+    try {
+      this.connection.prepare(`
+        INSERT INTO project_share_revocations (project_id,tenant_id,revoked_by_kind,revoked_by_id,revoked_at)
+        VALUES (?,?,?,?,?) ON CONFLICT(project_id) DO NOTHING
+      `).run(projectId, tenant.id, actor.kind, actor.id, now);
+      this.connection.prepare("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES (?,?,?,?,?,'PUBLIC_SHARE_REVOKED',?,?)")
+        .run(randomUUID(), tenant.id, projectId, actor.kind, actor.id, JSON.stringify({ revokedAt: now }), now);
+      this.connection.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.connection.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  updateProject(tenantSlug: string, projectId: string, document: ProjectDocument, expectedVersion: number, author: ProjectAuthor, maxVersions: number) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) return null;
+    const row = this.connection.prepare(`SELECT sc.id,pd.current_version FROM saved_configurations sc LEFT JOIN project_documents pd ON pd.project_id=sc.id WHERE sc.id=? AND sc.tenant_id=?`).get(projectId, tenant.id) as Row | undefined;
+    if (!row) return null;
+    const currentVersion = Number(row.current_version || 1);
+    if (currentVersion !== expectedVersion) return "version_conflict" as const;
+    if (currentVersion >= maxVersions) return "version_limit" as const;
+    const nextVersion = currentVersion + 1;
+    const now = new Date().toISOString();
+    this.connection.exec("BEGIN IMMEDIATE");
+    try {
+      this.connection.prepare("UPDATE saved_configurations SET product_version_id=?,configuration_json=? WHERE id=? AND tenant_id=?")
+        .run(document.configuration.productVersionId, JSON.stringify(document.configuration), projectId, tenant.id);
+      this.connection.prepare(`
+        INSERT INTO project_documents (project_id,tenant_id,current_version,project_json,created_by_kind,created_by_id,updated_at)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(project_id) DO UPDATE SET current_version=excluded.current_version,project_json=excluded.project_json,updated_at=excluded.updated_at
+      `).run(projectId, tenant.id, nextVersion, JSON.stringify(document), author.kind, author.id, now);
+      this.connection.prepare("INSERT INTO project_versions (id,project_id,tenant_id,version_number,project_json,author_kind,author_id,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), projectId, tenant.id, nextVersion, JSON.stringify(document), author.kind, author.id, now);
+      this.connection.prepare("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), tenant.id, projectId, author.kind, author.id, "PROJECT_VERSION_CREATED", JSON.stringify({ version: nextVersion }), now);
+      this.connection.exec("COMMIT");
+    } catch (error) {
+      this.connection.exec("ROLLBACK");
+      throw error;
+    }
+    const shareRow = this.connection.prepare("SELECT share_id FROM saved_configurations WHERE id=?").get(projectId) as Row | undefined;
+    return shareRow ? this.getProject(tenantSlug, asString(shareRow.share_id)) : null;
+  }
+
+  listProjectVersions(tenantSlug: string, projectId: string) {
+    const rows = this.connection.prepare(`
+      SELECT pv.* FROM project_versions pv JOIN tenants t ON t.id=pv.tenant_id
+      WHERE t.slug=? AND pv.project_id=? ORDER BY pv.version_number DESC
+    `).all(tenantSlug, projectId) as Row[];
+    return rows.map((row): ProjectVersionRecord => ({
+      id: asString(row.id), projectId: asString(row.project_id), version: Number(row.version_number),
+      document: JSON.parse(asString(row.project_json)) as ProjectDocument,
+      authorKind: asString(row.author_kind) as ProjectVersionRecord["authorKind"], authorId: row.author_id ? asString(row.author_id) : null,
+      createdAt: asString(row.created_at),
+    }));
+  }
+
+  createPrivateAsset(tenantSlug: string, asset: PrivateAssetRecord, variants: Array<{ storageKey: string; name: string; mimeType: string; byteSize: number; width: number; height: number }>) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant || tenant.id !== asset.tenantId) return false;
+    const project = this.connection.prepare("SELECT 1 FROM saved_configurations WHERE id=? AND tenant_id=?").get(asset.projectId, tenant.id);
+    if (!project) return false;
+    this.connection.exec("BEGIN IMMEDIATE");
+    try {
+      this.connection.prepare(`INSERT INTO private_assets (id,tenant_id,project_id,kind,file_name,mime_type,byte_size,width,height,content_hash,storage_key,asset_format_version,status,created_by_kind,created_by_id,created_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(asset.id, tenant.id, asset.projectId, asset.kind, asset.fileName, asset.mimeType, asset.byteSize, asset.width, asset.height, asset.contentHash, asset.storageKey, asset.assetFormatVersion, asset.status, asset.createdByKind, asset.createdById, asset.createdAt, null);
+      for (const variant of variants) this.connection.prepare("INSERT INTO private_asset_variants (asset_id,name,storage_key,mime_type,byte_size,width,height) VALUES (?,?,?,?,?,?,?)")
+        .run(asset.id, variant.name, variant.storageKey, variant.mimeType, variant.byteSize, variant.width, variant.height);
+      this.connection.prepare("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), tenant.id, asset.projectId, asset.createdByKind, asset.createdById, "PRIVATE_ASSET_CREATED", JSON.stringify({ assetId: asset.id, kind: asset.kind, byteSize: asset.byteSize }), asset.createdAt);
+      this.connection.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.connection.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getPrivateAsset(tenantSlug: string, assetId: string) {
+    const row = this.connection.prepare(`SELECT pa.* FROM private_assets pa JOIN tenants t ON t.id=pa.tenant_id WHERE t.slug=? AND pa.id=?`).get(tenantSlug, assetId) as Row | undefined;
+    return row ? privateAssetFromRow(row) : null;
+  }
+
+  listPrivateAssets(tenantSlug: string, projectId: string) {
+    return (this.connection.prepare(`SELECT pa.* FROM private_assets pa JOIN tenants t ON t.id=pa.tenant_id WHERE t.slug=? AND pa.project_id=? ORDER BY pa.created_at DESC`).all(tenantSlug, projectId) as Row[]).map(privateAssetFromRow);
+  }
+
+  putPrivateAssetObject(tenantSlug: string, storageKey: string, content: Uint8Array) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) throw new Error("Tenant not found");
+    this.connection.prepare(`INSERT INTO private_asset_objects (tenant_id,storage_key,content,updated_at) VALUES (?,?,?,?) ON CONFLICT(tenant_id,storage_key) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at`)
+      .run(tenant.id, storageKey, content, new Date().toISOString());
+  }
+
+  getPrivateAssetObject(tenantSlug: string, storageKey: string) {
+    const row = this.connection.prepare(`SELECT pao.content FROM private_asset_objects pao JOIN tenants t ON t.id=pao.tenant_id WHERE t.slug=? AND pao.storage_key=?`).get(tenantSlug, storageKey) as Row | undefined;
+    return row?.content instanceof Uint8Array ? row.content : null;
+  }
+
+  deletePrivateAsset(tenantSlug: string, projectId: string, assetId: string, actor: ProjectAuthor) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) return false;
+    const asset = this.getPrivateAsset(tenantSlug, assetId);
+    if (!asset || asset.projectId !== projectId || asset.status !== "ACTIVE") return false;
+    const dependentIds = asset.kind === "CUSTOMER_PHOTO"
+      ? (this.connection.prepare("SELECT id FROM private_assets WHERE tenant_id=? AND project_id=? AND kind='FOREGROUND_MASK' AND status='ACTIVE'").all(tenant.id, projectId) as Row[]).map((row) => asString(row.id))
+      : [];
+    const assetIds = [assetId, ...dependentIds];
+    const keys = assetIds.flatMap((id) => (this.connection.prepare("SELECT storage_key FROM private_asset_variants WHERE asset_id=?").all(id) as Row[]).map((row) => asString(row.storage_key)));
+    const now = new Date().toISOString();
+    this.connection.exec("BEGIN IMMEDIATE");
+    try {
+      for (const id of assetIds) this.connection.prepare("UPDATE private_assets SET status='DELETED',deleted_at=? WHERE id=? AND tenant_id=? AND project_id=?").run(now, id, tenant.id, projectId);
+      for (const key of keys) this.connection.prepare("DELETE FROM private_asset_objects WHERE tenant_id=? AND storage_key=?").run(tenant.id, key);
+      this.connection.prepare("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), tenant.id, projectId, actor.kind, actor.id, "PRIVATE_ASSET_DELETED", JSON.stringify({ assetId, kind: asset.kind, dependentAssetIds: dependentIds }), now);
+      this.connection.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.connection.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  createProjectAuditEvent(tenantSlug: string, projectId: string | null, actor: ProjectAuthor, action: string, details: unknown) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) throw new Error("Tenant not found");
+    this.connection.prepare("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run(randomUUID(), tenant.id, projectId, actor.kind, actor.id, action, JSON.stringify(details), new Date().toISOString());
+  }
+
+  createExportJob(tenantSlug: string, jobId: string, projectId: string, format: "GLB" | "JSON", requestedBy: string) {
+    const tenant = this.getTenant(tenantSlug);
+    if (!tenant) return false;
+    const result = this.connection.prepare(`
+      INSERT INTO export_jobs (id,tenant_id,project_id,format,status,requested_by,created_at,completed_at)
+      SELECT ?,?,?,?,?,?,?,NULL FROM saved_configurations sc WHERE sc.id=? AND sc.tenant_id=?
+    `).run(jobId, tenant.id, projectId, format, "READY", requestedBy, new Date().toISOString(), projectId, tenant.id);
+    return result.changes > 0;
   }
 
   saveQuote(tenantSlug: string, id: string, quote: unknown, bom: unknown, savedConfigurationId: string | null) {

@@ -186,6 +186,117 @@ export const ColorDefinitionSchema = z.object({
 export const AdminRoleSchema = z.enum(["OWNER", "ADMIN", "EDITOR", "VIEWER"]);
 export type AdminRole = z.infer<typeof AdminRoleSchema>;
 
+export const ApplicationRoleSchema = z.enum(["platform_admin", "organization_admin", "advisor", "public_customer"]);
+export type ApplicationRole = z.infer<typeof ApplicationRoleSchema>;
+
+export const ConfiguratorModeSchema = z.enum(["PUBLIC", "ADVISOR"]);
+export type ConfiguratorMode = z.infer<typeof ConfiguratorModeSchema>;
+
+export const FeatureKeySchema = z.enum([
+  "CUSTOMER_PHOTO",
+  "BASIC_PHOTO_FIT",
+  "ADVANCED_CALIBRATION",
+  "OBSTACLE_MASKING",
+  "PUBLIC_PRICE",
+  "INTERNAL_CALCULATION",
+  "GLB_EXPORT",
+  "JSON_EXPORT",
+]);
+export type FeatureKey = z.infer<typeof FeatureKeySchema>;
+
+export const PriceVisibilitySchema = z.enum(["HIDDEN", "FROM", "EXACT"]);
+export type PriceVisibility = z.infer<typeof PriceVisibilitySchema>;
+
+const ModeFeatureSettingsSchema = z.object({
+  customerPhoto: z.boolean(),
+  basicPhotoFit: z.boolean(),
+  advancedCalibration: z.boolean(),
+  obstacleMasking: z.boolean(),
+  publicPrice: z.boolean(),
+  internalCalculation: z.boolean(),
+  glbExport: z.boolean(),
+  jsonExport: z.boolean(),
+});
+
+export const FeatureAvailabilitySettingsSchema = z.object({
+  policyFormatVersion: z.literal("1.0"),
+  public: ModeFeatureSettingsSchema,
+  advisor: ModeFeatureSettingsSchema,
+  publicPriceVisibility: PriceVisibilitySchema,
+  limits: z.object({
+    maxPhotoBytes: z.number().int().min(100_000).max(25_000_000),
+    maxPhotoDimension: z.number().int().min(640).max(12_000),
+    maxPhotosPerProject: z.number().int().min(1).max(20),
+    maxProjectVersions: z.number().int().min(5).max(1_000),
+  }),
+});
+export type FeatureAvailabilitySettings = z.infer<typeof FeatureAvailabilitySettingsSchema>;
+
+const Point2DSchema = z.object({ x: z.number().finite(), y: z.number().finite() });
+const Point3DSchema = z.object({ x: z.number().finite(), y: z.number().finite(), z: z.number().finite() });
+
+export const PhotoTransformSchema = z.object({
+  crop: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().positive().max(1), height: z.number().positive().max(1) }),
+  offsetX: z.number().min(-2).max(2),
+  offsetY: z.number().min(-2).max(2),
+  scale: z.number().min(0.1).max(10),
+  rotationDeg: z.number().min(-180).max(180),
+  brightness: z.number().min(0.25).max(2),
+  contrast: z.number().min(0.25).max(2),
+});
+
+export const ModelTransformSchema = z.object({
+  position: Point3DSchema,
+  rotationDeg: Point3DSchema,
+  scale: z.number().min(0.05).max(20),
+});
+
+export const CalibrationSchema = z.object({
+  method: z.enum(["MANUAL_ASSISTED", "ADVISOR_PERSPECTIVE"]),
+  horizonY: z.number().min(0).max(1),
+  groundLine: z.tuple([Point2DSchema, Point2DSchema]).nullable(),
+  referenceLine: z.tuple([Point2DSchema, Point2DSchema]).nullable(),
+  referenceLengthMm: z.number().positive().max(1_000_000).nullable(),
+  groundPlane: z.array(Point2DSchema).max(8),
+  facadePlane: z.array(Point2DSchema).max(8),
+  perspectiveLines: z.array(z.tuple([Point2DSchema, Point2DSchema])).max(12),
+  mountPoint: Point2DSchema.nullable(),
+  fovDeg: z.number().min(15).max(100),
+  helpersVisible: z.boolean(),
+});
+
+export const LightingSettingsSchema = z.object({
+  azimuthDeg: z.number().min(-180).max(180),
+  elevationDeg: z.number().min(5).max(89),
+  shadowSoftness: z.number().min(0).max(1),
+  shadowIntensity: z.number().min(0).max(1),
+  modelBrightness: z.number().min(0.25).max(2),
+  colorTemperatureK: z.number().min(2_500).max(10_000),
+});
+
+export const ProjectDocumentSchema = z.object({
+  projectFormatVersion: z.literal("1.0"),
+  configuration: PublicConfigurationSchema,
+  scene: z.object({
+    photoAssetId: z.string().uuid().nullable(),
+    photoTransform: PhotoTransformSchema,
+    modelTransform: ModelTransformSchema,
+    camera: CalibrationSchema,
+    lighting: LightingSettingsSchema,
+    foregroundMaskAssetId: z.string().uuid().nullable(),
+  }),
+});
+export type ProjectDocument = z.infer<typeof ProjectDocumentSchema>;
+
+export const defaultProjectScene: ProjectDocument["scene"] = {
+  photoAssetId: null,
+  photoTransform: { crop: { x: 0, y: 0, width: 1, height: 1 }, offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, brightness: 1, contrast: 1 },
+  modelTransform: { position: { x: 0, y: 0, z: 0 }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: 1 },
+  camera: { method: "MANUAL_ASSISTED", horizonY: 0.5, groundLine: null, referenceLine: null, referenceLengthMm: null, groundPlane: [], facadePlane: [], perspectiveLines: [], mountPoint: null, fovDeg: 38, helpersVisible: false },
+  lighting: { azimuthDeg: 35, elevationDeg: 48, shadowSoftness: 0.65, shadowIntensity: 0.45, modelBrightness: 1, colorTemperatureK: 6_500 },
+  foregroundMaskAssetId: null,
+};
+
 export const ProfileGeometryTypeSchema = z.enum(["BOX", "SVG_PROFILE"]);
 export const ProfileRotationSchema = z.union([
   z.literal(0),
@@ -268,7 +379,32 @@ export const BrandingSettingsSchema = z.object({
 
 export const SaveConfigurationRequestSchema = z.object({
   configuration: PublicConfigurationSchema,
+  project: ProjectDocumentSchema.optional(),
   expiresInDays: z.number().int().min(1).max(365).optional(),
+});
+
+export const UpdateProjectRequestSchema = z.object({
+  project: ProjectDocumentSchema,
+  expectedVersion: z.number().int().positive(),
+});
+
+export const PrivateImageUploadSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentBase64: z.string().min(32).max(12_000_000),
+  kind: z.enum(["CUSTOMER_PHOTO", "FOREGROUND_MASK"]),
+});
+
+export const AdvisorCalculationRequestSchema = z.object({
+  project: ProjectDocumentSchema,
+  discountPercent: z.number().min(0).max(100).default(0),
+  transportNet: z.number().min(0).max(1_000_000).default(0),
+  assemblyNet: z.number().min(0).max(1_000_000).default(0),
+  additionalItems: z.array(z.object({ label: z.string().min(1).max(160), quantity: z.number().positive().max(10_000), unitNet: z.number().min(0).max(1_000_000) })).max(40).default([]),
+  validUntil: z.string().datetime().optional(),
+});
+
+export const ProjectExportRequestSchema = z.object({
+  format: z.enum(["GLB", "JSON"]),
 });
 
 export const QuoteRequestSchema = z.object({

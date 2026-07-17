@@ -1,12 +1,13 @@
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg";
 import { randomUUID } from "node:crypto";
-import type { AdminProductUpdate, AdminRole, ProductDefinition, PublicConfiguration } from "../../../packages/contracts/src/index.js";
+import { defaultProjectScene, type AdminProductUpdate, type AdminRole, type FeatureAvailabilitySettings, type ProductDefinition, type ProjectDocument, type PublicConfiguration } from "../../../packages/contracts/src/index.js";
 import { productSeeds, tenantSeed, type PricingRules } from "../../../packages/configurator-core/src/catalog.js";
 import { hashPassword, hashToken } from "./security.js";
 import { normalizeHostname } from "./tenant-context.js";
 import { isoDate, nextDraftVersionId, parseStoredJson, prepareTenantProvision, TenantProvisionError } from "./tenant-provisioning.js";
 import { postgresMigrations } from "./postgres-schema.js";
-import type { ConfiguratorStore, ProductRecord, ProfileAssetAuditRecord, ProfileAssetRecord, TenantProvisionInput, TenantProvisionResult } from "./store.js";
+import { defaultOrganizationFeaturePolicy, platformFeaturePolicy, stageOnePlanFeaturePolicy } from "./capabilities.js";
+import type { ConfiguratorStore, PrivateAssetRecord, ProductRecord, ProfileAssetAuditRecord, ProfileAssetRecord, ProjectAuthor, ProjectRecord, ProjectVersionRecord, TenantProvisionInput, TenantProvisionResult } from "./store.js";
 
 type Queryable = Pool | PoolClient;
 type PgRow = QueryResultRow;
@@ -52,6 +53,20 @@ function profileAssetFromRow(row: PgRow): ProfileAssetRecord {
     createdAt: isoDate(row.created_at),
     updatedAt: isoDate(row.updated_at),
   };
+}
+
+function privateAssetFromRow(row: PgRow): PrivateAssetRecord {
+  return {
+    id: asString(row.id), tenantId: asString(row.tenant_id), projectId: asString(row.project_id),
+    kind: asString(row.kind) as PrivateAssetRecord["kind"], fileName: asString(row.file_name), mimeType: asString(row.mime_type) as PrivateAssetRecord["mimeType"],
+    byteSize: Number(row.byte_size), width: Number(row.width), height: Number(row.height), contentHash: asString(row.content_hash), storageKey: asString(row.storage_key),
+    assetFormatVersion: "1.0", status: asString(row.status) as PrivateAssetRecord["status"], createdByKind: asString(row.created_by_kind) as PrivateAssetRecord["createdByKind"],
+    createdById: row.created_by_id ? asString(row.created_by_id) : null, createdAt: isoDate(row.created_at), deletedAt: row.deleted_at ? isoDate(row.deleted_at) : null,
+  };
+}
+
+function legacyProject(configuration: PublicConfiguration): ProjectDocument {
+  return { projectFormatVersion: "1.0", configuration, scene: structuredClone(defaultProjectScene) };
 }
 
 function svgAssetLinks(update: AdminProductUpdate) {
@@ -123,6 +138,7 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
       await client.query("INSERT INTO tenants (id,slug,name,created_at) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING", [tenantId, tenantSeed.slug, tenantSeed.name, now]);
       await client.query("INSERT INTO branding_settings (id,tenant_id,settings_json,updated_at) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING", [`branding-${tenantSeed.slug}`, tenantId, JSON.stringify(tenantSeed.branding), now]);
       await client.query("INSERT INTO product_categories (id,tenant_id,name,sort_order) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING", [`category-${tenantSeed.slug}-covers`, tenantId, "Zadaszenia", 10]);
+      await this.seedFeaturePolicies(client, tenantId, now);
 
       for (const seed of productSeeds) {
         const typeId = `type-${seed.definition.productType}`;
@@ -159,6 +175,16 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
     }
   }
 
+  private async seedFeaturePolicies(queryable: Queryable, tenantId: string, now: string) {
+    const insert = (scopeType: string, scopeKey: string, settings: FeatureAvailabilitySettings) => queryable.query(
+      "INSERT INTO feature_policy_sets (scope_type,scope_key,settings_json,updated_by,updated_at) VALUES ($1,$2,$3::jsonb,NULL,$4) ON CONFLICT (scope_type,scope_key) DO NOTHING",
+      [scopeType, scopeKey, JSON.stringify(settings), now],
+    );
+    await insert("PLATFORM", "global", platformFeaturePolicy);
+    await insert("PLAN", "stage1", stageOnePlanFeaturePolicy);
+    await insert("ORGANIZATION", tenantId, defaultOrganizationFeaturePolicy);
+  }
+
   async provisionTenant(input: TenantProvisionInput): Promise<TenantProvisionResult> {
     const prepared = await prepareTenantProvision(input);
     const client = await this.pool.connect();
@@ -175,6 +201,7 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
       await client.query("INSERT INTO tenants (id,slug,name,created_at) VALUES ($1,$2,$3,$4)", [prepared.tenantId, prepared.slug, prepared.name, prepared.now]);
       await client.query("INSERT INTO branding_settings (id,tenant_id,settings_json,updated_at) VALUES ($1,$2,$3,$4)", [`branding-${prepared.slug}`, prepared.tenantId, JSON.stringify(prepared.branding), prepared.now]);
       await client.query("INSERT INTO product_categories (id,tenant_id,name,sort_order) VALUES ($1,$2,$3,$4)", [`category-${prepared.slug}-covers`, prepared.tenantId, "Zadaszenia", 10]);
+      await this.seedFeaturePolicies(client, prepared.tenantId, prepared.now);
 
       for (const seed of productSeeds) {
         const productType = seed.definition.productType;
@@ -412,6 +439,35 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
     return Boolean(result.rowCount);
   }
 
+  async getFeaturePolicyBundle(tenantSlug: string, productType?: string) {
+    const tenant = await this.getTenant(tenantSlug);
+    if (!tenant) return null;
+    const read = async (scopeType: string, scopeKey: string) => {
+      const result = await this.pool.query<PgRow>("SELECT settings_json FROM feature_policy_sets WHERE scope_type=$1 AND scope_key=$2", [scopeType, scopeKey]);
+      return result.rows[0] ? parseStoredJson<FeatureAvailabilitySettings>(result.rows[0].settings_json) : null;
+    };
+    let product: FeatureAvailabilitySettings | null = null;
+    if (productType) {
+      const definition = await this.pool.query<PgRow>(`SELECT pd.id FROM product_definitions pd JOIN product_types pt ON pt.id=pd.product_type_id WHERE pd.tenant_id=$1 AND pt.code=$2`, [tenant.id, productType]);
+      if (definition.rows[0]) product = await read("PRODUCT", asString(definition.rows[0].id));
+    }
+    return {
+      platform: await read("PLATFORM", "global") || structuredClone(platformFeaturePolicy),
+      plan: await read("PLAN", "stage1") || structuredClone(stageOnePlanFeaturePolicy),
+      organization: await read("ORGANIZATION", tenant.id) || structuredClone(defaultOrganizationFeaturePolicy),
+      product,
+    };
+  }
+
+  async updateOrganizationFeaturePolicy(tenantSlug: string, settings: FeatureAvailabilitySettings, actorId: string) {
+    const result = await this.pool.query(`
+      INSERT INTO feature_policy_sets (scope_type,scope_key,settings_json,updated_by,updated_at)
+      SELECT 'ORGANIZATION',t.id,$1::jsonb,$2,$3::timestamptz FROM tenants t WHERE t.slug=$4
+      ON CONFLICT(scope_type,scope_key) DO UPDATE SET settings_json=EXCLUDED.settings_json,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at
+    `, [JSON.stringify(settings), actorId, new Date().toISOString(), tenantSlug]);
+    return Boolean(result.rowCount);
+  }
+
   async saveConfiguration(tenantSlug: string, id: string, shareId: string, configuration: PublicConfiguration, expiresAt: string | null) {
     const result = await this.pool.query(`
       INSERT INTO saved_configurations (id,tenant_id,share_id,product_version_id,configuration_json,expires_at,created_at)
@@ -434,6 +490,182 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
       createdAt: isoDate(row.created_at),
       expiresAt: row.expires_at ? isoDate(row.expires_at) : null,
     };
+  }
+
+  async saveProject(tenantSlug: string, id: string, shareId: string, document: ProjectDocument, expiresAt: string | null, author: ProjectAuthor) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const tenant = await client.query<PgRow>("SELECT id FROM tenants WHERE slug=$1", [tenantSlug]);
+      if (!tenant.rows[0]) throw new Error("Tenant not found");
+      const tenantId = asString(tenant.rows[0].id);
+      const now = new Date().toISOString();
+      await client.query("INSERT INTO saved_configurations (id,tenant_id,share_id,product_version_id,configuration_json,expires_at,created_at) VALUES ($1,$2,$3,$4,$5::jsonb,$6::timestamptz,$7::timestamptz)", [id, tenantId, shareId, document.configuration.productVersionId, JSON.stringify(document.configuration), expiresAt, now]);
+      await client.query("INSERT INTO project_documents (project_id,tenant_id,current_version,project_json,created_by_kind,created_by_id,updated_at) VALUES ($1,$2,1,$3::jsonb,$4,$5,$6)", [id, tenantId, JSON.stringify(document), author.kind, author.id, now]);
+      await client.query("INSERT INTO project_versions (id,project_id,tenant_id,version_number,project_json,author_kind,author_id,created_at) VALUES ($1,$2,$3,1,$4::jsonb,$5,$6,$7)", [randomUUID(), id, tenantId, JSON.stringify(document), author.kind, author.id, now]);
+      await client.query("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,$5,'PROJECT_CREATED',$6::jsonb,$7)", [randomUUID(), tenantId, id, author.kind, author.id, JSON.stringify({ version: 1 }), now]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async getProject(tenantSlug: string, shareId: string): Promise<ProjectRecord | null> {
+    const result = await this.pool.query<PgRow>(`
+      SELECT sc.*,pd.current_version,pd.project_json,pd.updated_at FROM saved_configurations sc
+      JOIN tenants t ON t.id=sc.tenant_id LEFT JOIN project_documents pd ON pd.project_id=sc.id AND pd.tenant_id=sc.tenant_id
+      WHERE t.slug=$1 AND sc.share_id=$2 AND (sc.expires_at IS NULL OR sc.expires_at>NOW())
+    `, [tenantSlug, shareId]);
+    const row = result.rows[0];
+    if (!row) return null;
+    const configuration = parseStoredJson<PublicConfiguration>(row.configuration_json);
+    return {
+      id: asString(row.id), shareId: asString(row.share_id), configuration,
+      document: row.project_json ? parseStoredJson<ProjectDocument>(row.project_json) : legacyProject(configuration),
+      currentVersion: Number(row.current_version || 1), createdAt: isoDate(row.created_at), updatedAt: row.updated_at ? isoDate(row.updated_at) : isoDate(row.created_at),
+      expiresAt: row.expires_at ? isoDate(row.expires_at) : null,
+    };
+  }
+
+  async isProjectShareTokenRevoked(tenantSlug: string, projectId: string) {
+    const result = await this.pool.query(`
+      SELECT 1 FROM project_share_revocations psr
+      JOIN tenants t ON t.id=psr.tenant_id
+      WHERE t.slug=$1 AND psr.project_id=$2
+    `, [tenantSlug, projectId]);
+    return Boolean(result.rows[0]);
+  }
+
+  async revokeProjectShareToken(tenantSlug: string, projectId: string, actor: ProjectAuthor) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const project = await client.query<PgRow>(`
+        SELECT t.id tenant_id FROM saved_configurations sc
+        JOIN tenants t ON t.id=sc.tenant_id
+        WHERE t.slug=$1 AND sc.id=$2 FOR UPDATE
+      `, [tenantSlug, projectId]);
+      if (!project.rows[0]) { await client.query("ROLLBACK"); return false; }
+      const now = new Date().toISOString();
+      await client.query(`
+        INSERT INTO project_share_revocations (project_id,tenant_id,revoked_by_kind,revoked_by_id,revoked_at)
+        VALUES ($1,$2,$3,$4,$5) ON CONFLICT(project_id) DO NOTHING
+      `, [projectId, project.rows[0].tenant_id, actor.kind, actor.id, now]);
+      await client.query("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,$5,'PUBLIC_SHARE_REVOKED',$6::jsonb,$7)", [randomUUID(), project.rows[0].tenant_id, projectId, actor.kind, actor.id, JSON.stringify({ revokedAt: now }), now]);
+      await client.query("COMMIT");
+      return true;
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async updateProject(tenantSlug: string, projectId: string, document: ProjectDocument, expectedVersion: number, author: ProjectAuthor, maxVersions: number) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<PgRow>(`
+        SELECT sc.share_id,sc.created_at,sc.expires_at,t.id tenant_id
+        FROM saved_configurations sc JOIN tenants t ON t.id=sc.tenant_id
+        WHERE t.slug=$1 AND sc.id=$2 FOR UPDATE
+      `, [tenantSlug, projectId]);
+      const row = current.rows[0];
+      if (!row) { await client.query("ROLLBACK"); return null; }
+      const projectDocument = await client.query<PgRow>(
+        "SELECT current_version FROM project_documents WHERE project_id=$1 AND tenant_id=$2",
+        [projectId, row.tenant_id],
+      );
+      const currentVersion = Number(projectDocument.rows[0]?.current_version || 1);
+      if (currentVersion !== expectedVersion) { await client.query("ROLLBACK"); return "version_conflict" as const; }
+      if (currentVersion >= maxVersions) { await client.query("ROLLBACK"); return "version_limit" as const; }
+      const nextVersion = currentVersion + 1;
+      const now = new Date().toISOString();
+      await client.query("UPDATE saved_configurations SET product_version_id=$1,configuration_json=$2::jsonb WHERE id=$3", [document.configuration.productVersionId, JSON.stringify(document.configuration), projectId]);
+      await client.query(`INSERT INTO project_documents (project_id,tenant_id,current_version,project_json,created_by_kind,created_by_id,updated_at) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7) ON CONFLICT(project_id) DO UPDATE SET current_version=EXCLUDED.current_version,project_json=EXCLUDED.project_json,updated_at=EXCLUDED.updated_at`, [projectId, row.tenant_id, nextVersion, JSON.stringify(document), author.kind, author.id, now]);
+      await client.query("INSERT INTO project_versions (id,project_id,tenant_id,version_number,project_json,author_kind,author_id,created_at) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8)", [randomUUID(), projectId, row.tenant_id, nextVersion, JSON.stringify(document), author.kind, author.id, now]);
+      await client.query("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,$5,'PROJECT_VERSION_CREATED',$6::jsonb,$7)", [randomUUID(), row.tenant_id, projectId, author.kind, author.id, JSON.stringify({ version: nextVersion }), now]);
+      await client.query("COMMIT");
+      return this.getProject(tenantSlug, asString(row.share_id));
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async listProjectVersions(tenantSlug: string, projectId: string) {
+    const result = await this.pool.query<PgRow>(`SELECT pv.* FROM project_versions pv JOIN tenants t ON t.id=pv.tenant_id WHERE t.slug=$1 AND pv.project_id=$2 ORDER BY pv.version_number DESC`, [tenantSlug, projectId]);
+    return result.rows.map((row): ProjectVersionRecord => ({ id: asString(row.id), projectId: asString(row.project_id), version: Number(row.version_number), document: parseStoredJson<ProjectDocument>(row.project_json), authorKind: asString(row.author_kind) as ProjectVersionRecord["authorKind"], authorId: row.author_id ? asString(row.author_id) : null, createdAt: isoDate(row.created_at) }));
+  }
+
+  async createPrivateAsset(tenantSlug: string, asset: PrivateAssetRecord, variants: Array<{ storageKey: string; name: string; mimeType: string; byteSize: number; width: number; height: number }>) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(`
+        INSERT INTO private_assets (id,tenant_id,project_id,kind,file_name,mime_type,byte_size,width,height,content_hash,storage_key,asset_format_version,status,created_by_kind,created_by_id,created_at,deleted_at)
+        SELECT $1,t.id,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULL FROM tenants t JOIN saved_configurations sc ON sc.tenant_id=t.id AND sc.id=$2 WHERE t.slug=$16 AND t.id=$17
+      `, [asset.id, asset.projectId, asset.kind, asset.fileName, asset.mimeType, asset.byteSize, asset.width, asset.height, asset.contentHash, asset.storageKey, asset.assetFormatVersion, asset.status, asset.createdByKind, asset.createdById, asset.createdAt, tenantSlug, asset.tenantId]);
+      if (!inserted.rowCount) { await client.query("ROLLBACK"); return false; }
+      for (const variant of variants) await client.query("INSERT INTO private_asset_variants (asset_id,name,storage_key,mime_type,byte_size,width,height) VALUES ($1,$2,$3,$4,$5,$6,$7)", [asset.id, variant.name, variant.storageKey, variant.mimeType, variant.byteSize, variant.width, variant.height]);
+      await client.query("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,$5,'PRIVATE_ASSET_CREATED',$6::jsonb,$7)", [randomUUID(), asset.tenantId, asset.projectId, asset.createdByKind, asset.createdById, JSON.stringify({ assetId: asset.id, kind: asset.kind, byteSize: asset.byteSize }), asset.createdAt]);
+      await client.query("COMMIT");
+      return true;
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async getPrivateAsset(tenantSlug: string, assetId: string) {
+    const result = await this.pool.query<PgRow>("SELECT pa.* FROM private_assets pa JOIN tenants t ON t.id=pa.tenant_id WHERE t.slug=$1 AND pa.id=$2", [tenantSlug, assetId]);
+    return result.rows[0] ? privateAssetFromRow(result.rows[0]) : null;
+  }
+
+  async listPrivateAssets(tenantSlug: string, projectId: string) {
+    const result = await this.pool.query<PgRow>("SELECT pa.* FROM private_assets pa JOIN tenants t ON t.id=pa.tenant_id WHERE t.slug=$1 AND pa.project_id=$2 ORDER BY pa.created_at DESC", [tenantSlug, projectId]);
+    return result.rows.map(privateAssetFromRow);
+  }
+
+  async putPrivateAssetObject(tenantSlug: string, storageKey: string, content: Uint8Array) {
+    const result = await this.pool.query(`INSERT INTO private_asset_objects (tenant_id,storage_key,content,updated_at) SELECT t.id,$1,$2,$3 FROM tenants t WHERE t.slug=$4 ON CONFLICT(tenant_id,storage_key) DO UPDATE SET content=EXCLUDED.content,updated_at=EXCLUDED.updated_at`, [storageKey, Buffer.from(content), new Date().toISOString(), tenantSlug]);
+    if (!result.rowCount) throw new Error("Tenant not found");
+  }
+
+  async getPrivateAssetObject(tenantSlug: string, storageKey: string) {
+    const result = await this.pool.query<PgRow>("SELECT pao.content FROM private_asset_objects pao JOIN tenants t ON t.id=pao.tenant_id WHERE t.slug=$1 AND pao.storage_key=$2", [tenantSlug, storageKey]);
+    const content = result.rows[0]?.content;
+    return content ? new Uint8Array(content as Buffer) : null;
+  }
+
+  async deletePrivateAsset(tenantSlug: string, projectId: string, assetId: string, actor: ProjectAuthor) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const asset = await client.query<PgRow>(`SELECT pa.*,t.id tenant_id FROM private_assets pa JOIN tenants t ON t.id=pa.tenant_id WHERE t.slug=$1 AND pa.project_id=$2 AND pa.id=$3 AND pa.status='ACTIVE' FOR UPDATE`, [tenantSlug, projectId, assetId]);
+      if (!asset.rows[0]) { await client.query("ROLLBACK"); return false; }
+      const dependents = asset.rows[0].kind === "CUSTOMER_PHOTO"
+        ? await client.query<PgRow>("SELECT id FROM private_assets WHERE tenant_id=$1 AND project_id=$2 AND kind='FOREGROUND_MASK' AND status='ACTIVE'", [asset.rows[0].tenant_id, projectId])
+        : { rows: [] as PgRow[] };
+      const assetIds = [assetId, ...dependents.rows.map((row) => asString(row.id))];
+      const keys: PgRow[] = [];
+      for (const id of assetIds) keys.push(...(await client.query<PgRow>("SELECT storage_key FROM private_asset_variants WHERE asset_id=$1", [id])).rows);
+      const now = new Date().toISOString();
+      for (const id of assetIds) await client.query("UPDATE private_assets SET status='DELETED',deleted_at=$1 WHERE id=$2", [now, id]);
+      for (const key of keys) await client.query("DELETE FROM private_asset_objects WHERE tenant_id=$1 AND storage_key=$2", [asset.rows[0].tenant_id, key.storage_key]);
+      await client.query("INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) VALUES ($1,$2,$3,$4,$5,'PRIVATE_ASSET_DELETED',$6::jsonb,$7)", [randomUUID(), asset.rows[0].tenant_id, projectId, actor.kind, actor.id, JSON.stringify({ assetId, kind: asset.rows[0].kind, dependentAssetIds: assetIds.slice(1) }), now]);
+      await client.query("COMMIT");
+      return true;
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async createProjectAuditEvent(tenantSlug: string, projectId: string | null, actor: ProjectAuthor, action: string, details: unknown) {
+    const result = await this.pool.query(`INSERT INTO project_audit_events (id,tenant_id,project_id,actor_kind,actor_id,action,details_json,created_at) SELECT $1,t.id,$2,$3,$4,$5,$6::jsonb,$7 FROM tenants t WHERE t.slug=$8`, [randomUUID(), projectId, actor.kind, actor.id, action, JSON.stringify(details), new Date().toISOString(), tenantSlug]);
+    if (!result.rowCount) throw new Error("Tenant not found");
+  }
+
+  async createExportJob(tenantSlug: string, jobId: string, projectId: string, format: "GLB" | "JSON", requestedBy: string) {
+    const result = await this.pool.query(`
+      INSERT INTO export_jobs (id,tenant_id,project_id,format,status,requested_by,created_at,completed_at)
+      SELECT $1,t.id,$2,$3,'READY',$4,$5,NULL FROM tenants t
+      JOIN saved_configurations sc ON sc.tenant_id=t.id AND sc.id=$2
+      WHERE t.slug=$6
+    `, [jobId, projectId, format, requestedBy, new Date().toISOString(), tenantSlug]);
+    return Boolean(result.rowCount);
   }
 
   async saveQuote(tenantSlug: string, id: string, quote: unknown, bom: unknown, savedConfigurationId: string | null) {

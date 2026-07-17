@@ -107,6 +107,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.width = "100%";
   renderer.domElement.style.height = "100%";
   el.appendChild(renderer.domElement);
@@ -117,10 +119,22 @@ export function createPergolaCanvas(mountEl, initialParams) {
   // Światło wypełniające. Kolor „ziemi" (dolny) rozjaśnia powierzchnie
   // zwrócone w dół — spód lameli — żeby przy niskim ujęciu kamery pokazywał
   // rzeczywisty kolor materiału, a nie wychodził czarny.
-  scene.add(new THREE.HemisphereLight("#f4f1ea", "#cdc6b8", 0.9));
+  const hemisphereLight = new THREE.HemisphereLight("#f4f1ea", "#cdc6b8", 0.9);
+  scene.add(hemisphereLight);
   // Miękki ambient dodatkowo podnosi najciemniejsze, odwrócone od światła
   // faktury (spód lameli), bez spłaszczania całości.
-  scene.add(new THREE.AmbientLight("#ffffff", 0.22));
+  const ambientLight = new THREE.AmbientLight("#ffffff", 0.22);
+  scene.add(ambientLight);
+  const calibrationLight = new THREE.DirectionalLight("#ffffff", 1.25);
+  calibrationLight.position.set(8, 11, 6);
+  calibrationLight.castShadow = true;
+  calibrationLight.shadow.mapSize.set(2048, 2048);
+  calibrationLight.shadow.camera.left = -14;
+  calibrationLight.shadow.camera.right = 14;
+  calibrationLight.shadow.camera.top = 14;
+  calibrationLight.shadow.camera.bottom = -14;
+  calibrationLight.shadow.bias = -0.0003;
+  scene.add(calibrationLight, calibrationLight.target);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
   camera.position.set(6.4, 0.95, 7.6);
@@ -249,6 +263,17 @@ export function createPergolaCanvas(mountEl, initialParams) {
   shadow.position.y = 0.005;
   scene.add(shadow);
 
+  const shadowCatcher = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.ShadowMaterial({ color: "#111111", transparent: true, opacity: 0.45, depthWrite: false }),
+  );
+  shadowCatcher.rotation.x = -Math.PI / 2;
+  shadowCatcher.position.y = 0.001;
+  shadowCatcher.receiveShadow = true;
+  shadowCatcher.visible = false;
+  shadowCatcher.userData.arExclude = true;
+  scene.add(shadowCatcher);
+
   const material = new THREE.MeshStandardMaterial({
     color: new THREE.Color("#2b2d2e"),
     roughness: 0.55,
@@ -340,6 +365,42 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   let group = new THREE.Group();
   scene.add(group);
+  let projectScene = null;
+  let compositor = null;
+
+  const lightColor = (temperature) => {
+    const t = THREE.MathUtils.clamp((temperature - 2500) / 7500, 0, 1);
+    return new THREE.Color().lerpColors(new THREE.Color("#ffd2a1"), new THREE.Color("#dceaff"), t);
+  };
+
+  const applyProjectView = () => {
+    if (!projectScene) return;
+    const model = projectScene.modelTransform;
+    group.position.set(model.position.x, model.position.y, model.position.z);
+    group.rotation.set(THREE.MathUtils.degToRad(model.rotationDeg.x), THREE.MathUtils.degToRad(model.rotationDeg.y), THREE.MathUtils.degToRad(model.rotationDeg.z));
+    group.scale.setScalar(model.scale);
+    camera.fov = projectScene.camera.fovDeg;
+    camera.updateProjectionMatrix();
+    const light = projectScene.lighting;
+    const azimuth = THREE.MathUtils.degToRad(light.azimuthDeg);
+    const elevation = THREE.MathUtils.degToRad(light.elevationDeg);
+    const distance = 14;
+    calibrationLight.position.set(Math.sin(azimuth) * Math.cos(elevation) * distance, Math.sin(elevation) * distance, Math.cos(azimuth) * Math.cos(elevation) * distance);
+    calibrationLight.color.copy(lightColor(light.colorTemperatureK));
+    calibrationLight.intensity = 0.7 + light.modelBrightness * 0.75;
+    hemisphereLight.intensity = 0.45 + light.modelBrightness * 0.45;
+    ambientLight.intensity = 0.08 + light.modelBrightness * 0.14;
+    calibrationLight.shadow.radius = 1 + light.shadowSoftness * 8;
+    shadowCatcher.material.opacity = light.shadowIntensity;
+    shadowCatcher.visible = Boolean(projectScene.photoAssetId);
+    ground.visible = !projectScene.photoAssetId;
+    shadow.visible = !projectScene.photoAssetId;
+    group.traverse((object) => { if (object.isMesh) object.castShadow = true; });
+    group.updateMatrixWorld(true);
+  };
+
+  const setProjectView = (nextScene) => { projectScene = nextScene ? structuredClone(nextScene) : null; applyProjectView(); };
+  const setCompositor = (nextCompositor) => { compositor = nextCompositor || null; };
 
   const resetRoot = (name) => {
     scene.remove(group);
@@ -350,6 +411,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     group = new THREE.Group();
     group.name = name;
     scene.add(group);
+    applyProjectView();
     return group;
   };
 
@@ -1043,6 +1105,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
       const rot = THREE.MathUtils.degToRad(params.slatAngle);
       for (const sl of stateRef.slats) sl.rotation.x = rot;
     }
+    applyProjectView();
   }
 
   function destroy() {
@@ -1073,12 +1136,16 @@ export function createPergolaCanvas(mountEl, initialParams) {
     out.width = src.width;
     out.height = src.height;
     const ctx = out.getContext("2d");
-    const g = ctx.createLinearGradient(0, 0, 0, out.height);
-    g.addColorStop(0, "#f6f3ee");
-    g.addColorStop(1, "#e9e3d9");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, out.width, out.height);
+    if (compositor?.drawBackground) compositor.drawBackground(ctx, out.width, out.height);
+    else {
+      const g = ctx.createLinearGradient(0, 0, 0, out.height);
+      g.addColorStop(0, "#f6f3ee");
+      g.addColorStop(1, "#e9e3d9");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, out.width, out.height);
+    }
     ctx.drawImage(src, 0, 0);
+    compositor?.drawForeground?.(ctx, out.width, out.height);
     return out.toDataURL("image/png");
   }
 
@@ -1088,7 +1155,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
    * Geometrie i materiały są kopiowane, więc eksporter może je bezpiecznie
    * przetwarzać i zwalniać bez wpływu na interaktywną scenę konfiguratora.
    */
-  function createExportClone() {
+  function createExportClone(metadata = {}) {
     const selectedScreens = paramsRef.screens || {};
     const materialClones = new Map();
     const cloneMaterial = (sourceMaterial) => {
@@ -1133,6 +1200,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
     const root = cloneForExport(group) || new THREE.Group();
     root.name = `${String(paramsRef.productType || "product").replaceAll("-", "_")}_Root`;
+    root.userData = { ...root.userData, ...metadata };
     root.visible = true;
     root.updateMatrixWorld(true);
 
@@ -1189,5 +1257,5 @@ export function createPergolaCanvas(mountEl, initialParams) {
     renderer.render(scene, camera);
   }
 
-  return { update, destroy, snapshot, createExportClone, setPlacement, getFacingSide, cameraDir, project, setSpinPaused, setOnFrame, setView, registeredProducts: rendererRegistry.list() };
+  return { update, destroy, snapshot, createExportClone, setPlacement, getFacingSide, cameraDir, project, setSpinPaused, setOnFrame, setView, setProjectView, setCompositor, rendererCanvas: renderer.domElement, registeredProducts: rendererRegistry.list() };
 }

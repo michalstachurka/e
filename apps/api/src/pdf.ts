@@ -57,7 +57,7 @@ export async function generateProjectPdf(options: {
   productName: string;
   projectNumber: string;
   branding: { companyName: string; contactEmail: string; accentColor: string; pdfFooter: string };
-  quote: { net: number; vat: number; gross: number; currency: string; demoOnly: true };
+  quote: { net: number; vat: number; gross: number; currency: string; demoOnly: true } | null;
   bom: { items: Array<{ label: string; quantity: number; unit: string }>; demoOnly: true };
   snapshotDataUrl?: string;
 }) {
@@ -106,8 +106,8 @@ export async function generateProjectPdf(options: {
   }
 
   cursor -= 8;
-  page.drawText("WYCENA DEMONSTRACYJNA", { x: 42, y: cursor, size: 9, font: bold, color });
-  page.drawText(`${options.quote.gross.toFixed(0)} ${options.quote.currency} brutto`, { x: 360, y: cursor - 2, size: 16, font: bold, color: rgb(0.1, 0.09, 0.08) });
+  page.drawText(options.quote ? "WYCENA DEMONSTRACYJNA" : "WYCENA U DORADCY", { x: 42, y: cursor, size: 9, font: bold, color });
+  page.drawText(options.quote ? `${options.quote.gross.toFixed(0)} ${options.quote.currency} brutto` : "Cena nie jest publikowana", { x: options.quote ? 360 : 350, y: cursor - 2, size: options.quote ? 16 : 11, font: bold, color: rgb(0.1, 0.09, 0.08) });
   cursor -= 26;
   page.drawText("BOM PUBLICZNY (BEZ KODOW PRODUKCYJNYCH)", { x: 42, y: cursor, size: 8, font: bold, color: rgb(0.45, 0.43, 0.4) });
   cursor -= 16;

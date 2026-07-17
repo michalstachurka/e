@@ -168,4 +168,115 @@ export const postgresMigrations: PostgresMigration[] = [
       `CREATE INDEX IF NOT EXISTS profile_asset_audit_lookup_idx ON profile_asset_audit(tenant_id,asset_id,created_at DESC)`,
     ],
   },
+  {
+    version: 3,
+    name: "advisor_projects_private_assets_and_capabilities",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS feature_policy_sets (
+        scope_type TEXT NOT NULL CHECK(scope_type IN ('PLATFORM','PLAN','ORGANIZATION','PRODUCT')),
+        scope_key TEXT NOT NULL,
+        settings_json JSONB NOT NULL,
+        updated_by TEXT,
+        updated_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY(scope_type,scope_key)
+      )`,
+      `CREATE TABLE IF NOT EXISTS project_documents (
+        project_id TEXT PRIMARY KEY REFERENCES saved_configurations(id) ON DELETE CASCADE,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        current_version INTEGER NOT NULL,
+        project_json JSONB NOT NULL,
+        created_by_kind TEXT NOT NULL CHECK(created_by_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+        created_by_id TEXT,
+        updated_at TIMESTAMPTZ NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS project_versions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        version_number INTEGER NOT NULL,
+        project_json JSONB NOT NULL,
+        author_kind TEXT NOT NULL CHECK(author_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+        author_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(project_id,version_number)
+      )`,
+      `CREATE TABLE IF NOT EXISTS project_share_revocations (
+        project_id TEXT PRIMARY KEY REFERENCES saved_configurations(id) ON DELETE CASCADE,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        revoked_by_kind TEXT NOT NULL CHECK(revoked_by_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+        revoked_by_id TEXT,
+        revoked_at TIMESTAMPTZ NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS private_assets (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('CUSTOMER_PHOTO','FOREGROUND_MASK')),
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL CHECK(mime_type IN ('image/webp','image/png')),
+        byte_size INTEGER NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        content_hash TEXT NOT NULL,
+        storage_key TEXT NOT NULL,
+        asset_format_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('ACTIVE','DELETED')),
+        created_by_kind TEXT NOT NULL CHECK(created_by_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+        created_by_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        deleted_at TIMESTAMPTZ,
+        UNIQUE(tenant_id,storage_key)
+      )`,
+      `CREATE TABLE IF NOT EXISTS private_asset_variants (
+        asset_id TEXT NOT NULL REFERENCES private_assets(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        storage_key TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        PRIMARY KEY(asset_id,name)
+      )`,
+      `CREATE TABLE IF NOT EXISTS private_asset_objects (
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        storage_key TEXT NOT NULL,
+        content BYTEA NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY(tenant_id,storage_key)
+      )`,
+      `CREATE TABLE IF NOT EXISTS project_audit_events (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        project_id TEXT,
+        actor_kind TEXT NOT NULL CHECK(actor_kind IN ('PUBLIC_CUSTOMER','ADVISOR')),
+        actor_id TEXT,
+        action TEXT NOT NULL,
+        details_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS advisor_calculations (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+        project_version INTEGER NOT NULL,
+        price_list_version_id TEXT NOT NULL,
+        calculation_json JSONB NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS export_jobs (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        project_id TEXT NOT NULL REFERENCES saved_configurations(id) ON DELETE CASCADE,
+        format TEXT NOT NULL CHECK(format IN ('GLB','JSON')),
+        status TEXT NOT NULL CHECK(status IN ('READY','COMPLETED','FAILED')),
+        requested_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        completed_at TIMESTAMPTZ
+      )`,
+      `CREATE INDEX IF NOT EXISTS project_versions_lookup_idx ON project_versions(tenant_id,project_id,version_number DESC)`,
+      `CREATE INDEX IF NOT EXISTS private_assets_project_idx ON private_assets(tenant_id,project_id,status)`,
+      `CREATE INDEX IF NOT EXISTS project_audit_lookup_idx ON project_audit_events(tenant_id,project_id,created_at DESC)`,
+    ],
+  },
 ];

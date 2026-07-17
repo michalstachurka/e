@@ -26,10 +26,17 @@ const loginStatus = document.getElementById("adminLoginStatus");
 const productsHost = document.getElementById("adminProducts");
 const profileStudioHost = document.getElementById("adminProfileStudio");
 const brandingForm = document.getElementById("brandingForm");
+const featureAvailabilityForm = document.getElementById("featureAvailabilityForm");
+const featureAvailabilitySection = document.getElementById("featureAvailabilitySection");
 const logoutButton = document.getElementById("adminLogout");
 const toast = document.getElementById("adminToast");
 document.getElementById("adminTenantLabel").textContent = `Tenant · ${tenantSlug}`;
-document.getElementById("adminConfiguratorLink").href = buildTenantUrl("./konfigurator.html", tenantSlug, window.location);
+{
+  const advisorUrl = new URL(buildTenantUrl("./konfigurator.html", tenantSlug, window.location), window.location.href);
+  advisorUrl.searchParams.set("mode", "advisor");
+  document.getElementById("adminConfiguratorLink").href = advisorUrl.toString();
+  document.getElementById("adminConfiguratorLink").textContent = "Tryb doradcy ↗";
+}
 let products = [];
 let catalog = null;
 let profilePreview = null;
@@ -37,6 +44,7 @@ let activeStudioProduct = 0;
 let activeStudioProfile = 0;
 let profileAssets = [];
 let currentAdmin = null;
+let featureSettings = null;
 
 const can = (permission) => currentAdmin?.permissions?.includes(permission);
 
@@ -63,6 +71,37 @@ const brandingFields = [
 function renderBranding() {
   const branding = catalog.tenant.branding;
   brandingForm.innerHTML = brandingFields.map(([key, label, type]) => `<label class="admin-field ${key === "pdfFooter" ? "admin-field--wide" : ""}">${label}${type === "textarea" ? `<textarea name="${key}">${escapeHtml(branding[key])}</textarea>` : `<input type="${type}" name="${key}" value="${escapeHtml(branding[key])}" required />`}</label>`).join("") + `<button class="admin-action" type="submit">Zapisz branding</button>`;
+}
+
+const featureRows = [
+  ["customerPhoto", "Zdjęcie klienta"],
+  ["basicPhotoFit", "Podstawowe dopasowanie zdjęcia"],
+  ["advancedCalibration", "Zaawansowana kalibracja"],
+  ["obstacleMasking", "Maskowanie przeszkód"],
+  ["publicPrice", "Widoczność ceny"],
+  ["internalCalculation", "Kalkulacja wewnętrzna"],
+  ["glbExport", "Eksport GLB"],
+  ["jsonExport", "Eksport JSON"],
+];
+
+function renderFeatureSettings() {
+  featureAvailabilitySection.hidden = !can("features:read");
+  if (!featureSettings || !can("features:read")) return;
+  featureAvailabilityForm.innerHTML = `<div class="admin-feature-policy">
+    <div class="admin-feature-policy__head"><span>Funkcja</span><span>Tryb publiczny</span><span>Tryb doradcy</span></div>
+    ${featureRows.map(([key, label]) => `<label class="admin-feature-policy__row"><strong>${label}</strong><input type="checkbox" name="public.${key}" ${featureSettings.public[key] ? "checked" : ""} /><input type="checkbox" name="advisor.${key}" ${featureSettings.advisor[key] ? "checked" : ""} /></label>`).join("")}
+  </div>
+  <div class="admin-grid admin-feature-limits">
+    <label class="admin-field">Cena publiczna<select name="publicPriceVisibility"><option value="HIDDEN">Ukryta</option><option value="FROM">Orientacyjna „od”</option><option value="EXACT">Dokładna detaliczna</option></select></label>
+    <label class="admin-field">Maks. rozmiar zdjęcia<input type="number" name="limits.maxPhotoBytes" min="100000" max="25000000" step="100000" value="${featureSettings.limits.maxPhotoBytes}" /></label>
+    <label class="admin-field">Maks. wymiar obrazu<input type="number" name="limits.maxPhotoDimension" min="640" max="12000" step="1" value="${featureSettings.limits.maxPhotoDimension}" /></label>
+    <label class="admin-field">Zasoby na projekt<input type="number" name="limits.maxPhotosPerProject" min="1" max="20" step="1" value="${featureSettings.limits.maxPhotosPerProject}" /></label>
+    <label class="admin-field">Wersje projektu<input type="number" name="limits.maxProjectVersions" min="5" max="1000" step="1" value="${featureSettings.limits.maxProjectVersions}" /></label>
+  </div>
+  <p class="admin-feature-note">Rozstrzyganie: platforma → plan → organizacja → produkt → rola. Wyłączenie na wcześniejszym poziomie zawsze blokuje operację.</p>
+  <button class="admin-action" type="submit" ${can("features:write") ? "" : "disabled"}>Zapisz dostępność</button>`;
+  featureAvailabilityForm.elements.publicPriceVisibility.value = featureSettings.publicPriceVisibility;
+  featureAvailabilityForm.querySelectorAll("input,select").forEach((control) => { control.disabled = !can("features:write"); });
 }
 
 function parameterRows(product) {
@@ -435,24 +474,43 @@ function readProductCard(card, source) {
 
 async function loadWorkspace(session) {
   currentAdmin = session?.authenticated ? session : await api.request("/api/admin/me");
-  const [nextCatalog, productsResponse, assetsResponse] = await Promise.all([
+  const [nextCatalog, productsResponse, assetsResponse, featuresResponse] = await Promise.all([
     api.getCatalog(),
     api.request(`/api/admin/${tenantSlug}/products`),
     can("profiles:read") ? api.request(`/api/admin/${tenantSlug}/profile-assets`) : Promise.resolve({ assets: [] }),
+    can("features:read") ? api.request(`/api/admin/${tenantSlug}/features`) : Promise.resolve({ settings: null }),
   ]);
   catalog = nextCatalog;
   products = productsResponse.products;
   profileAssets = assetsResponse.assets;
+  featureSettings = featuresResponse.settings;
   await Promise.all(products.map(async (product) => {
     product.definition.profiles = await hydrateProfileAssets(product.definition, api, { admin: true });
   }));
   window.__adminProducts = products;
   renderBranding();
+  renderFeatureSettings();
   brandingForm.querySelectorAll("input,textarea,button").forEach((control) => { control.disabled = !can("branding:write"); });
   renderProducts();
   showWorkspace(true);
   renderProfileStudio();
 }
+
+featureAvailabilityForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!featureSettings || !can("features:write")) return;
+  const next = structuredClone(featureSettings);
+  featureRows.forEach(([key]) => {
+    next.public[key] = featureAvailabilityForm.elements[`public.${key}`].checked;
+    next.advisor[key] = featureAvailabilityForm.elements[`advisor.${key}`].checked;
+  });
+  next.publicPriceVisibility = featureAvailabilityForm.elements.publicPriceVisibility.value;
+  Object.keys(next.limits).forEach((key) => { next.limits[key] = Number(featureAvailabilityForm.elements[`limits.${key}`].value); });
+  const response = await api.request(`/api/admin/${tenantSlug}/features`, { method: "PUT", body: next });
+  featureSettings = response.settings;
+  renderFeatureSettings();
+  showToast("Dostępność funkcji została zapisana.");
+});
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
