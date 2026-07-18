@@ -146,7 +146,8 @@ if (mount) {
     windowScreen: {
       width: 2,
       height: 2.2,
-      mounting: "front",
+      unitCount: 1,
+      mounting: "reveal",
       guideType: "zip",
       fabric: "transparent",
       fabricColor: SCREEN_COLORS[0],
@@ -158,7 +159,8 @@ if (mount) {
     externalRollerShutter: {
       width: 1.6,
       height: 2.1,
-      mounting: "front",
+      unitCount: 1,
+      mounting: "reveal",
       slatProfile: "aluminium-foam",
       armorColor: COLORS[0],
       boxColor: COLORS[0],
@@ -303,11 +305,13 @@ if (mount) {
       });
     } else if (configuration.productType === "window-screen") {
       Object.assign(state.windowScreen, configuration.values, {
+        unitCount: configuration.values.unitCount || 1,
         frameColor: structureColor(configuration.values.frameColor),
         fabricColor: textileColor(configuration.values.fabricColor),
       });
     } else if (configuration.productType === "external-roller-shutter") {
       Object.assign(state.externalRollerShutter, configuration.values, {
+        unitCount: configuration.values.unitCount || 1,
         armorColor: structureColor(configuration.values.armorColor),
         boxColor: structureColor(configuration.values.boxColor),
         guideColor: structureColor(configuration.values.guideColor),
@@ -484,6 +488,7 @@ if (mount) {
   configurationBuilders.set("window-screen", () => ({
     width: state.windowScreen.width,
     height: state.windowScreen.height,
+    unitCount: state.windowScreen.unitCount,
     mounting: state.windowScreen.mounting,
     guideType: state.windowScreen.guideType,
     fabric: state.windowScreen.fabric,
@@ -496,6 +501,7 @@ if (mount) {
   configurationBuilders.set("external-roller-shutter", () => ({
     width: state.externalRollerShutter.width,
     height: state.externalRollerShutter.height,
+    unitCount: state.externalRollerShutter.unitCount,
     mounting: state.externalRollerShutter.mounting,
     slatProfile: state.externalRollerShutter.slatProfile,
     armorColor: state.externalRollerShutter.armorColor.id,
@@ -563,8 +569,8 @@ if (mount) {
     if (state.productType === "bioclimatic-pergola") specEl.textContent = `${state.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.depth.toFixed(1)} × ${state.height.toFixed(1)} m · ${state.angle}°`;
     else if (state.productType === "veranda") specEl.textContent = `${state.veranda.width.toFixed(1)} × ${state.veranda.depth.toFixed(1)} m · ${state.veranda.backHeight.toFixed(2)} → ${state.veranda.frontHeight.toFixed(2)} m · ${state.veranda.roofAngle.toFixed(1)}°`;
     else if (state.productType === "carport") specEl.textContent = `${state.carport.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.carport.depth.toFixed(1)} × ${state.carport.height.toFixed(2)} m · dach stały`;
-    else if (state.productType === "window-screen") specEl.textContent = `${state.windowScreen.width.toFixed(2)} × ${state.windowScreen.height.toFixed(2)} m · opuszczenie ${state.windowScreen.openingPercent}%`;
-    else if (state.productType === "external-roller-shutter") specEl.textContent = `${state.externalRollerShutter.width.toFixed(2)} × ${state.externalRollerShutter.height.toFixed(2)} m · opuszczenie ${state.externalRollerShutter.openingPercent}%`;
+    else if (state.productType === "window-screen") specEl.textContent = `${state.windowScreen.unitCount} × ${state.windowScreen.width.toFixed(2)} × ${state.windowScreen.height.toFixed(2)} m · opuszczenie ${state.windowScreen.openingPercent}%`;
+    else if (state.productType === "external-roller-shutter") specEl.textContent = `${state.externalRollerShutter.unitCount} × ${state.externalRollerShutter.width.toFixed(2)} × ${state.externalRollerShutter.height.toFixed(2)} m · opuszczenie ${state.externalRollerShutter.openingPercent}%`;
     else specEl.textContent = `${state.awning.width.toFixed(1)} × ${state.awning.projection.toFixed(1)} m · ${state.awning.pitch}° · wysunięcie ${state.awning.openingPercent}%`;
   };
 
@@ -635,10 +641,16 @@ if (mount) {
     updateSpec();
     updateSummary();
   };
+  let cancelProductInteraction = () => {
+    canvas.setSpinPaused(false);
+    canvas.setPlacement(null);
+    canvas.setOnFrame(null);
+  };
 
   productSwitcher.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.product === state.productType) return;
+      cancelProductInteraction();
       state.productType = button.dataset.product;
       syncProductUi();
       push();
@@ -813,11 +825,18 @@ if (mount) {
 
   /* ---------- Animacja ruchu (domyślnie włączona) ---------- */
   const spinBtn = document.getElementById("pergolaSpin");
+  const spinLabel = document.getElementById("pergolaSpinLabel");
+  const syncSpinControl = () => {
+    spinBtn.setAttribute("aria-pressed", String(state.spin));
+    spinBtn.setAttribute("aria-label", state.spin ? "Zatrzymaj wizualizację 3D" : "Uruchom wizualizację 3D");
+    spinLabel.textContent = state.spin ? "Zatrzymaj wizualizację" : "Uruchom wizualizację";
+  };
   spinBtn.addEventListener("click", () => {
     state.spin = !state.spin;
-    spinBtn.setAttribute("aria-pressed", String(state.spin));
+    syncSpinControl();
     push();
   });
+  syncSpinControl();
 
   updateSpec();
 
@@ -1021,6 +1040,10 @@ if (mount) {
   const swatchesMarkup = (key, label, selected, palette = COLORS) => `<div class="pergola3d__group"><span class="pergola3d__label">${label}</span><div class="pergola3d__swatches">${palette.map((color) => `<button type="button" data-catalog-color="${key}" data-color-id="${color.id}" aria-pressed="${selected.id === color.id}"><i style="--sw:${color.value}"></i><span>${color.label}</span></button>`).join("")}</div></div>`;
   const toggleMarkup = (key, label, value, disabled = false) => `<button type="button" data-catalog-toggle="${key}" aria-pressed="${value}"${disabled ? " disabled" : ""}>${label}</button>`;
   const sideMarkup = (key, label, values) => `<div class="pergola3d__group"><span class="pergola3d__label">${label}</span><div class="pergola3d__pills">${SIDES.map((side) => `<button type="button" data-catalog-side="${key}" data-side="${side}" aria-pressed="${values[side]}">${SIDE_LABELS[side]}</button>`).join("")}</div></div>`;
+  const windowUnitMarkup = (count) => {
+    const maximum = Number(parameterFor("unitCount")?.max || 8);
+    return `<div class="pergola3d__group window-unit-control"><span class="pergola3d__label">Rolety obok siebie · <b>${count}</b> / ${maximum}</span><div class="pergola3d__pills"><button type="button" data-window-unit-action="remove"${count <= 1 ? " disabled" : ""}>Usuń ostatnią</button><button type="button" data-window-unit-action="add"${count >= maximum ? " disabled" : ""}>Dodaj roletę obok</button></div><small>Każda roleta otrzymuje osobną wnękę okienną. Limit ${maximum} chroni płynność sceny 3D.</small></div>`;
+  };
   const MOUNTING_LABELS = [["front", "Natynkowy"], ["reveal", "We wnęce"], ["under-plaster", "Podtynkowy"], ["top-mounted", "Nadstawny"]];
   const DRIVE_LABELS = [["manual", "Ręczny"], ["wired", "Przewodowy"], ["radio", "Radiowy / smart home"], ["solar", "Solarny"]];
 
@@ -1048,7 +1071,8 @@ if (mount) {
     } else if (state.productType === "window-screen") {
       catalogControls.innerHTML = `<div class="catalog-control-grid">
         <p class="pergola3d__hint demo-badge">Struktura wyboru odpowiada typowym systemom ZIP. Zakresy wymagają zatwierdzenia dla konkretnego producenta.</p>
-        ${rangeMarkup("width", "Szerokość", product.width, 2, "m")}${rangeMarkup("height", "Wysokość", product.height, 2, "m")}${rangeMarkup("openingPercent", "Stopień opuszczenia", product.openingPercent, 0, "%")}
+        ${windowUnitMarkup(product.unitCount)}
+        ${rangeMarkup("width", "Szerokość jednej wnęki", product.width, 2, "m")}${rangeMarkup("height", "Wysokość jednej wnęki", product.height, 2, "m")}${rangeMarkup("openingPercent", "Stopień opuszczenia", product.openingPercent, 0, "%")}
         ${selectMarkup("mounting", "Sposób montażu", product.mounting, MOUNTING_LABELS)}
         ${selectMarkup("guideType", "Prowadzenie", product.guideType, [["zip", "ZIP · tkanina w prowadnicy"], ["classic", "Klasyczna prowadnica"]])}
         ${selectMarkup("fabric", "Tkanina", product.fabric, [["transparent", "Transparentna"], ["privacy", "Prywatność"], ["blackout", "Zaciemniająca"]])}
@@ -1059,8 +1083,9 @@ if (mount) {
     } else if (state.productType === "external-roller-shutter") {
       catalogControls.innerHTML = `<div class="catalog-control-grid">
         <p class="pergola3d__hint demo-badge">Dobór pancerza, skrzynki i maksymalnych gabarytów wymaga tabel wybranego systemu roletowego.</p>
-        ${rangeMarkup("width", "Szerokość", product.width, 2, "m")}${rangeMarkup("height", "Wysokość", product.height, 2, "m")}${rangeMarkup("openingPercent", "Stopień opuszczenia", product.openingPercent, 0, "%")}
-        ${selectMarkup("mounting", "Sposób montażu", product.mounting, MOUNTING_LABELS.filter(([id]) => id !== "reveal"))}
+        ${windowUnitMarkup(product.unitCount)}
+        ${rangeMarkup("width", "Szerokość jednej wnęki", product.width, 2, "m")}${rangeMarkup("height", "Wysokość jednej wnęki", product.height, 2, "m")}${rangeMarkup("openingPercent", "Stopień opuszczenia", product.openingPercent, 0, "%")}
+        ${selectMarkup("mounting", "Sposób montażu", product.mounting, MOUNTING_LABELS)}
         ${selectMarkup("slatProfile", "Profil pancerza", product.slatProfile, [["aluminium-foam", "Aluminium z wypełnieniem"], ["extruded", "Aluminium ekstrudowane"], ["pvc-demo", "PVC · demo"]])}
         ${selectMarkup("drive", "Napęd", product.drive, DRIVE_LABELS)}
         ${swatchesMarkup("armorColor", "Kolor pancerza", product.armorColor)}${swatchesMarkup("boxColor", "Kolor skrzynki", product.boxColor)}${swatchesMarkup("guideColor", "Kolor prowadnic", product.guideColor)}
@@ -1087,6 +1112,11 @@ if (mount) {
       const decimals = Number(input.step) < 0.1 ? 2 : Number(input.step) < 1 ? 1 : 0;
       if (output) output.textContent = Number(input.value).toFixed(decimals);
       push();
+    }));
+    catalogControls.querySelectorAll("[data-window-unit-action]").forEach((button) => button.addEventListener("click", () => {
+      const maximum = Number(parameterFor("unitCount")?.max || 8);
+      product.unitCount = clamp(product.unitCount + (button.dataset.windowUnitAction === "add" ? 1 : -1), 1, maximum);
+      rerenderAndPush();
     }));
     catalogControls.querySelectorAll("[data-catalog-select]").forEach((select) => select.addEventListener("change", () => {
       product[select.dataset.catalogSelect] = select.value;
@@ -1302,6 +1332,18 @@ if (mount) {
     legAdjust.setAttribute("aria-hidden", "true");
     if (!picking) { legHint.hidden = true; canvas.setSpinPaused(false); canvas.setOnFrame(null); }
   };
+  cancelProductInteraction = () => {
+    picking = false;
+    activeLeg = -1;
+    if (sidePick) { sidePick.hidden = true; sidePick.setAttribute("aria-hidden", "true"); }
+    legAdjust.hidden = true;
+    legAdjust.setAttribute("aria-hidden", "true");
+    legHint.hidden = true;
+    addLegBtn.setAttribute("aria-pressed", "false");
+    canvas.setPlacement(null);
+    canvas.setSpinPaused(false);
+    canvas.setOnFrame(null);
+  };
 
   // „Dodaj nogę" uruchamia wybór boku (ponowny klik anuluje).
   addLegBtn.addEventListener("click", () => {
@@ -1417,13 +1459,15 @@ if (mount) {
     ];
     if (state.productType === "window-screen") return [
       ["Produkt", "Screen ZIP do okna · demo"],
-      ["Wymiary", `${state.windowScreen.width.toFixed(2)} × ${state.windowScreen.height.toFixed(2)} m`],
+      ["Rolety", `${state.windowScreen.unitCount} szt. obok siebie`],
+      ["Wymiar jednej", `${state.windowScreen.width.toFixed(2)} × ${state.windowScreen.height.toFixed(2)} m`],
       ["System", `${state.windowScreen.mounting} · ${state.windowScreen.guideType.toUpperCase()} · ${state.windowScreen.fabric}`],
       ["Sterowanie", `${state.windowScreen.drive} · opuszczenie ${state.windowScreen.openingPercent}%`],
     ];
     if (state.productType === "external-roller-shutter") return [
       ["Produkt", "Roleta zewnętrzna · demo"],
-      ["Wymiary", `${state.externalRollerShutter.width.toFixed(2)} × ${state.externalRollerShutter.height.toFixed(2)} m`],
+      ["Rolety", `${state.externalRollerShutter.unitCount} szt. obok siebie`],
+      ["Wymiar jednej", `${state.externalRollerShutter.width.toFixed(2)} × ${state.externalRollerShutter.height.toFixed(2)} m`],
       ["System", `${state.externalRollerShutter.mounting} · ${state.externalRollerShutter.slatProfile}`],
       ["Sterowanie", `${state.externalRollerShutter.drive} · opuszczenie ${state.externalRollerShutter.openingPercent}%`],
       ["Moskitiera", state.externalRollerShutter.integratedMosquitoNet ? "Zintegrowana" : "Brak"],

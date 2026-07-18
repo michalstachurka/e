@@ -14,12 +14,24 @@ const COLOR_VALUES = {
 
 const colorValue = (value, fallback) => COLOR_VALUES[value] || value || fallback;
 
+export const MAX_WINDOW_COVER_UNITS = 8;
+
+export function windowCoverLayout(width, requestedCount, apertureExtra = 0) {
+  const unitCount = Math.max(1, Math.min(MAX_WINDOW_COVER_UNITS, Math.round(Number(requestedCount) || 1)));
+  const apertureWidth = width + apertureExtra;
+  const pierWidth = 0.24;
+  const centers = Array.from({ length: unitCount }, (_, index) => (index - (unitCount - 1) / 2) * (apertureWidth + pierWidth));
+  const openingsWidth = apertureWidth * unitCount + pierWidth * (unitCount - 1);
+  return { unitCount, apertureWidth, pierWidth, centers, openingsWidth, facadeWidth: openingsWidth + 1 };
+}
+
 export function createWindowCoverRenderer(context, productType) {
   const { THREE, resetRoot, frameMaterial, glassMaterial, wallMaterial, glowMaterial, ground, shadow, frameScene, clearAnimationState } = context;
   const coverMaterial = frameMaterial.clone();
   const guideMaterial = frameMaterial.clone();
   const textileMaterial = new THREE.MeshStandardMaterial({ color: "#B79B75", roughness: 0.82, metalness: 0, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
   const armorMaterial = frameMaterial.clone();
+  const windowFrameMaterial = new THREE.MeshStandardMaterial({ color: "#f1f0eb", roughness: 0.42, metalness: 0.04 });
   const mosquitoMaterial = new THREE.MeshBasicMaterial({ color: "#555555", transparent: true, opacity: 0.3, side: THREE.DoubleSide, wireframe: true });
   let root = null;
   let activeProfiles = [];
@@ -37,21 +49,52 @@ export function createWindowCoverRenderer(context, productType) {
     return mesh;
   };
 
+  const contextBox = (...args) => {
+    const mesh = box(...args);
+    mesh.userData.arExclude = true;
+    return mesh;
+  };
+
   const addTechnicalWall = (width, height) => {
     const wall = box(root, wallMaterial, width + 0.8, height + 0.8, 0.14, 0, (height + 0.8) / 2, -0.18, "TechnicalWall");
     wall.userData.arExclude = true;
   };
 
-  const addWindow = (width, height) => {
+  const addWindow = (target, width, height) => {
     const frame = Math.max(0.045, Math.min(width, height) * 0.045);
-    box(root, coverMaterial, width + frame * 2, frame, 0.075, 0, height + frame / 2, -0.015, "WindowFrameTop");
-    box(root, coverMaterial, width + frame * 2, frame, 0.075, 0, frame / 2, -0.015, "WindowFrameBottom");
-    box(root, coverMaterial, frame, height, 0.075, -width / 2 - frame / 2, height / 2, -0.015, "WindowFrameLeft");
-    box(root, coverMaterial, frame, height, 0.075, width / 2 + frame / 2, height / 2, -0.015, "WindowFrameRight");
+    contextBox(target, windowFrameMaterial, width + frame * 2, frame, 0.085, 0, height + frame / 2, -0.105, "WindowFrameTop");
+    contextBox(target, windowFrameMaterial, width + frame * 2, frame, 0.085, 0, frame / 2, -0.105, "WindowFrameBottom");
+    contextBox(target, windowFrameMaterial, frame, height, 0.085, -width / 2 - frame / 2, height / 2, -0.105, "WindowFrameLeft");
+    contextBox(target, windowFrameMaterial, frame, height, 0.085, width / 2 + frame / 2, height / 2, -0.105, "WindowFrameRight");
+    if (width > 1.35) contextBox(target, windowFrameMaterial, frame * 0.72, height, 0.08, 0, height / 2, -0.104, "WindowFrameMullion");
     const pane = new THREE.Mesh(new THREE.PlaneGeometry(width, height), glassMaterial);
-    pane.position.set(0, height / 2, -0.045);
+    pane.position.set(0, height / 2, -0.151);
     pane.name = "WindowGlass";
-    root.add(pane);
+    pane.userData.arExclude = true;
+    target.add(pane);
+  };
+
+  const addWindowFacade = (width, height, hardwareHeight, guideWidth, requestedCount) => {
+    const layout = windowCoverLayout(width, requestedCount, guideWidth * 2 + 0.08);
+    const sillHeight = 0.28;
+    const topMargin = 0.5;
+    const openingHeight = height + hardwareHeight + 0.07;
+    const wallHeight = sillHeight + openingHeight + topMargin;
+    const wallDepth = 0.24;
+    const sideWidth = 0.5;
+    const wallZ = -wallDepth / 2;
+    contextBox(root, wallMaterial, layout.facadeWidth, sillHeight, wallDepth, 0, sillHeight / 2, wallZ, "FacadeBelowWindows");
+    contextBox(root, wallMaterial, layout.facadeWidth, topMargin, wallDepth, 0, sillHeight + openingHeight + topMargin / 2, wallZ, "FacadeAboveWindows");
+    contextBox(root, wallMaterial, sideWidth, openingHeight, wallDepth, -layout.openingsWidth / 2 - sideWidth / 2, sillHeight + openingHeight / 2, wallZ, "FacadeLeftEdge");
+    contextBox(root, wallMaterial, sideWidth, openingHeight, wallDepth, layout.openingsWidth / 2 + sideWidth / 2, sillHeight + openingHeight / 2, wallZ, "FacadeRightEdge");
+    for (let index = 0; index < layout.unitCount - 1; index += 1) {
+      const x = (layout.centers[index] + layout.centers[index + 1]) / 2;
+      contextBox(root, wallMaterial, layout.pierWidth, openingHeight, wallDepth, x, sillHeight + openingHeight / 2, wallZ, "FacadeWindowPier");
+    }
+    for (const x of layout.centers) {
+      contextBox(root, windowFrameMaterial, layout.apertureWidth + 0.08, 0.045, 0.3, x, sillHeight - 0.015, -0.08, "WindowSill");
+    }
+    return { ...layout, sillHeight, openingHeight, wallHeight };
   };
 
   const createScreen = (config) => {
@@ -61,22 +104,28 @@ export function createWindowCoverRenderer(context, productType) {
     textileMaterial.opacity = config.fabric === "blackout" ? 0.98 : config.fabric === "privacy" ? 0.9 : 0.72;
     const cassette = Number(config.visual?.cassetteSize || 0.105);
     const guideWidth = Number(config.visual?.guideWidth || 0.025) * (config.guideType === "zip" ? 1.25 : 1);
-    const depthOffset = config.mounting === "front" ? 0.1 : config.mounting === "reveal" ? 0.045 : 0.015;
-    addTechnicalWall(width, height + cassette);
-    addWindow(width, height);
-    box(root, coverMaterial, width + guideWidth * 2, cassette, cassette, 0, height + cassette / 2, depthOffset, "WindowScreenCassette", "screen-cassette", "x");
-    for (const x of [-width / 2 - guideWidth / 2, width / 2 + guideWidth / 2]) {
-      box(root, coverMaterial, guideWidth, height, 0.055, x, height / 2, depthOffset, "WindowScreenGuide", "screen-guide", "y");
-    }
+    const depthOffset = config.mounting === "front" ? 0.07 : config.mounting === "reveal" ? -0.05 : config.mounting === "under-plaster" ? -0.065 : -0.08;
+    const layout = addWindowFacade(width, height, cassette, guideWidth, config.unitCount);
     const lowered = Math.max(0.002, height * config.openingPercent / 100);
-    const fabric = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.1, width - 0.02), lowered), textileMaterial);
-    fabric.position.set(0, height - lowered / 2, depthOffset + 0.032);
-    fabric.name = "WindowScreenFabric";
-    root.add(fabric);
-    box(root, coverMaterial, width, Number(config.visual?.bottomBarHeight || 0.03), 0.045, 0, height - lowered, depthOffset + 0.035, "WindowScreenBottomBar", "screen-bottom", "x");
-    ground.scale.setScalar(Math.max(width, height) * 2.3);
-    shadow.scale.set(width * 1.7, 1.1, 1);
-    frameScene(width, 0.7, height + cassette);
+    for (const centerX of layout.centers) {
+      const unit = new THREE.Group();
+      unit.position.set(centerX, layout.sillHeight, 0);
+      unit.name = "WindowScreenInReveal";
+      root.add(unit);
+      addWindow(unit, width, height);
+      box(unit, coverMaterial, width + guideWidth * 2, cassette, cassette, 0, height + cassette / 2, depthOffset, "WindowScreenCassette", "screen-cassette", "x");
+      for (const x of [-width / 2 - guideWidth / 2, width / 2 + guideWidth / 2]) {
+        box(unit, coverMaterial, guideWidth, height, 0.055, x, height / 2, depthOffset, "WindowScreenGuide", "screen-guide", "y");
+      }
+      const fabric = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.1, width - 0.02), lowered), textileMaterial);
+      fabric.position.set(0, height - lowered / 2, depthOffset + 0.032);
+      fabric.name = "WindowScreenFabric";
+      unit.add(fabric);
+      box(unit, coverMaterial, width, Number(config.visual?.bottomBarHeight || 0.03), 0.045, 0, height - lowered, depthOffset + 0.035, "WindowScreenBottomBar", "screen-bottom", "x");
+    }
+    ground.scale.setScalar(Math.max(layout.facadeWidth, layout.wallHeight) * 1.75);
+    shadow.scale.set(layout.facadeWidth * 1.25, 1.2, 1);
+    frameScene(layout.facadeWidth, 0.9, layout.wallHeight);
   };
 
   const createShutter = (config) => {
@@ -87,29 +136,48 @@ export function createWindowCoverRenderer(context, productType) {
     const boxSize = Number(config.visual?.boxSize || 0.165);
     const guideWidth = Number(config.visual?.guideWidth || 0.053);
     const slatPitch = Number(config.visual?.slatPitch || 0.039);
-    const depthOffset = config.mounting === "front" ? 0.11 : 0.035;
-    addTechnicalWall(width, height + boxSize);
-    addWindow(width, height);
-    box(root, coverMaterial, width + guideWidth * 2, boxSize, boxSize, 0, height + boxSize / 2, depthOffset, "RollerShutterBox", "shutter-box", "x");
-    for (const x of [-width / 2 - guideWidth / 2, width / 2 + guideWidth / 2]) {
-      box(root, guideMaterial, guideWidth, height, 0.06, x, height / 2, depthOffset, "RollerShutterGuide", "shutter-guide", "y");
-    }
+    const depthOffset = config.mounting === "front" ? 0.08 : config.mounting === "reveal" ? -0.075 : config.mounting === "under-plaster" ? -0.09 : -0.105;
+    const layout = addWindowFacade(width, height, boxSize, guideWidth, config.unitCount);
     const lowered = height * config.openingPercent / 100;
     const slatCount = Math.max(0, Math.ceil(lowered / slatPitch));
-    for (let index = 0; index < slatCount; index += 1) {
-      const visibleHeight = Math.min(slatPitch * 0.9, lowered - index * slatPitch);
-      if (visibleHeight <= 0) continue;
-      box(root, armorMaterial, width, visibleHeight, 0.025, 0, height - index * slatPitch - visibleHeight / 2, depthOffset + 0.035, "RollerShutterSlat", "shutter-slat", "x");
+    for (const centerX of layout.centers) {
+      const unit = new THREE.Group();
+      unit.position.set(centerX, layout.sillHeight, 0);
+      unit.name = "RollerShutterInReveal";
+      root.add(unit);
+      addWindow(unit, width, height);
+      box(unit, coverMaterial, width + guideWidth * 2, boxSize, boxSize, 0, height + boxSize / 2, depthOffset, "RollerShutterBox", "shutter-box", "x");
+      for (const x of [-width / 2 - guideWidth / 2, width / 2 + guideWidth / 2]) {
+        box(unit, guideMaterial, guideWidth, height, 0.06, x, height / 2, depthOffset, "RollerShutterGuide", "shutter-guide", "y");
+      }
+      if (config.integratedMosquitoNet) {
+        const net = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.03, height), mosquitoMaterial);
+        net.position.set(0, height / 2, depthOffset + 0.015);
+        net.name = "IntegratedMosquitoNet";
+        unit.add(net);
+      }
     }
-    if (config.integratedMosquitoNet) {
-      const net = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.03, height), mosquitoMaterial);
-      net.position.set(0, height / 2, depthOffset + 0.015);
-      net.name = "IntegratedMosquitoNet";
-      root.add(net);
+    if (slatCount > 0) {
+      const template = createProfileMesh(THREE, activeProfiles, "shutter-slat", armorMaterial, width, "x", 0.025, slatPitch * 0.9);
+      const slats = new THREE.InstancedMesh(template.geometry, armorMaterial, slatCount * layout.unitCount);
+      const matrix = new THREE.Matrix4();
+      let instance = 0;
+      for (const centerX of layout.centers) {
+        for (let index = 0; index < slatCount; index += 1) {
+          matrix.makeTranslation(centerX, layout.sillHeight + height - index * slatPitch - slatPitch * 0.45, depthOffset + 0.035);
+          slats.setMatrixAt(instance, matrix);
+          instance += 1;
+        }
+      }
+      slats.name = "RollerShutterSlatsBatched";
+      slats.castShadow = true;
+      slats.receiveShadow = true;
+      slats.instanceMatrix.needsUpdate = true;
+      root.add(slats);
     }
-    ground.scale.setScalar(Math.max(width, height) * 2.3);
-    shadow.scale.set(width * 1.7, 1.1, 1);
-    frameScene(width, 0.7, height + boxSize);
+    ground.scale.setScalar(Math.max(layout.facadeWidth, layout.wallHeight) * 1.75);
+    shadow.scale.set(layout.facadeWidth * 1.25, 1.2, 1);
+    frameScene(layout.facadeWidth, 0.9, layout.wallHeight);
   };
 
   const createAwning = (config) => {

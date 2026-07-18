@@ -130,15 +130,19 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     const values = configuration.values;
     checkRange(errors, definition, "width", values.width);
     checkRange(errors, definition, "height", values.height);
+    checkRange(errors, definition, "unitCount", values.unitCount);
     checkRange(errors, definition, "openingPercent", values.openingPercent);
-    derived.coverArea = round(values.width * values.height, 2);
+    derived.unitCount = values.unitCount;
+    derived.coverArea = round(values.width * values.height * values.unitCount, 2);
     warnings.push({ path: "values", message: "Dopuszczalne gabaryty, tkanina, prowadnice i napęd wymagają weryfikacji w konkretnym systemie screen ZIP.", code: "demo_only" });
   } else if (configuration.productType === "external-roller-shutter") {
     const values = configuration.values;
     checkRange(errors, definition, "width", values.width);
     checkRange(errors, definition, "height", values.height);
+    checkRange(errors, definition, "unitCount", values.unitCount);
     checkRange(errors, definition, "openingPercent", values.openingPercent);
-    derived.coverArea = round(values.width * values.height, 2);
+    derived.unitCount = values.unitCount;
+    derived.coverArea = round(values.width * values.height * values.unitCount, 2);
     warnings.push({ path: "values", message: "Dobór skrzynki, pancerza, prowadnic i maksymalnych wymiarów wymaga tabel producenta.", code: "demo_only" });
   } else {
     const values = configuration.values;
@@ -180,13 +184,15 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   } else if (configuration.productType === "window-screen") {
     const values = configuration.values;
-    area = values.width * values.height;
-    options = Number(values.drive !== "wired") + Number(values.windSensor) + Number(values.mounting !== "front");
+    modules = values.unitCount;
+    area = values.width * values.height * values.unitCount;
+    options = (Number(values.drive !== "wired") + Number(values.windSensor) + Number(values.mounting !== "reveal")) * values.unitCount;
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   } else if (configuration.productType === "external-roller-shutter") {
     const values = configuration.values;
-    area = values.width * values.height;
-    options = Number(values.drive !== "manual") + Number(values.integratedMosquitoNet) + Number(values.mounting !== "front") + Number(values.slatProfile === "extruded");
+    modules = values.unitCount;
+    area = values.width * values.height * values.unitCount;
+    options = (Number(values.drive !== "manual") + Number(values.integratedMosquitoNet) + Number(values.mounting !== "reveal") + Number(values.slatProfile === "extruded")) * values.unitCount;
     colorSurcharge = values.armorColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   } else {
     const values = configuration.values;
@@ -252,10 +258,10 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
     return {
       demoOnly: true as const,
       items: [
-        { label: "Kaseta screen", quantity: 1, unit: "szt." },
-        { label: "Prowadnica", quantity: 2, unit: "szt." },
-        { label: "Tkanina screen", quantity: round(values.width * values.height, 2), unit: "m²" },
-        { label: `Napęd ${values.drive}`, quantity: 1, unit: "szt." },
+        { label: "Kaseta screen", quantity: values.unitCount, unit: "szt." },
+        { label: "Prowadnica", quantity: values.unitCount * 2, unit: "szt." },
+        { label: "Tkanina screen", quantity: round(values.width * values.height * values.unitCount, 2), unit: "m²" },
+        { label: `Napęd ${values.drive}`, quantity: values.unitCount, unit: "szt." },
       ],
     };
   }
@@ -264,10 +270,10 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
     return {
       demoOnly: true as const,
       items: [
-        { label: "Skrzynka rolety", quantity: 1, unit: "szt." },
-        { label: "Prowadnica pancerza", quantity: 2, unit: "szt." },
-        { label: "Pancerz rolety", quantity: round(values.width * values.height, 2), unit: "m²" },
-        ...(values.integratedMosquitoNet ? [{ label: "Moskietiera zintegrowana", quantity: 1, unit: "szt." }] : []),
+        { label: "Skrzynka rolety", quantity: values.unitCount, unit: "szt." },
+        { label: "Prowadnica pancerza", quantity: values.unitCount * 2, unit: "szt." },
+        { label: "Pancerz rolety", quantity: round(values.width * values.height * values.unitCount, 2), unit: "m²" },
+        ...(values.integratedMosquitoNet ? [{ label: "Moskietiera zintegrowana", quantity: values.unitCount, unit: "szt." }] : []),
       ],
     };
   }

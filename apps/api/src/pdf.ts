@@ -34,14 +34,14 @@ function configurationRows(configuration: PublicConfiguration) {
   if (configuration.productType === "window-screen") {
     const values = configuration.values;
     return [
-      ["Wymiar", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Prowadzenie", values.guideType],
+      ["Liczba rolet", `${values.unitCount}`], ["Wymiar jednej", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Prowadzenie", values.guideType],
       ["Tkanina", values.fabric], ["Naped", values.drive], ["Opuszczenie", `${values.openingPercent}%`],
     ];
   }
   if (configuration.productType === "external-roller-shutter") {
     const values = configuration.values;
     return [
-      ["Wymiar", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Pancerz", values.slatProfile],
+      ["Liczba rolet", `${values.unitCount}`], ["Wymiar jednej", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Pancerz", values.slatProfile],
       ["Naped", values.drive], ["Opuszczenie", `${values.openingPercent}%`], ["Moskitiera", values.integratedMosquitoNet ? "tak" : "nie"],
     ];
   }

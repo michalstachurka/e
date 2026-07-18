@@ -24,6 +24,69 @@ function shadowTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+/** Proceduralna, bezszwowa mapa włókniny antykondensacyjnej. Referencja służy
+ * wyłącznie jako kierunek materiałowy; tekstura jest generowana lokalnie. */
+function antiCondensationTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#d7d8d5";
+  ctx.fillRect(0, 0, 256, 256);
+  let seed = 1847;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let index = 0; index < 1700; index += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const length = 3 + random() * 15;
+    const angle = random() * Math.PI;
+    const shade = Math.round(118 + random() * 92);
+    ctx.strokeStyle = `rgba(${shade},${shade + 2},${shade + 4},${0.06 + random() * 0.16})`;
+    ctx.lineWidth = 0.35 + random() * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + Math.cos(angle + 0.5) * length * 0.5, y + Math.sin(angle + 0.5) * length * 0.5, x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 7);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createTrapezoidalSheetGeometry(width, depth, pitch, ribHeight, thickness) {
+  const ribCount = Math.max(2, Math.round(width / pitch));
+  const actualPitch = width / ribCount;
+  const top = [];
+  for (let index = 0; index < ribCount; index += 1) {
+    const x = -width / 2 + index * actualPitch;
+    const points = [
+      [x, 0],
+      [x + actualPitch * 0.18, 0],
+      [x + actualPitch * 0.34, ribHeight],
+      [x + actualPitch * 0.58, ribHeight],
+      [x + actualPitch * 0.74, 0],
+      [x + actualPitch, 0],
+    ];
+    for (const point of points) {
+      const previous = top[top.length - 1];
+      if (!previous || previous[0] !== point[0] || previous[1] !== point[1]) top.push(point);
+    }
+  }
+  const shape = new THREE.Shape();
+  shape.moveTo(top[0][0], top[0][1]);
+  top.slice(1).forEach(([x, y]) => shape.lineTo(x, y));
+  [...top].reverse().forEach(([x, y]) => shape.lineTo(x, y - thickness));
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth, steps: 1, bevelEnabled: false, curveSegments: 1 });
+  geometry.translate(0, 0, -depth / 2);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 /** Delikatny splot tkaniny screen (mapa koloru): jasne tło z cienką, ciemniejszą
  *  siatką nitek. Mnożone przez kolor materiału daje wrażenie tkaniny, a nie
  *  gładkiej płyty. Krycie zapewnia sam materiał (bez dziur = z zewnątrz nie
@@ -280,7 +343,16 @@ export function createPergolaCanvas(mountEl, initialParams) {
     metalness: 0.35,
   });
   const slatMaterial = material.clone();
-  const antiCondensationMaterial = new THREE.MeshStandardMaterial({ color: "#D8D5CC", roughness: 0.98, metalness: 0 });
+  const fleeceTexture = antiCondensationTexture();
+  const antiCondensationMaterial = new THREE.MeshStandardMaterial({
+    color: "#e0e1de",
+    roughness: 1,
+    metalness: 0,
+    map: fleeceTexture,
+    bumpMap: fleeceTexture,
+    bumpScale: 0.0025,
+    side: THREE.DoubleSide,
+  });
   // Crisp cool-white LED, like real pergola strips
   // Widoczna geometria LED z prawdziwą emisją. Dzięki temu światło pozostaje
   // czytelne również po eksporcie do GLB/USDZ, gdzie lampy sceny są pomijane.
@@ -417,11 +489,14 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   const frameScene = (totalW, depth, height) => {
     controls.target.set(0, height * 0.5, 0);
+    const radius = Math.max(totalW * 1.2, depth * 1.85, 8.7);
+    controls.maxDistance = Math.max(20, radius * 1.35);
+    camera.far = Math.max(100, radius * 4);
+    camera.updateProjectionMatrix();
     const dims = `${paramsRef.productType}|${totalW}|${depth}`;
     if (stateRef.lastDims === dims) return;
     const first = stateRef.lastDims === undefined;
     stateRef.lastDims = dims;
-    const radius = Math.max(totalW * 1.2, depth * 1.85, 8.7);
     const dir = camera.position.clone().sub(controls.target);
     if (first || radius > dir.length()) {
       camera.position.copy(controls.target).addScaledVector(dir.normalize(), radius);
@@ -492,26 +567,23 @@ export function createPergolaCanvas(mountEl, initialParams) {
       if (p.productType === "carport") {
         const roofWidth = Math.max(0.2, W - 2 * post);
         const roofDepth = Math.max(0.4, D - 2 * post);
-        const sheetThickness = Number(p.visual?.sheetThickness || 0.018);
+        const sheetThickness = Number(p.visual?.sheetThickness || 0.012);
         const sheetPitch = Number(p.visual?.sheetPitch || 0.2);
+        const ribHeight = Number(p.visual?.sheetRibHeight || 0.035);
+        const fleeceThickness = Number(p.visual?.antiCondensationThickness || 0.006);
         const roofY = H - beam / 2;
-        const sheet = new THREE.Mesh(new THREE.BoxGeometry(roofWidth, sheetThickness, roofDepth), slatMaterial);
+        const sheet = new THREE.Mesh(createTrapezoidalSheetGeometry(roofWidth, roofDepth, sheetPitch, ribHeight, sheetThickness), slatMaterial);
         sheet.position.set(cx, roofY, 0);
         sheet.name = "CarportTrapezoidalSheet";
         sheet.userData.profileId = "roof-sheet";
+        sheet.castShadow = true;
+        sheet.receiveShadow = true;
         group.add(sheet);
-        const fleece = new THREE.Mesh(new THREE.BoxGeometry(roofWidth - 0.02, 0.009, roofDepth - 0.02), antiCondensationMaterial);
-        fleece.position.set(cx, roofY - sheetThickness / 2 - 0.006, 0);
+        const fleece = new THREE.Mesh(createTrapezoidalSheetGeometry(roofWidth, roofDepth, sheetPitch, ribHeight, fleeceThickness), antiCondensationMaterial);
+        fleece.position.set(cx, roofY - sheetThickness - 0.0008, 0);
         fleece.name = "CarportAntiCondensationLayer";
+        fleece.receiveShadow = true;
         group.add(fleece);
-        const ribCount = Math.max(2, Math.floor(roofWidth / sheetPitch));
-        for (let index = 0; index <= ribCount; index += 1) {
-          const x = -roofWidth / 2 + roofWidth * index / ribCount;
-          const rib = createProfileMesh(THREE, p.profiles, "roof-sheet", slatMaterial, roofDepth, "z", Math.min(0.045, sheetPitch * 0.28), 0.032);
-          rib.position.set(cx + x, roofY + 0.02, 0);
-          rib.name = "CarportSheetRib";
-          group.add(rib);
-        }
         return;
       }
 
@@ -1041,6 +1113,9 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   const geometrySignature = (params) => JSON.stringify({
     productType: params.productType,
+    frameColor: params.frameColor,
+    slatColor: params.slatColor,
+    screenColor: params.screenColor,
     construction: params.construction,
     widths: params.widths,
     depth: params.depth,
@@ -1074,6 +1149,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     fabricColor: params.fabricColor,
     drive: params.drive,
     openingPercent: params.openingPercent,
+    unitCount: params.unitCount,
     windSensor: params.windSensor,
     slatProfile: params.slatProfile,
     armorColor: params.armorColor,
@@ -1100,7 +1176,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     if (params.frameColor) stateRef.material?.color.set(params.frameColor);
     if (params.slatColor) stateRef.slatMaterial?.color.set(params.slatColor);
     if (params.screenColor) applyScreenColor(params.screenColor);
-    if (stateRef.controls) stateRef.controls.autoRotate = params.spin;
+    if (stateRef.controls) stateRef.controls.autoRotate = params.spin && !spinPaused;
     if (!params.spin && stateRef.slats) {
       const rot = THREE.MathUtils.degToRad(params.slatAngle);
       for (const sl of stateRef.slats) sl.rotation.x = rot;
@@ -1117,6 +1193,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     activeRenderer?.disposeScene(activeProductScene);
     pmrem.dispose();
     roofMaterial.dispose();
+    fleeceTexture.dispose();
     antiCondensationMaterial.dispose();
     renderer.dispose();
     el.removeEventListener("pointerdown", armZoom);

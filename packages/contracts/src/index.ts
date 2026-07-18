@@ -85,6 +85,7 @@ export const CarportValuesSchema = z.object({
 export const WindowScreenValuesSchema = z.object({
   width: z.number().finite(),
   height: z.number().finite(),
+  unitCount: z.number().int().min(1).max(8).default(1),
   mounting: z.enum(["front", "reveal", "under-plaster", "top-mounted"]),
   guideType: z.enum(["zip", "classic"]),
   fabric: z.enum(["transparent", "privacy", "blackout"]),
@@ -98,7 +99,8 @@ export const WindowScreenValuesSchema = z.object({
 export const ExternalRollerShutterValuesSchema = z.object({
   width: z.number().finite(),
   height: z.number().finite(),
-  mounting: z.enum(["front", "under-plaster", "top-mounted"]),
+  unitCount: z.number().int().min(1).max(8).default(1),
+  mounting: z.enum(["front", "reveal", "under-plaster", "top-mounted"]),
   slatProfile: z.enum(["aluminium-foam", "extruded", "pvc-demo"]),
   armorColor: z.string().min(1).max(40),
   boxColor: z.string().min(1).max(40),

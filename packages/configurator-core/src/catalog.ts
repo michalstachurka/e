@@ -123,7 +123,7 @@ export const productSeeds: ProductSeed[] = [
       description: "Modułowe zadaszenie samochodowe z nieruchomą blachą trapezową i warstwą antykondensacyjną.",
       enabled: true,
       order: 30,
-      version: { id: "visnex-carport-v1", number: 1, status: "published" },
+      version: { id: "visnex-carport-v3", number: 3, status: "published" },
       steps: [
         { id: "structure", label: "Konstrukcja", order: 10 },
         { id: "dimensions", label: "Wymiary", order: 20 },
@@ -145,7 +145,7 @@ export const productSeeds: ProductSeed[] = [
         { id: "roof-sheet", label: "Blacha trapezowa", usage: "Nieruchome poszycie dachu", aMm: 200, bMm: 35, shape: "louvre", geometryType: "BOX", demoOnly: true },
       ],
       colors,
-      visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetThickness: 0.018, demoOnly: true },
+      visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetRibHeight: 0.035, sheetThickness: 0.012, antiCondensationThickness: 0.006, demoOnly: true },
     },
     pricing: { basePrice: 7_900, pricePerSquareMeter: 430, moduleSurcharge: 1_250, optionSurcharge: 690, minimumPrice: 11_000, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
     bom: { profileAllowance: 1.07, demoOnly: true },
@@ -158,7 +158,7 @@ export const productSeeds: ProductSeed[] = [
       description: "Zewnętrzna osłona tekstylna z prowadzeniem ZIP, wariantami montażu, napędu i stopniem opuszczenia.",
       enabled: true,
       order: 40,
-      version: { id: "visnex-window-screen-v1", number: 1, status: "published" },
+      version: { id: "visnex-window-screen-v3", number: 3, status: "published" },
       steps: [
         { id: "dimensions", label: "Wymiary", order: 10 },
         { id: "mounting", label: "Montaż", order: 20 },
@@ -169,8 +169,9 @@ export const productSeeds: ProductSeed[] = [
       parameters: [
         { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 0.6, max: 5, step: 0.05, defaultValue: 2, hidden: false, demoOnly: true },
         { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 0.6, max: 5, step: 0.05, defaultValue: 2.2, hidden: false, demoOnly: true },
+        { key: "unitCount", label: "Liczba sąsiadujących rolet", section: "dimensions", type: "range", min: 1, max: 8, step: 1, defaultValue: 1, hidden: false, demoOnly: true },
         { key: "openingPercent", label: "Stopień opuszczenia", section: "fabric", type: "range", unit: "%", min: 0, max: 100, step: 1, defaultValue: 80, hidden: false, demoOnly: true },
-        { key: "mounting", label: "Sposób montażu", section: "mounting", type: "select", defaultValue: "front", hidden: false, demoOnly: true, options: [
+        { key: "mounting", label: "Sposób montażu", section: "mounting", type: "select", defaultValue: "reveal", hidden: false, demoOnly: true, options: [
           { id: "front", label: "Natynkowy", demoOnly: true }, { id: "reveal", label: "We wnęce", demoOnly: true }, { id: "under-plaster", label: "Podtynkowy", demoOnly: true }, { id: "top-mounted", label: "Nadstawny", demoOnly: true },
         ] },
         { key: "drive", label: "Napęd", section: "drive", type: "select", defaultValue: "radio", hidden: false, demoOnly: true, options: [
@@ -196,7 +197,7 @@ export const productSeeds: ProductSeed[] = [
       description: "Zewnętrzna roleta pancerzowa z wyborem montażu, profilu, napędu i zintegrowanej moskitiery.",
       enabled: true,
       order: 50,
-      version: { id: "visnex-external-shutter-v1", number: 1, status: "published" },
+      version: { id: "visnex-external-shutter-v3", number: 3, status: "published" },
       steps: [
         { id: "dimensions", label: "Wymiary", order: 10 },
         { id: "system", label: "System", order: 20 },
@@ -207,9 +208,10 @@ export const productSeeds: ProductSeed[] = [
       parameters: [
         { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 0.5, max: 4, step: 0.05, defaultValue: 1.6, hidden: false, demoOnly: true },
         { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 0.5, max: 3.5, step: 0.05, defaultValue: 2.1, hidden: false, demoOnly: true },
+        { key: "unitCount", label: "Liczba sąsiadujących rolet", section: "dimensions", type: "range", min: 1, max: 8, step: 1, defaultValue: 1, hidden: false, demoOnly: true },
         { key: "openingPercent", label: "Stopień opuszczenia", section: "system", type: "range", unit: "%", min: 0, max: 100, step: 1, defaultValue: 65, hidden: false, demoOnly: true },
-        { key: "mounting", label: "Sposób montażu", section: "system", type: "select", defaultValue: "front", hidden: false, demoOnly: true, options: [
-          { id: "front", label: "Natynkowy", demoOnly: true }, { id: "under-plaster", label: "Podtynkowy", demoOnly: true }, { id: "top-mounted", label: "Nadstawny", demoOnly: true },
+        { key: "mounting", label: "Sposób montażu", section: "system", type: "select", defaultValue: "reveal", hidden: false, demoOnly: true, options: [
+          { id: "front", label: "Natynkowy", demoOnly: true }, { id: "reveal", label: "We wnęce", demoOnly: true }, { id: "under-plaster", label: "Podtynkowy", demoOnly: true }, { id: "top-mounted", label: "Nadstawny", demoOnly: true },
         ] },
         { key: "drive", label: "Napęd", section: "drive", type: "select", defaultValue: "radio", hidden: false, demoOnly: true, options: [
           { id: "manual", label: "Ręczny", demoOnly: true }, { id: "wired", label: "Przewodowy", demoOnly: true }, { id: "radio", label: "Radiowy", demoOnly: true }, { id: "solar", label: "Solarny", demoOnly: true },

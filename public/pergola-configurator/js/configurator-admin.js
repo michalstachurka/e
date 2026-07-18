@@ -150,14 +150,14 @@ function buildProfilePreviewParams(definition) {
   if (definition.productType === "window-screen") {
     return {
       productType: "window-screen", width: Number(parameterDefault(definition, "width", 2)), height: Number(parameterDefault(definition, "height", 2.2)),
-      mounting: "front", guideType: "zip", fabric: "transparent", fabricColor: "#C9B79C", frameColor, slatColor: frameColor,
+      unitCount: Number(parameterDefault(definition, "unitCount", 1)), mounting: "reveal", guideType: "zip", fabric: "transparent", fabricColor: "#C9B79C", frameColor, slatColor: frameColor,
       drive: "radio", openingPercent: 80, windSensor: false, spin: false, profiles: definition.profiles, visual: definition.visual,
     };
   }
   if (definition.productType === "external-roller-shutter") {
     return {
       productType: "external-roller-shutter", width: Number(parameterDefault(definition, "width", 1.6)), height: Number(parameterDefault(definition, "height", 2.1)),
-      mounting: "front", slatProfile: "aluminium-foam", armorColor: frameColor, boxColor: frameColor, guideColor: frameColor,
+      unitCount: Number(parameterDefault(definition, "unitCount", 1)), mounting: "reveal", slatProfile: "aluminium-foam", armorColor: frameColor, boxColor: frameColor, guideColor: frameColor,
       frameColor, slatColor: frameColor, drive: "radio", integratedMosquitoNet: true, openingPercent: 65, spin: false,
       profiles: definition.profiles, visual: definition.visual,
     };

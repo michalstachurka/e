@@ -299,11 +299,23 @@ export class ConfiguratorDatabase implements ConfiguratorStore {
       this.connection.prepare("INSERT OR IGNORE INTO product_definitions (id,tenant_id,product_type_id,name,description,enabled,sort_order) VALUES (?,?,?,?,?,?,?)")
         .run(seed.definition.id, tenantId, typeId, seed.definition.name, seed.definition.description, Number(seed.definition.enabled), seed.definition.order);
       const publishedId = seed.definition.version.id;
+      const publishedNumber = seed.definition.version.number;
       this.connection.prepare("INSERT OR IGNORE INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
-        .run(publishedId, seed.definition.id, 1, "published", JSON.stringify(seed.definition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), now, now);
-      const draftDefinition = { ...seed.definition, version: { id: `${seed.definition.productType}-draft-v2`, number: 2, status: "draft" as const } };
-      this.connection.prepare("INSERT OR IGNORE INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
-        .run(draftDefinition.version.id, seed.definition.id, 2, "draft", JSON.stringify(draftDefinition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), null, now);
+        .run(publishedId, seed.definition.id, publishedNumber, "published", JSON.stringify(seed.definition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), now, now);
+      const targetVersion = this.connection.prepare("SELECT id FROM product_versions WHERE product_definition_id=? AND version_number=?")
+        .get(seed.definition.id, publishedNumber) as Row | undefined;
+      const seedVersionOwnsSlot = Boolean(targetVersion && asString(targetVersion.id) === publishedId);
+      if (publishedNumber > 1 && seedVersionOwnsSlot) {
+        this.connection.prepare("UPDATE product_versions SET status='archived' WHERE product_definition_id=? AND id<>? AND version_number<? AND status IN ('published','draft')")
+          .run(seed.definition.id, publishedId, publishedNumber);
+        this.connection.prepare("UPDATE product_versions SET status='published' WHERE id=?").run(publishedId);
+      }
+      if (seedVersionOwnsSlot) {
+        const draftNumber = publishedNumber + 1;
+        const draftDefinition = { ...seed.definition, version: { id: `${seed.definition.productType}-draft-v${draftNumber}`, number: draftNumber, status: "draft" as const } };
+        this.connection.prepare("INSERT OR IGNORE INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(draftDefinition.version.id, seed.definition.id, draftNumber, "draft", JSON.stringify(draftDefinition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), null, now);
+      }
     }
 
     const existing = this.connection.prepare("SELECT id FROM admin_users WHERE tenant_id=? AND email=?").get(tenantId, adminEmail) as Row | undefined;

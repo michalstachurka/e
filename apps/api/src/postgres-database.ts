@@ -149,13 +149,22 @@ export class PostgresConfiguratorDatabase implements ConfiguratorStore {
         );
         await client.query(
           "INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING",
-          [seed.definition.version.id, seed.definition.id, 1, "published", JSON.stringify(seed.definition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), now, now],
+          [seed.definition.version.id, seed.definition.id, seed.definition.version.number, "published", JSON.stringify(seed.definition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), now, now],
         );
-        const draftDefinition = { ...seed.definition, version: { id: `${seed.definition.productType}-draft-v2`, number: 2, status: "draft" as const } };
-        await client.query(
-          "INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING",
-          [draftDefinition.version.id, seed.definition.id, 2, "draft", JSON.stringify(draftDefinition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), null, now],
-        );
+        const targetVersion = await client.query<{ id: string }>("SELECT id FROM product_versions WHERE product_definition_id=$1 AND version_number=$2", [seed.definition.id, seed.definition.version.number]);
+        const seedVersionOwnsSlot = targetVersion.rows[0]?.id === seed.definition.version.id;
+        if (seed.definition.version.number > 1 && seedVersionOwnsSlot) {
+          await client.query("UPDATE product_versions SET status='archived' WHERE product_definition_id=$1 AND id<>$2 AND version_number<$3 AND status IN ('published','draft')", [seed.definition.id, seed.definition.version.id, seed.definition.version.number]);
+          await client.query("UPDATE product_versions SET status='published' WHERE id=$1", [seed.definition.version.id]);
+        }
+        if (seedVersionOwnsSlot) {
+          const draftNumber = seed.definition.version.number + 1;
+          const draftDefinition = { ...seed.definition, version: { id: `${seed.definition.productType}-draft-v${draftNumber}`, number: draftNumber, status: "draft" as const } };
+          await client.query(
+            "INSERT INTO product_versions (id,product_definition_id,version_number,status,definition_json,pricing_json,bom_json,published_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING",
+            [draftDefinition.version.id, seed.definition.id, draftNumber, "draft", JSON.stringify(draftDefinition), JSON.stringify(seed.pricing), JSON.stringify(seed.bom), null, now],
+          );
+        }
       }
 
       const existingAdmin = await client.query("SELECT 1 FROM admin_users WHERE tenant_id=$1 AND active=TRUE LIMIT 1", [tenantId]);
