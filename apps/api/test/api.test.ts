@@ -1,0 +1,398 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+import type { FastifyInstance } from "fastify";
+import { createApp } from "../src/app.js";
+import { ConfiguratorDatabase, TenantProvisionError } from "../src/database.js";
+import { parseTenantHostMap } from "../src/tenant-context.js";
+import { deriveVerandaSlope } from "../../../packages/configurator-core/src/domain.js";
+import { randomBytes } from "node:crypto";
+import sharp from "sharp";
+
+let app: FastifyInstance;
+let database: ConfiguratorDatabase;
+
+before(async () => {
+  database = await ConfiguratorDatabase.create({
+    path: ":memory:",
+    adminEmail: "admin@example.invalid",
+    adminPassword: "local-test-password",
+  });
+  await database.provisionTenant({
+    slug: "pilot-a",
+    name: "Pilot A",
+    adminEmail: "pilot-admin@example.invalid",
+    adminPassword: "pilot-local-password",
+    domains: ["pilot.db.test"],
+  });
+  app = await createApp({
+    databasePath: ":memory:",
+    adminEmail: "admin@example.invalid",
+    adminPassword: "local-test-password",
+    publicAppUrl: "http://localhost:5173/konfigurator.html",
+    corsOrigins: ["http://localhost:5173"],
+    defaultTenantSlug: "visnex",
+    tenantHostMap: { "pilot.example.test": "visnex", "pilot.db.test": "visnex", "missing.example.test": "missing-tenant" },
+    store: database,
+  });
+});
+
+after(async () => app.close());
+
+const pergolaConfiguration = {
+  schemaVersion: "2.0",
+  tenantSlug: "visnex",
+  productType: "bioclimatic-pergola",
+  productVersionId: "visnex-bioclimatic-v1",
+  values: {
+    construction: "freestanding",
+    moduleWidths: [4], depth: 3.2, height: 2.6, slatAngle: 35,
+    frameColor: "anthracite", slatColor: "anthracite", screenColor: "piaskowy",
+    ledLinear: false, ledSpots: false,
+    screens: { front: false, back: false, left: false, right: false },
+    glass: { front: false, back: false, left: false, right: false },
+    extraLegs: [],
+  },
+};
+
+const garageConfiguration = {
+  schemaVersion: "2.0",
+  tenantSlug: "visnex",
+  productType: "metal-garage",
+  productVersionId: "visnex-metal-garage-v1",
+  values: {
+    width: 5.5, depth: 6, wallHeight: 2.4, roofType: "gable", wallSheetOrientation: "vertical",
+    wallColor: "anthracite", roofColor: "anthracite", gateColor: "anthracite", gateType: "sectional",
+    gateCount: 2, windowCount: 2, personnelDoor: true, sideCanopy: true, sideCanopySide: "right", sideCanopyWidth: 2.4,
+    gateDrive: true, gutters: true, anchoring: true, antiCondensationFelt: true,
+  },
+};
+
+const facadeBlindConfiguration = {
+  schemaVersion: "2.0",
+  tenantSlug: "visnex",
+  productType: "facade-blind",
+  productVersionId: "visnex-facade-blind-v1",
+  values: {
+    width: 2, height: 2.4, unitCount: 2, mounting: "reveal", slatProfile: "z90", guideType: "rails",
+    slatAngle: 45, openingPercent: 85, slatColor: "anthracite", hardwareColor: "anthracite", drive: "radio", weatherStation: true,
+  },
+};
+
+test("resolves and locks tenant context for mapped custom domains", async () => {
+  assert.deepEqual(parseTenantHostMap("Pilot.Example.Test.=visnex,invalid=/admin"), { "pilot.example.test": "visnex" });
+  const shared = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "shared.example.test" } });
+  assert.equal(shared.statusCode, 200);
+  assert.deepEqual(shared.json(), { tenantSlug: "visnex", source: "default", hostLocked: false });
+  assert.equal(shared.headers["cache-control"], "no-store");
+  assert.equal(shared.headers.vary, "Host");
+
+  const mapped = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "pilot.example.test" } });
+  assert.equal(mapped.statusCode, 200);
+  assert.deepEqual(mapped.json(), { tenantSlug: "visnex", source: "host", hostLocked: true });
+
+  const provisionedDomain = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "pilot.db.test" } });
+  assert.equal(provisionedDomain.statusCode, 200);
+  assert.deepEqual(provisionedDomain.json(), { tenantSlug: "pilot-a", source: "domain", hostLocked: true });
+
+  const unavailable = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "missing.example.test" } });
+  assert.equal(unavailable.statusCode, 503);
+  assert.equal(unavailable.json().error, "mapped_tenant_unavailable");
+});
+
+test("provisions a fully isolated pilot tenant transactionally", async () => {
+  const catalog = await app.inject({ method: "GET", url: "/api/public/pilot-a/configurator" });
+  assert.equal(catalog.statusCode, 200);
+  assert.equal(catalog.json().tenant.name, "Pilot A");
+  assert.equal(catalog.json().tenant.branding.companyName, "Pilot A");
+  assert.equal(catalog.json().products.length, 8);
+  assert.ok(catalog.json().products.every((product: { id: string; version: { id: string } }) => product.id.includes("pilot-a") && product.version.id.startsWith("pilot-a-")));
+
+  const configuration = structuredClone(pergolaConfiguration);
+  configuration.tenantSlug = "pilot-a";
+  configuration.productVersionId = "pilot-a-bioclimatic-pergola-v1";
+  const saved = await app.inject({ method: "POST", url: "/api/public/pilot-a/configurations", payload: { configuration, expiresInDays: 30 } });
+  assert.equal(saved.statusCode, 201);
+  assert.match(saved.json().shareUrl, /^https:\/\/pilot\.db\.test\/konfigurator\.html\?tenant=pilot-a&project=/);
+  const shareId = saved.json().shareId;
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/pilot-a/configurations/${shareId}` })).statusCode, 200);
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}` })).statusCode, 404);
+
+  const login = await app.inject({ method: "POST", url: "/api/admin/pilot-a/login", payload: { email: "pilot-admin@example.invalid", password: "pilot-local-password" } });
+  assert.equal(login.statusCode, 200);
+  const cookie = login.headers["set-cookie"];
+  assert.ok(cookie);
+  assert.equal((await app.inject({ method: "GET", url: "/api/admin/pilot-a/products", headers: { cookie } })).statusCode, 200);
+  assert.equal((await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } })).statusCode, 403);
+
+  await database.publishProduct("pilot-a", "bioclimatic-pergola");
+  assert.equal(database.getProduct("pilot-a", "bioclimatic-pergola", "draft")?.definition.version.id, "pilot-a-bioclimatic-pergola-draft-v3");
+
+  await assert.rejects(
+    database.provisionTenant({
+      slug: "pilot-rollback",
+      name: "Pilot Rollback",
+      adminEmail: "rollback@example.invalid",
+      adminPassword: "rollback-password",
+      domains: ["pilot.db.test"],
+    }),
+    (error: unknown) => error instanceof TenantProvisionError && error.code === "domain_exists",
+  );
+  assert.equal(database.getTenant("pilot-rollback"), null);
+});
+
+test("returns tenant catalog and product definition", async () => {
+  const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
+  assert.equal(catalog.statusCode, 200);
+  assert.equal(catalog.json().products.length, 8);
+  assert.deepEqual(catalog.json().products.map((item: { productType: string }) => item.productType), [
+    "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "facade-blind", "awning", "metal-garage",
+  ]);
+  const screen = catalog.json().products.find((item: { productType: string }) => item.productType === "window-screen");
+  assert.equal(screen.version.number, 3);
+  assert.equal(screen.parameters.find((parameter: { key: string }) => parameter.key === "unitCount").max, 8);
+  assert.equal(screen.parameters.find((parameter: { key: string }) => parameter.key === "mounting").defaultValue, "reveal");
+  const garage = catalog.json().products.find((item: { productType: string }) => item.productType === "metal-garage");
+  assert.equal(garage.version.id, "visnex-metal-garage-v1");
+  assert.equal(garage.parameters.find((parameter: { key: string }) => parameter.key === "gateCount").max, 2);
+  assert.ok(garage.parameters.every((parameter: { demoOnly: boolean }) => parameter.demoOnly));
+  const facadeBlind = catalog.json().products.find((item: { productType: string }) => item.productType === "facade-blind");
+  assert.equal(facadeBlind.version.id, "visnex-facade-blind-v1");
+  assert.equal(facadeBlind.parameters.find((parameter: { key: string }) => parameter.key === "unitCount").max, 8);
+  assert.deepEqual(facadeBlind.parameters.find((parameter: { key: string }) => parameter.key === "slatProfile").options.map((option: { id: string }) => option.id), ["c80", "z90"]);
+  assert.ok(facadeBlind.parameters.every((parameter: { demoOnly: boolean }) => parameter.demoOnly));
+  const product = await app.inject({ method: "GET", url: "/api/public/visnex/products/veranda" });
+  assert.equal(product.statusCode, 200);
+  assert.equal(product.json().product.productType, "veranda");
+});
+
+test("allows authenticated admin updates through CORS", async () => {
+  const response = await app.inject({
+    method: "OPTIONS",
+    url: "/api/admin/visnex/products/bioclimatic-pergola",
+    headers: {
+      origin: "http://localhost:5173",
+      "access-control-request-method": "PUT",
+      "access-control-request-headers": "content-type",
+    },
+  });
+  assert.equal(response.statusCode, 204);
+  assert.match(String(response.headers["access-control-allow-methods"]), /PUT/);
+  assert.equal(response.headers["access-control-allow-credentials"], "true");
+});
+
+test("validates valid and invalid configurations", async () => {
+  const valid = await app.inject({ method: "POST", url: "/api/public/visnex/validate", payload: { configuration: pergolaConfiguration } });
+  assert.equal(valid.statusCode, 200);
+  const invalid = structuredClone(pergolaConfiguration);
+  invalid.values.depth = 8;
+  const rejected = await app.inject({ method: "POST", url: "/api/public/visnex/validate", payload: { configuration: invalid } });
+  assert.equal(rejected.statusCode, 422);
+});
+
+test("saves and restores a project using an unpredictable share id", async () => {
+  const saved = await app.inject({ method: "POST", url: "/api/public/visnex/configurations", payload: { configuration: pergolaConfiguration, expiresInDays: 30 } });
+  assert.equal(saved.statusCode, 201);
+  const body = saved.json();
+  assert.match(body.shareId, /^[A-Za-z0-9_-]{20,40}$/);
+  assert.ok(!body.shareUrl.includes("moduleWidths"));
+  const restored = await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${body.shareId}` });
+  assert.equal(restored.statusCode, 200);
+  assert.deepEqual(restored.json().configuration.values.moduleWidths, [4]);
+  const crossTenantRestore = await app.inject({ method: "GET", url: `/api/public/other-company/configurations/${body.shareId}` });
+  assert.equal(crossTenantRestore.statusCode, 404);
+});
+
+test("enforces feature policy and keeps private photo projects tenant-safe and versioned", async () => {
+  const login = await app.inject({ method: "POST", url: "/api/admin/visnex/login", payload: { email: "admin@example.invalid", password: "local-test-password" } });
+  const cookie = login.headers["set-cookie"];
+  assert.ok(cookie);
+  const features = await app.inject({ method: "GET", url: "/api/admin/visnex/features", headers: { cookie } });
+  assert.equal(features.statusCode, 200);
+  const policy = features.json().settings;
+  assert.deepEqual(features.json().resolutionOrder, ["PLATFORM", "PLAN", "ORGANIZATION", "PRODUCT", "ROLE"]);
+
+  const created = await app.inject({ method: "POST", url: "/api/public/visnex/configurations", payload: { configuration: pergolaConfiguration, expiresInDays: 30 } });
+  assert.equal(created.statusCode, 201);
+  const { shareId } = created.json();
+
+  const disabledPolicy = structuredClone(policy);
+  disabledPolicy.public.customerPhoto = false;
+  assert.equal((await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: disabledPolicy })).statusCode, 200);
+  const blocked = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "dom.jpg", contentBase64: Buffer.from("not-an-image-not-an-image").toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(blocked.statusCode, 403);
+  assert.equal(blocked.json().error, "feature_disabled");
+
+  const enabledPolicy = structuredClone(policy);
+  enabledPolicy.public.customerPhoto = true;
+  enabledPolicy.public.basicPhotoFit = true;
+  assert.equal((await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: enabledPolicy })).statusCode, 200);
+  const invalid = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "dom.jpg", contentBase64: Buffer.from("not-an-image-not-an-image").toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(invalid.statusCode, 415);
+
+  const sourceJpeg = await sharp({ create: { width: 120, height: 80, channels: 3, background: "#b77952" } }).withMetadata({ orientation: 6 }).jpeg({ quality: 90 }).toBuffer();
+  assert.ok((await sharp(sourceJpeg).metadata()).exif);
+  const uploaded = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "taras.jpg", contentBase64: sourceJpeg.toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(uploaded.statusCode, 201);
+  const asset = uploaded.json().asset;
+  assert.equal(asset.mimeType, "image/webp");
+  const content = await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}/assets/${asset.id}/main` });
+  assert.equal(content.statusCode, 200);
+  const cleanMetadata = await sharp(content.rawPayload).metadata();
+  assert.equal(cleanMetadata.exif, undefined);
+  assert.equal(cleanMetadata.orientation, undefined);
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/pilot-a/configurations/${shareId}/assets/${asset.id}/main` })).statusCode, 404);
+
+  const project = created.json().project;
+  project.scene.photoAssetId = asset.id;
+  project.scene.photoTransform.rotationDeg = 4.5;
+  project.scene.photoTransform.offsetX = 0.18;
+  project.scene.camera.referenceLine = [{ x: 0.2, y: 0.7 }, { x: 0.8, y: 0.7 }];
+  project.scene.camera.referenceLengthMm = 4000;
+  const updated = await app.inject({ method: "PUT", url: `/api/public/visnex/configurations/${shareId}`, payload: { project, expectedVersion: 1 } });
+  assert.equal(updated.statusCode, 200);
+  assert.equal(updated.json().currentVersion, 2);
+  const restored = await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}` });
+  assert.equal(restored.json().document.scene.photoTransform.rotationDeg, 4.5);
+  assert.equal(restored.json().document.scene.camera.referenceLengthMm, 4000);
+
+  const publicAdvanced = structuredClone(project);
+  publicAdvanced.scene.camera.method = "ADVISOR_PERSPECTIVE";
+  publicAdvanced.scene.camera.groundPlane = [{ x: .1, y: .8 }, { x: .9, y: .8 }, { x: .8, y: .5 }, { x: .2, y: .5 }];
+  const rejectedAdvanced = await app.inject({ method: "PUT", url: `/api/public/visnex/configurations/${shareId}`, payload: { project: publicAdvanced, expectedVersion: 2 } });
+  assert.equal(rejectedAdvanced.statusCode, 403);
+  assert.equal(rejectedAdvanced.json().feature, "ADVANCED_CALIBRATION");
+
+  const advisorLoaded = await app.inject({ method: "GET", url: `/api/advisor/visnex/projects/${shareId}`, headers: { cookie } });
+  assert.equal(advisorLoaded.statusCode, 200);
+  assert.equal(advisorLoaded.json().document.scene.photoAssetId, asset.id);
+  const advisorUpdated = await app.inject({ method: "PUT", url: `/api/advisor/visnex/projects/${shareId}`, headers: { cookie }, payload: { project: publicAdvanced, expectedVersion: 2 } });
+  assert.equal(advisorUpdated.statusCode, 200);
+  assert.equal(advisorUpdated.json().currentVersion, 3);
+  const versions = await app.inject({ method: "GET", url: `/api/advisor/visnex/projects/${shareId}/versions`, headers: { cookie } });
+  assert.deepEqual(versions.json().versions.map((item: { version: number }) => item.version), [3, 2, 1]);
+
+  const calculation = await app.inject({ method: "POST", url: `/api/advisor/visnex/projects/${shareId}/calculations`, headers: { cookie }, payload: { project: publicAdvanced, discountPercent: 5, transportNet: 500, assemblyNet: 800, additionalItems: [] } });
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(calculation.json().calculation.demoOnly, true);
+  assert.ok(calculation.json().calculation.purchaseNet > 0);
+  assert.equal(JSON.stringify(restored.json()).includes("purchaseNet"), false);
+  assert.equal(JSON.stringify(restored.json()).includes("marginNet"), false);
+
+  const projectJson = await app.inject({ method: "POST", url: `/api/advisor/visnex/projects/${shareId}/exports`, headers: { cookie }, payload: { format: "JSON" } });
+  assert.equal(projectJson.statusCode, 201);
+  assert.equal(projectJson.json().project.projectFormatVersion, "1.0");
+  assert.equal(JSON.stringify(projectJson.json().project).includes("storageKey"), false);
+
+  const strictLimit = structuredClone(enabledPolicy);
+  strictLimit.limits.maxPhotoBytes = 100000;
+  await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: strictLimit });
+  const noisy = await sharp(randomBytes(600 * 600 * 3), { raw: { width: 600, height: 600, channels: 3 } }).png().toBuffer();
+  assert.ok(noisy.byteLength > 100000);
+  const tooLarge = await app.inject({ method: "POST", url: `/api/public/visnex/configurations/${shareId}/assets`, payload: { fileName: "duzy.png", contentBase64: noisy.toString("base64"), kind: "CUSTOMER_PHOTO" } });
+  assert.equal(tooLarge.statusCode, 413);
+  await app.inject({ method: "PUT", url: "/api/admin/visnex/features", headers: { cookie }, payload: enabledPolicy });
+  const revoked = await app.inject({ method: "DELETE", url: `/api/advisor/visnex/projects/${shareId}/public-share`, headers: { cookie } });
+  assert.equal(revoked.statusCode, 204);
+  assert.equal((await app.inject({ method: "GET", url: `/api/public/visnex/configurations/${shareId}` })).statusCode, 404);
+  assert.equal((await app.inject({ method: "GET", url: `/api/advisor/visnex/projects/${shareId}`, headers: { cookie } })).statusCode, 200);
+});
+
+test("rejects a configuration whose tenant differs from the route", async () => {
+  const mismatchedConfiguration = { ...pergolaConfiguration, tenantSlug: "other-company" };
+  for (const endpoint of ["validate", "configurations", "quotes", "pdf"]) {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/public/visnex/${endpoint}`,
+      payload: endpoint === "configurations"
+        ? { configuration: mismatchedConfiguration, expiresInDays: 30 }
+        : { configuration: mismatchedConfiguration },
+    });
+    assert.equal(response.statusCode, 400, endpoint);
+    assert.equal(response.json().error, "tenant_mismatch", endpoint);
+  }
+});
+
+test("generates a demo quote, public BOM and server PDF", async () => {
+  const quote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration: pergolaConfiguration } });
+  assert.equal(quote.statusCode, 201);
+  assert.equal(quote.json().quote.demoOnly, true);
+  assert.equal(quote.json().bom.demoOnly, true);
+  const pdf = await app.inject({ method: "POST", url: "/api/public/visnex/pdf", payload: { configuration: pergolaConfiguration } });
+  assert.equal(pdf.statusCode, 200);
+  assert.equal(pdf.headers["content-type"], "application/pdf");
+  assert.equal(pdf.rawPayload.subarray(0, 4).toString(), "%PDF");
+
+  const garageQuote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration: garageConfiguration } });
+  assert.equal(garageQuote.statusCode, 201);
+  assert.equal(garageQuote.json().quote.demoOnly, true);
+  assert.ok(garageQuote.json().bom.items.some((item: { label: string; quantity: number }) => item.label === "Brama sectional" && item.quantity === 2));
+  const garagePdf = await app.inject({ method: "POST", url: "/api/public/visnex/pdf", payload: { configuration: garageConfiguration } });
+  assert.equal(garagePdf.statusCode, 200);
+  assert.equal(garagePdf.rawPayload.subarray(0, 4).toString(), "%PDF");
+
+  const facadeQuote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration: facadeBlindConfiguration } });
+  assert.equal(facadeQuote.statusCode, 201);
+  assert.ok(facadeQuote.json().bom.items.some((item: { label: string; quantity: number }) => item.label === "Pakiet lameli Z90" && item.quantity === 9.6));
+  const facadePdf = await app.inject({ method: "POST", url: "/api/public/visnex/pdf", payload: { configuration: facadeBlindConfiguration } });
+  assert.equal(facadePdf.statusCode, 200);
+  assert.equal(facadePdf.rawPayload.subarray(0, 4).toString(), "%PDF");
+});
+
+test("protects admin routes and allows an authenticated draft read", async () => {
+  const protectedResponse = await app.inject({ method: "GET", url: "/api/admin/visnex/products" });
+  assert.equal(protectedResponse.statusCode, 401);
+  const login = await app.inject({ method: "POST", url: "/api/admin/visnex/login", payload: { email: "admin@example.invalid", password: "local-test-password" } });
+  assert.equal(login.statusCode, 200);
+  const cookie = login.headers["set-cookie"];
+  assert.ok(cookie);
+  const products = await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } });
+  assert.equal(products.statusCode, 200);
+  assert.equal(products.json().products[0].definition.version.status, "draft");
+
+  const crossTenantRequests = [
+    { method: "GET" as const, url: "/api/admin/other-company/products" },
+    { method: "PUT" as const, url: "/api/admin/other-company/branding", payload: {} },
+    { method: "POST" as const, url: "/api/admin/other-company/products/bioclimatic-pergola/publish" },
+  ];
+  for (const crossTenantRequest of crossTenantRequests) {
+    const response = await app.inject({ ...crossTenantRequest, headers: { cookie } });
+    assert.equal(response.statusCode, 403, crossTenantRequest.url);
+    assert.equal(response.json().error, "tenant_forbidden", crossTenantRequest.url);
+  }
+});
+
+test("publishes a new version while archived configurations remain valid", async () => {
+  const login = await app.inject({ method: "POST", url: "/api/admin/visnex/login", payload: { email: "admin@example.invalid", password: "local-test-password" } });
+  const cookie = login.headers["set-cookie"];
+  const draftResponse = await app.inject({ method: "GET", url: "/api/admin/visnex/products", headers: { cookie } });
+  const draft = draftResponse.json().products.find((product: { definition: { productType: string } }) => product.definition.productType === "bioclimatic-pergola");
+  const definition = draft.definition;
+  const update = {
+    name: `${definition.name} test`, description: definition.description, enabled: definition.enabled, order: definition.order,
+    steps: definition.steps, parameters: definition.parameters, profiles: definition.profiles, colors: definition.colors, visual: definition.visual, pricing: draft.pricing,
+  };
+  const saved = await app.inject({ method: "PUT", url: "/api/admin/visnex/products/bioclimatic-pergola", headers: { cookie }, payload: update });
+  assert.equal(saved.statusCode, 200);
+  const published = await app.inject({ method: "POST", url: "/api/admin/visnex/products/bioclimatic-pergola/publish", headers: { cookie } });
+  assert.equal(published.statusCode, 200);
+  const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
+  const publicPergola = catalog.json().products.find((product: { productType: string }) => product.productType === "bioclimatic-pergola");
+  assert.equal(publicPergola.version.number, 2);
+  assert.equal(database.getProduct("visnex", "bioclimatic-pergola", "draft")?.definition.version.id, "visnex-bioclimatic-pergola-draft-v3");
+  const archivedValidation = await app.inject({ method: "POST", url: "/api/public/visnex/validate", payload: { configuration: pergolaConfiguration } });
+  assert.equal(archivedValidation.statusCode, 200);
+});
+
+test("validates the coupled veranda slope", async () => {
+  const slope = deriveVerandaSlope(3.2, 2.95, 7);
+  const configuration = {
+    schemaVersion: "2.0", tenantSlug: "visnex", productType: "veranda", productVersionId: "visnex-veranda-v1",
+    values: { width: 4.5, depth: 3.2, backHeight: 2.95, frontHeight: slope.frontHeight, roofAngle: 7, roofFields: 4, rafterCount: 5, postCount: 3, roofMaterial: "clear-glass", leftWall: "zip-screen", rightWall: "none", frontWall: "none", leftTriangle: "solid", rightTriangle: "none", leftScreenSupport: true, rightScreenSupport: false, frameColor: "anthracite", lighting: false },
+  };
+  const response = await app.inject({ method: "POST", url: "/api/public/visnex/validate", payload: { configuration } });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().derived.postPositions.length, 3);
+  const quote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration } });
+  assert.equal(quote.statusCode, 201);
+  assert.ok(quote.json().bom.items.some((item: { label: string }) => item.label === "Profil podpierający kasetę rolety"));
+});

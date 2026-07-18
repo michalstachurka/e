@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panel konfiguratora — visNEX</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/pergola-configurator/css/style.css" />
+    <link rel="stylesheet" href="/pergola-configurator/css/admin.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./pergola-configurator/assets/vendor/three/three.module.js",
+          "three/examples/jsm/controls/OrbitControls.js": "./pergola-configurator/assets/vendor/three/examples/jsm/controls/OrbitControls.js",
+          "three/examples/jsm/environments/RoomEnvironment.js": "./pergola-configurator/assets/vendor/three/examples/jsm/environments/RoomEnvironment.js",
+          "three/examples/jsm/loaders/SVGLoader.js": "./pergola-configurator/assets/vendor/three/examples/jsm/loaders/SVGLoader.js"
+        }
+      }
+    </script>
+    <script>
+      {
+        const existing = window.__VISNEX_CONFIG__ || {};
+        window.__VISNEX_CONFIG__ = {
+          ...existing,
+          apiBaseUrl: existing.apiBaseUrl ?? "%VITE_API_BASE_URL%",
+          tenantSlug: existing.tenantSlug ?? "visnex"
+        };
+      }
+    </script>
+  </head>
+  <body class="admin-shell">
+    <header class="admin-topbar">
+      <a href="./" class="admin-topbar__brand">visNEX</a>
+      <span>Panel konfiguratora</span>
+      <nav><a href="./konfigurator.html" id="adminConfiguratorLink">Konfigurator ↗</a><button type="button" id="adminLogout" hidden>Wyloguj</button></nav>
+    </header>
+
+    <main class="admin-main">
+      <section class="admin-login" id="adminLogin">
+        <p class="eyebrow">Dostęp chroniony</p>
+        <h1>Oferta pod<br><em>kontrolą.</em></h1>
+        <p>Logowanie działa przez bezpieczną sesję HTTP-only. Dane dostępowe ustawiasz lokalnie w pliku środowiskowym API.</p>
+        <form id="adminLoginForm">
+          <label>E-mail<input type="email" name="email" autocomplete="username" required /></label>
+          <label>Hasło<input type="password" name="password" autocomplete="current-password" minlength="12" required /></label>
+          <button type="submit">Zaloguj</button>
+        </form>
+        <p class="admin-status" id="adminLoginStatus" role="alert"></p>
+      </section>
+
+      <section class="admin-workspace" id="adminWorkspace" hidden>
+        <header class="admin-hero">
+          <div><p class="eyebrow" id="adminTenantLabel">Tenant</p><h1>Definicje<br><em>produktów.</em></h1></div>
+          <p>Zmiany zapisują wersję roboczą. Publikacja tworzy niezmienną wersję dla nowych projektów i zachowuje poprzednie konfiguracje.</p>
+        </header>
+
+        <section class="admin-section" id="brandingSection">
+          <header><span>01</span><div><h2>Branding i PDF</h2><p>Wspólna personalizacja bez duplikowania aplikacji.</p></div></header>
+          <form class="admin-grid" id="brandingForm"></form>
+        </section>
+
+        <section class="admin-section" id="featureAvailabilitySection">
+          <header><span>02</span><div><h2>Dostępność funkcji</h2><p>Jedna polityka organizacji dla trybu publicznego i Trybu doradcy. Backend sprawdza ją przy każdej operacji.</p></div></header>
+          <form id="featureAvailabilityForm"></form>
+        </section>
+
+        <section class="admin-section" id="profileStudioSection">
+          <header><span>03</span><div><h2>Profile i podgląd 3D</h2><p>Techniczny podgląd wersji bazowej. Wymiary a i b są widoczne wyłącznie w panelu administratora.</p></div></header>
+          <div id="adminProfileStudio"></div>
+        </section>
+
+        <section class="admin-section" id="referenceSceneSection">
+          <header><span>04</span><div><h2>Edytor referencji 3D</h2><p>Przesuń, obróć lub przeskaluj element istniejącej sceny. Pobierz oznaczony PNG i dokładne dane JSON do zgłoszenia korekty geometrii.</p></div></header>
+          <div id="adminReferenceScene"></div>
+        </section>
+
+        <section class="admin-section">
+          <header><span>05</span><div><h2>Produkty i wersje</h2><p>Zakresy, widoczność, kroki, kolory i reguły demonstracyjne.</p></div></header>
+          <div id="adminProducts" class="admin-products"></div>
+        </section>
+
+        <p class="admin-toast" id="adminToast" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+    <script type="module" src="/pergola-configurator/js/configurator-admin.js"></script>
+  </body>
+</html>

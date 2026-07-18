@@ -70,7 +70,7 @@ export function setupPergolaAR({ canvas, closeOptionsPanel }) {
   const download = document.getElementById("arDownloadGLB");
   if (!openButton || !modal || !dialog || !viewer || !loader || !status || !launchButton) return;
 
-  const debugEnabled = new URLSearchParams(window.location.search).get("debugAR") === "1";
+  const debugEnabled = Boolean(window.__VISNEX_CONFIG__?.development) && new URLSearchParams(window.location.search).get("debugAR") === "1";
   const platform = detectPlatform();
   const assets = new ARAssetManager();
   let currentAssets = null;
@@ -153,7 +153,7 @@ export function setupPergolaAR({ canvas, closeOptionsPanel }) {
     setDebug("method", method);
     if (download) {
       download.href = generated.glbUrl;
-      download.download = "pergola-konfiguracja.glb";
+      download.download = "visnex-konfiguracja.glb";
     }
   };
 
@@ -217,7 +217,7 @@ export function setupPergolaAR({ canvas, closeOptionsPanel }) {
         showUnsupported();
       } else {
         info.textContent = platform === "ios"
-          ? "Model jest gotowy. Uruchom Apple Quick Look, aby ustawić pergolę w ogrodzie."
+          ? "Model jest gotowy. Uruchom Apple Quick Look, aby ustawić projekt w przestrzeni."
           : "Model jest gotowy. Dostępność i jakość WebXR zależy od telefonu oraz aktualnej wersji Chrome.";
         info.hidden = false;
         launchButton.disabled = false;

@@ -19,6 +19,16 @@ const disposeClone = (root) => {
   });
 };
 
+export async function generateProjectGlb(root) {
+  try {
+    const data = await gltfExporter.parseAsync(root, { binary: true, onlyVisible: true, trs: false, maxTextureSize: 2048 });
+    if (!(data instanceof ArrayBuffer)) throw new Error("Eksporter GLB nie zwrócił danych binarnych.");
+    return { blob: new Blob([data], { type: "model/gltf-binary" }), metrics: { ...root.userData.arMetrics } };
+  } finally {
+    disposeClone(root);
+  }
+}
+
 /**
  * Zarządza jedną parą dynamicznych plików AR. Każde kolejne przygotowanie
  * oraz zamknięcie modalu unieważnia poprzednie Blob URL-e.

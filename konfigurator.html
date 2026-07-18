@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Konfigurator pergoli 3D — visNEX</title>
-    <meta name="description" content="Zaprojektuj pergolę: wybierz konstrukcję, wymiary, kolory, oświetlenie, rolety screen i przeszklenia." />
+    <title>Konfigurator osłon 3D — visNEX</title>
+    <meta name="description" content="Zaprojektuj pergolę bioklimatyczną lub werandę w kontrolowanym konfiguratorze 3D visNEX." />
     <meta name="theme-color" content="#14120f" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/pergola-configurator/css/style.css" />
@@ -13,16 +13,28 @@
         "imports": {
           "three": "./pergola-configurator/assets/vendor/three/three.module.js",
           "three/examples/jsm/controls/OrbitControls.js": "./pergola-configurator/assets/vendor/three/examples/jsm/controls/OrbitControls.js",
-          "three/examples/jsm/environments/RoomEnvironment.js": "./pergola-configurator/assets/vendor/three/examples/jsm/environments/RoomEnvironment.js"
+          "three/examples/jsm/environments/RoomEnvironment.js": "./pergola-configurator/assets/vendor/three/examples/jsm/environments/RoomEnvironment.js",
+          "three/examples/jsm/loaders/SVGLoader.js": "./pergola-configurator/assets/vendor/three/examples/jsm/loaders/SVGLoader.js"
         }
       }
     </script>
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"></script>
+    <script>
+      {
+        const existing = window.__VISNEX_CONFIG__ || {};
+        window.__VISNEX_CONFIG__ = {
+          ...existing,
+          apiBaseUrl: existing.apiBaseUrl ?? "%VITE_API_BASE_URL%",
+          tenantSlug: existing.tenantSlug ?? "visnex",
+          development: existing.development ?? (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+        };
+      }
+    </script>
   </head>
   <body class="configurator-product">
     <header class="configurator-product__bar">
       <a href="./" class="configurator-product__brand" aria-label="Wróć do strony visNEX">visNEX</a>
-      <span>Konfigurator pergoli 3D</span>
+      <span id="configuratorModeLabel">Konfigurator publiczny</span>
       <a href="./" class="configurator-product__back">Wróć do strony <span aria-hidden="true">↗</span></a>
     </header>
 
@@ -30,8 +42,14 @@
       <section class="pergola3d" id="konfigurator-3d">
         <div class="container">
           <p class="eyebrow eyebrow--light">Konfigurator 3D</p>
-          <h1 class="section-title section-title--light">Zaprojektuj<br><em>swoją pergolę.</em></h1>
-          <p class="section-lead section-lead--light">Ustaw moduły, wymiary, kolory i wyposażenie. Obróć model przeciągnięciem i zobacz efekt przed przygotowaniem wyceny.</p>
+          <h1 class="section-title section-title--light" id="configuratorTitle">Zaprojektuj<br><em>swoją pergolę.</em></h1>
+          <p class="section-lead section-lead--light" id="configuratorLead">Ustaw moduły, wymiary, kolory i wyposażenie. Obróć model przeciągnięciem i zobacz efekt przed przygotowaniem wyceny.</p>
+
+          <nav class="product-switcher" id="productSwitcher" aria-label="Wybierz produkt">
+            <span class="pergola3d__label">Produkt</span>
+            <div class="product-switcher__buttons"></div>
+          </nav>
+          <ol class="configurator-steps" id="configuratorSteps" aria-label="Etapy konfiguracji"></ol>
 
           <div class="pergola3d__module">
             <div class="pergola3d__stage">
@@ -50,10 +68,18 @@
                 </div>
                 <button type="button" class="leg-adjust__arrow leg-adjust__arrow--right" id="legRight" aria-label="Przesuń nogę w prawo">›</button>
               </div>
+              <nav class="camera-views" id="cameraViews" aria-label="Standardowe widoki kamery">
+                <button type="button" data-view="front">Przód</button>
+                <button type="button" data-view="back">Tył</button>
+                <button type="button" data-view="left">Lewo</button>
+                <button type="button" data-view="right">Prawo</button>
+                <button type="button" data-view="top">Góra</button>
+                <button type="button" data-view="reset">Reset</button>
+              </nav>
               <button type="button" class="pergola3d__options-toggle" id="pergolaOptionsToggle" aria-expanded="false" aria-controls="pergolaPanel">Opcje</button>
               <div class="pergola3d__stagefoot">
-                <button type="button" class="pergola3d__spin" id="pergolaSpin" aria-pressed="true">
-                  <span class="pergola3d__spin-dot" aria-hidden="true"></span>Animacja ruchu
+                <button type="button" class="pergola3d__spin" id="pergolaSpin" aria-pressed="true" aria-label="Zatrzymaj wizualizację 3D">
+                  <span class="pergola3d__spin-dot" aria-hidden="true"></span><span id="pergolaSpinLabel">Zatrzymaj wizualizację</span>
                 </button>
                 <span class="mono-note" id="pergolaSpec">4.0 × 3.2 × 2.6 m · 35°</span>
               </div>
@@ -65,6 +91,12 @@
                 <button type="button" class="pergola3d__panel-close" id="pergolaPanelClose" aria-label="Zamknij opcje">✕</button>
               </div>
 
+              <div class="configurator-notice" id="configuratorNotice" role="status" aria-live="polite">
+                <span class="configurator-notice__dot" aria-hidden="true"></span>
+                <span id="configuratorNoticeText">Definicja demonstracyjna · gotowa do konfiguracji</span>
+              </div>
+
+              <div class="product-controls" id="pergolaControls" data-product-controls="bioclimatic-pergola">
               <div class="pergola3d__group">
                 <span class="pergola3d__label">Rodzaj konstrukcji</span>
                 <div class="pergola3d__pills" id="pergolaConstruction" role="group" aria-label="Rodzaj konstrukcji">
@@ -143,6 +175,67 @@
                 </div>
                 <p class="pergola3d__hint" id="pergolaLegHint" hidden>Kliknij bok pergoli, na którym chcesz dodać nogę. Możesz obrócić model.</p>
               </div>
+              </div>
+
+              <div class="product-controls" id="verandaControls" data-product-controls="veranda" hidden>
+                <p class="pergola3d__hint demo-badge">Dane wizualne i zakresy werandy są demonstracyjne do czasu zatwierdzenia dokumentacji technicznej.</p>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Szerokość · <b id="verandaWidthVal">4.5</b> m</span><input type="range" id="verandaWidth" min="2.5" max="8" step="0.1" value="4.5" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Głębokość · <b id="verandaDepthVal">3.2</b> m</span><input type="range" id="verandaDepth" min="2" max="5" step="0.1" value="3.2" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Wysokość przy ścianie · <b id="verandaBackHeightVal">2.95</b> m</span><input type="range" id="verandaBackHeight" min="2.4" max="3.6" step="0.05" value="2.95" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Wysokość z przodu · <b id="verandaFrontHeightVal">2.56</b> m</span><input type="range" id="verandaFrontHeight" min="2.1" max="3.2" step="0.01" value="2.56" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Kąt dachu · <b id="verandaAngleVal">7.0</b>°</span><input type="range" id="verandaAngle" min="3" max="15" step="0.5" value="7" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Pola dachowe · <b id="verandaFieldsVal">4</b></span><input type="range" id="verandaFields" min="2" max="8" step="1" value="4" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Krokwie · <b id="verandaRaftersVal">5</b></span><input type="range" id="verandaRafters" min="3" max="9" step="1" value="5" /></label>
+                <label class="pergola3d__slider"><span class="pergola3d__label">Słupy frontowe · <b id="verandaPostsVal">3</b></span><input type="range" id="verandaPosts" min="2" max="6" step="1" value="3" /></label>
+
+                <div class="pergola3d__group"><span class="pergola3d__label">Wypełnienie dachu · demo</span><div class="pergola3d__pills" id="verandaRoofMaterial">
+                  <button type="button" data-value="clear-glass" aria-pressed="true">Szkło przejrzyste</button><button type="button" data-value="smoked-glass" aria-pressed="false">Szkło dymione</button><button type="button" data-value="clear-polycarbonate" aria-pressed="false">Poliwęglan przejrzysty</button><button type="button" data-value="opal-polycarbonate" aria-pressed="false">Poliwęglan mleczny</button>
+                </div></div>
+                <section class="veranda-side-assembly" aria-labelledby="verandaLeftAssemblyTitle">
+                  <div class="veranda-side-assembly__head"><span class="pergola3d__label" id="verandaLeftAssemblyTitle">Bok lewy · demo</span><small>Widok od zewnątrz</small></div>
+                  <label class="veranda-side-assembly__field"><span>Zabudowa pod kasetą / dachem</span><select class="configurator-select" id="verandaLeftWall"></select></label>
+                  <label class="veranda-side-assembly__field"><span>Wypełnienie bocznego trójkąta</span><select class="configurator-select" id="verandaLeftTriangle"></select></label>
+                  <div class="veranda-side-assembly__support" id="verandaLeftScreenSupportWrap" hidden>
+                    <span>Podparcie kasety ZIP</span>
+                    <button type="button" id="verandaLeftScreenSupport" aria-pressed="false">Dodaj profil nad kasetą</button>
+                    <small>Najpierw profil boczny, bezpośrednio pod nim kaseta. Tkanina schodzi z kasety w dół.</small>
+                  </div>
+                </section>
+                <section class="veranda-side-assembly" aria-labelledby="verandaRightAssemblyTitle">
+                  <div class="veranda-side-assembly__head"><span class="pergola3d__label" id="verandaRightAssemblyTitle">Bok prawy · demo</span><small>Widok od zewnątrz</small></div>
+                  <label class="veranda-side-assembly__field"><span>Zabudowa pod kasetą / dachem</span><select class="configurator-select" id="verandaRightWall"></select></label>
+                  <label class="veranda-side-assembly__field"><span>Wypełnienie bocznego trójkąta</span><select class="configurator-select" id="verandaRightTriangle"></select></label>
+                  <div class="veranda-side-assembly__support" id="verandaRightScreenSupportWrap" hidden>
+                    <span>Podparcie kasety ZIP</span>
+                    <button type="button" id="verandaRightScreenSupport" aria-pressed="false">Dodaj profil nad kasetą</button>
+                    <small>Najpierw profil boczny, bezpośrednio pod nim kaseta. Tkanina schodzi z kasety w dół.</small>
+                  </div>
+                </section>
+                <div class="pergola3d__group"><span class="pergola3d__label">Zabudowa frontu · demo</span><select class="configurator-select" id="verandaFrontWall"></select></div>
+                <div class="pergola3d__group"><span class="pergola3d__label">Kolor konstrukcji</span><div class="pergola3d__swatches" id="verandaFrameColor"></div></div>
+                <div class="pergola3d__group">
+                  <span class="pergola3d__label">LED liniowy na krokwiach · wybierz konkretne</span>
+                  <div class="pergola3d__pills rafter-led-picker" id="verandaRafterLeds" role="group" aria-label="Krokwie z oświetleniem LED"></div>
+                </div>
+                <div class="pergola3d__group">
+                  <span class="pergola3d__label">Dodatkowe nogi · <b id="verandaLegCount">0</b></span>
+                  <div class="pergola3d__pills"><button type="button" id="verandaAddLeg">Dodaj nogę na froncie</button><button type="button" id="verandaClearLegs">Usuń wszystkie</button></div>
+                  <div class="veranda-leg-list" id="verandaLegList"></div>
+                  <p class="pergola3d__hint">Każdą dodatkową nogę możesz przesunąć suwakiem wzdłuż belki frontowej.</p>
+                </div>
+              </div>
+
+              <div class="product-controls" id="catalogProductControls" data-product-controls="catalog" hidden></div>
+              <div class="product-controls" id="structureShutterControls" data-product-controls="side-shutters" hidden></div>
+
+              <section class="photo-project-tools" id="photoProjectTools" hidden></section>
+              <section class="advisor-project-tools" id="advisorProjectTools" hidden></section>
+
+              <section class="configuration-summary" id="configurationSummary" aria-live="polite">
+                <span class="pergola3d__label">Podsumowanie</span>
+                <dl id="configurationSummaryList"></dl>
+                <div class="quote-preview" id="quotePreview" hidden></div>
+              </section>
 
               <button type="button" class="pergola3d__ar" id="pergolaAR">
                 <span class="pergola3d__ar-desktop">Zobacz w AR</span>
@@ -153,12 +246,15 @@
                 <span>Pobierz projekt PDF</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></g></svg>
               </button>
+              <button type="button" class="pergola3d__save" id="configuratorSave">
+                <span id="configuratorSaveLabel">Zapisz projekt</span><span aria-hidden="true">＋</span>
+              </button>
               <button type="button" class="pergola3d__inquiry" id="pergolaInquiry">
                 <span id="pergolaInquiryLabel">Przekaż konfigurację do wyceny</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true" width="17" height="17"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></g></svg>
               </button>
               <button type="button" class="pergola3d__copylink" id="pergolaCopyLink">
-                <span id="pergolaCopyLinkLabel">Skopiuj link do projektu</span>
+                <span id="pergolaCopyLinkLabel">Zapisz i skopiuj link</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 6l1-1a4 4 0 0 1 6 6l-1 1"/><path d="M13 18l-1 1a4 4 0 0 1-6-6l1-1"/></g></svg>
               </button>
             </div>
@@ -173,7 +269,7 @@
         <header class="ar-modal__head">
           <div>
             <p class="eyebrow">Rzeczywistość rozszerzona</p>
-            <h2 id="arTitle">Twoja pergola<br><em>w prawdziwej skali.</em></h2>
+            <h2 id="arTitle">Twój projekt<br><em>w prawdziwej skali.</em></h2>
           </div>
           <button type="button" class="ar-modal__x" data-ar-close aria-label="Zamknij">×</button>
         </header>
@@ -216,7 +312,7 @@
       <figure class="pergola-doc__render"><img id="pergolaDocRender" alt="Wizualizacja pergoli" /></figure>
       <div class="pergola-doc__body">
         <p class="pergola-doc__eyebrow">Twoja konfiguracja</p>
-        <h1 class="pergola-doc__title" id="pergolaDocTitle">Pergola bioklimatyczna</h1>
+            <h1 class="pergola-doc__title" id="pergolaDocTitle">Projekt zadaszenia</h1>
         <p class="pergola-doc__spec" id="pergolaDocSpec"></p>
         <table class="pergola-doc__table"><tbody id="pergolaDocTable"></tbody></table>
       </div>

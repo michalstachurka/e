@@ -5,6 +5,14 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { ProductRendererRegistry } from "./core/product-registry.js";
+import { profileMetres } from "./core/profile-definitions.js";
+import { createProfileMesh } from "./core/svg-profile-geometry.js";
+import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
+import { createWindowCoverRenderer } from "./renderers/window-cover-renderer.js";
+import { createMetalGarageRenderer } from "./renderers/metal-garage-renderer.js";
+import { createFacadeBlindRenderer } from "./renderers/facade-blind-renderer.js";
+import { addStructureSideShutters } from "./renderers/side-shutter-system.js";
 
 /** Soft radial ground shadow texture. */
 function shadowTexture() {
@@ -17,6 +25,69 @@ function shadowTexture() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 256, 256);
   return new THREE.CanvasTexture(c);
+}
+
+/** Proceduralna, bezszwowa mapa włókniny antykondensacyjnej. Referencja służy
+ * wyłącznie jako kierunek materiałowy; tekstura jest generowana lokalnie. */
+function antiCondensationTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#d7d8d5";
+  ctx.fillRect(0, 0, 256, 256);
+  let seed = 1847;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let index = 0; index < 1700; index += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const length = 3 + random() * 15;
+    const angle = random() * Math.PI;
+    const shade = Math.round(118 + random() * 92);
+    ctx.strokeStyle = `rgba(${shade},${shade + 2},${shade + 4},${0.06 + random() * 0.16})`;
+    ctx.lineWidth = 0.35 + random() * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + Math.cos(angle + 0.5) * length * 0.5, y + Math.sin(angle + 0.5) * length * 0.5, x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 7);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createTrapezoidalSheetGeometry(width, depth, pitch, ribHeight, thickness) {
+  const ribCount = Math.max(2, Math.round(width / pitch));
+  const actualPitch = width / ribCount;
+  const top = [];
+  for (let index = 0; index < ribCount; index += 1) {
+    const x = -width / 2 + index * actualPitch;
+    const points = [
+      [x, 0],
+      [x + actualPitch * 0.18, 0],
+      [x + actualPitch * 0.34, ribHeight],
+      [x + actualPitch * 0.58, ribHeight],
+      [x + actualPitch * 0.74, 0],
+      [x + actualPitch, 0],
+    ];
+    for (const point of points) {
+      const previous = top[top.length - 1];
+      if (!previous || previous[0] !== point[0] || previous[1] !== point[1]) top.push(point);
+    }
+  }
+  const shape = new THREE.Shape();
+  shape.moveTo(top[0][0], top[0][1]);
+  top.slice(1).forEach(([x, y]) => shape.lineTo(x, y));
+  [...top].reverse().forEach(([x, y]) => shape.lineTo(x, y - thickness));
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth, steps: 1, bevelEnabled: false, curveSegments: 1 });
+  geometry.translate(0, 0, -depth / 2);
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /** Delikatny splot tkaniny screen (mapa koloru): jasne tło z cienką, ciemniejszą
@@ -93,6 +164,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     slats: undefined,
     lastDims: undefined,
     desiredRadius: undefined,
+    activeProductType: undefined,
   };
   let paramsRef = initialParams;
 
@@ -101,6 +173,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.width = "100%";
   renderer.domElement.style.height = "100%";
   el.appendChild(renderer.domElement);
@@ -111,10 +185,22 @@ export function createPergolaCanvas(mountEl, initialParams) {
   // Światło wypełniające. Kolor „ziemi" (dolny) rozjaśnia powierzchnie
   // zwrócone w dół — spód lameli — żeby przy niskim ujęciu kamery pokazywał
   // rzeczywisty kolor materiału, a nie wychodził czarny.
-  scene.add(new THREE.HemisphereLight("#f4f1ea", "#cdc6b8", 0.9));
+  const hemisphereLight = new THREE.HemisphereLight("#f4f1ea", "#cdc6b8", 0.9);
+  scene.add(hemisphereLight);
   // Miękki ambient dodatkowo podnosi najciemniejsze, odwrócone od światła
   // faktury (spód lameli), bez spłaszczania całości.
-  scene.add(new THREE.AmbientLight("#ffffff", 0.22));
+  const ambientLight = new THREE.AmbientLight("#ffffff", 0.22);
+  scene.add(ambientLight);
+  const calibrationLight = new THREE.DirectionalLight("#ffffff", 1.25);
+  calibrationLight.position.set(8, 11, 6);
+  calibrationLight.castShadow = true;
+  calibrationLight.shadow.mapSize.set(2048, 2048);
+  calibrationLight.shadow.camera.left = -14;
+  calibrationLight.shadow.camera.right = 14;
+  calibrationLight.shadow.camera.top = 14;
+  calibrationLight.shadow.camera.bottom = -14;
+  calibrationLight.shadow.bias = -0.0003;
+  scene.add(calibrationLight, calibrationLight.target);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
   camera.position.set(6.4, 0.95, 7.6);
@@ -243,12 +329,33 @@ export function createPergolaCanvas(mountEl, initialParams) {
   shadow.position.y = 0.005;
   scene.add(shadow);
 
+  const shadowCatcher = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.ShadowMaterial({ color: "#111111", transparent: true, opacity: 0.45, depthWrite: false }),
+  );
+  shadowCatcher.rotation.x = -Math.PI / 2;
+  shadowCatcher.position.y = 0.001;
+  shadowCatcher.receiveShadow = true;
+  shadowCatcher.visible = false;
+  shadowCatcher.userData.arExclude = true;
+  scene.add(shadowCatcher);
+
   const material = new THREE.MeshStandardMaterial({
     color: new THREE.Color("#2b2d2e"),
     roughness: 0.55,
     metalness: 0.35,
   });
   const slatMaterial = material.clone();
+  const fleeceTexture = antiCondensationTexture();
+  const antiCondensationMaterial = new THREE.MeshStandardMaterial({
+    color: "#e0e1de",
+    roughness: 1,
+    metalness: 0,
+    map: fleeceTexture,
+    bumpMap: fleeceTexture,
+    bumpScale: 0.0025,
+    side: THREE.DoubleSide,
+  });
   // Crisp cool-white LED, like real pergola strips
   // Widoczna geometria LED z prawdziwą emisją. Dzięki temu światło pozostaje
   // czytelne również po eksporcie do GLB/USDZ, gdzie lampy sceny są pomijane.
@@ -314,6 +421,15 @@ export function createPergolaCanvas(mountEl, initialParams) {
     depthWrite: false,
   });
   glassMaterial.envMapIntensity = 1.5;
+  const roofMaterial = new THREE.MeshPhysicalMaterial({
+    color: "#dce8e8",
+    roughness: 0.1,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   // Ściana (konstrukcja przyścienna) i opaska betonowa (moduł dachowy).
   const wallMaterial = new THREE.MeshStandardMaterial({ color: "#d9d3c7", roughness: 0.96, metalness: 0 });
   const concreteMaterial = new THREE.MeshStandardMaterial({ color: "#c4bfb5", roughness: 0.9, metalness: 0 });
@@ -324,26 +440,333 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   let group = new THREE.Group();
   scene.add(group);
+  let projectScene = null;
+  let compositor = null;
 
-  const rebuild = (p) => {
+  // Edytor referencji w panelu administratora korzysta dokładnie z tej samej
+  // sceny co konfigurator. Operuje wyłącznie na transformacjach lokalnych
+  // istniejących obiektów i nie zmienia definicji produktu ani renderera.
+  const referenceSelectionBox = new THREE.Box3Helper(new THREE.Box3(), 0xb74926);
+  referenceSelectionBox.visible = false;
+  referenceSelectionBox.renderOrder = 999;
+  referenceSelectionBox.material.depthTest = false;
+  referenceSelectionBox.userData.arExclude = true;
+  const referenceAxes = new THREE.AxesHelper(0.62);
+  referenceAxes.visible = false;
+  referenceAxes.renderOrder = 1000;
+  referenceAxes.userData.arExclude = true;
+  for (const axesMaterial of Array.isArray(referenceAxes.material) ? referenceAxes.material : [referenceAxes.material]) {
+    axesMaterial.depthTest = false;
+  }
+  scene.add(referenceSelectionBox, referenceAxes);
+  const referenceObjects = new Map();
+  const referenceObjectIds = new WeakMap();
+  const referenceAdjustments = new Map();
+  let selectedReferenceObjectId = null;
+  let referenceGuidesVisible = true;
+
+  const roundReferenceNumber = (value, precision = 6) => Number(Number(value).toFixed(precision));
+  const referenceVector = (value, fallback) => ({
+    x: Number.isFinite(Number(value?.x)) ? Number(value.x) : fallback.x,
+    y: Number.isFinite(Number(value?.y)) ? Number(value.y) : fallback.y,
+    z: Number.isFinite(Number(value?.z)) ? Number(value.z) : fallback.z,
+  });
+  const emptyReferenceAdjustment = () => ({
+    positionM: { x: 0, y: 0, z: 0 },
+    rotationDeg: { x: 0, y: 0, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+  });
+  const transformSnapshot = (object) => ({
+    positionM: { x: roundReferenceNumber(object.position.x), y: roundReferenceNumber(object.position.y), z: roundReferenceNumber(object.position.z) },
+    rotationDeg: {
+      x: roundReferenceNumber(THREE.MathUtils.radToDeg(object.rotation.x), 4),
+      y: roundReferenceNumber(THREE.MathUtils.radToDeg(object.rotation.y), 4),
+      z: roundReferenceNumber(THREE.MathUtils.radToDeg(object.rotation.z), 4),
+    },
+    scale: { x: roundReferenceNumber(object.scale.x), y: roundReferenceNumber(object.scale.y), z: roundReferenceNumber(object.scale.z) },
+  });
+  const clearReferenceObjects = () => {
+    referenceObjects.clear();
+    referenceAdjustments.clear();
+    selectedReferenceObjectId = null;
+    referenceSelectionBox.visible = false;
+    referenceAxes.visible = false;
+  };
+  const objectPath = (object) => {
+    const path = [];
+    let current = object;
+    while (current && current !== group) {
+      path.unshift(current.parent?.children.indexOf(current) ?? -1);
+      current = current.parent;
+    }
+    return path.join(".");
+  };
+  const ensureReferenceObjects = () => {
+    if (referenceObjects.size) return;
+    const nameCounts = new Map();
+    group.traverse((object) => {
+      if (object === group || !object.name || (!object.isMesh && !object.isGroup)) return;
+      const index = (nameCounts.get(object.name) || 0) + 1;
+      nameCounts.set(object.name, index);
+      const id = objectPath(object);
+      const base = transformSnapshot(object);
+      const descriptor = {
+        id,
+        name: object.name,
+        occurrence: index,
+        kind: object.isInstancedMesh ? "INSTANCED_MESH" : object.isMesh ? "MESH" : "GROUP",
+        profileId: object.userData?.profileId || null,
+        parentName: object.parent && object.parent !== group ? object.parent.name || null : null,
+        object,
+        base,
+        rotationOrder: object.rotation.order,
+      };
+      referenceObjects.set(id, descriptor);
+      referenceObjectIds.set(object, id);
+      referenceAdjustments.set(id, emptyReferenceAdjustment());
+    });
+  };
+  const publicReferenceDescriptor = (descriptor) => ({
+    id: descriptor.id,
+    name: descriptor.name,
+    occurrence: descriptor.occurrence,
+    kind: descriptor.kind,
+    profileId: descriptor.profileId,
+    parentName: descriptor.parentName,
+  });
+  const listReferenceObjects = () => {
+    ensureReferenceObjects();
+    return [...referenceObjects.values()].map(publicReferenceDescriptor);
+  };
+  const updateReferenceGuides = () => {
+    ensureReferenceObjects();
+    const descriptor = referenceObjects.get(selectedReferenceObjectId);
+    if (!descriptor || !referenceGuidesVisible) {
+      referenceSelectionBox.visible = false;
+      referenceAxes.visible = false;
+      return;
+    }
+    descriptor.object.updateWorldMatrix(true, true);
+    const bounds = new THREE.Box3().setFromObject(descriptor.object);
+    if (bounds.isEmpty()) {
+      referenceSelectionBox.visible = false;
+    } else {
+      referenceSelectionBox.box.copy(bounds);
+      referenceSelectionBox.visible = true;
+    }
+    descriptor.object.getWorldPosition(referenceAxes.position);
+    descriptor.object.getWorldQuaternion(referenceAxes.quaternion);
+    referenceAxes.scale.setScalar(1);
+    referenceAxes.visible = true;
+  };
+  const selectReferenceObject = (id) => {
+    ensureReferenceObjects();
+    selectedReferenceObjectId = referenceObjects.has(id) ? id : null;
+    updateReferenceGuides();
+    return selectedReferenceObjectId ? publicReferenceDescriptor(referenceObjects.get(selectedReferenceObjectId)) : null;
+  };
+  const setReferenceGuidesVisible = (visibleGuides) => {
+    referenceGuidesVisible = Boolean(visibleGuides);
+    updateReferenceGuides();
+  };
+  const setReferenceObjectAdjustment = (id, nextAdjustment) => {
+    ensureReferenceObjects();
+    const descriptor = referenceObjects.get(id);
+    if (!descriptor) return null;
+    const adjustment = {
+      positionM: referenceVector(nextAdjustment?.positionM, { x: 0, y: 0, z: 0 }),
+      rotationDeg: referenceVector(nextAdjustment?.rotationDeg, { x: 0, y: 0, z: 0 }),
+      scale: referenceVector(nextAdjustment?.scale, { x: 1, y: 1, z: 1 }),
+    };
+    adjustment.positionM.x = THREE.MathUtils.clamp(adjustment.positionM.x, -20, 20);
+    adjustment.positionM.y = THREE.MathUtils.clamp(adjustment.positionM.y, -20, 20);
+    adjustment.positionM.z = THREE.MathUtils.clamp(adjustment.positionM.z, -20, 20);
+    adjustment.rotationDeg.x = THREE.MathUtils.clamp(adjustment.rotationDeg.x, -3600, 3600);
+    adjustment.rotationDeg.y = THREE.MathUtils.clamp(adjustment.rotationDeg.y, -3600, 3600);
+    adjustment.rotationDeg.z = THREE.MathUtils.clamp(adjustment.rotationDeg.z, -3600, 3600);
+    adjustment.scale.x = THREE.MathUtils.clamp(adjustment.scale.x, 0.01, 100);
+    adjustment.scale.y = THREE.MathUtils.clamp(adjustment.scale.y, 0.01, 100);
+    adjustment.scale.z = THREE.MathUtils.clamp(adjustment.scale.z, 0.01, 100);
+    const base = descriptor.base;
+    descriptor.object.position.set(
+      base.positionM.x + adjustment.positionM.x,
+      base.positionM.y + adjustment.positionM.y,
+      base.positionM.z + adjustment.positionM.z,
+    );
+    descriptor.object.rotation.set(
+      THREE.MathUtils.degToRad(base.rotationDeg.x + adjustment.rotationDeg.x),
+      THREE.MathUtils.degToRad(base.rotationDeg.y + adjustment.rotationDeg.y),
+      THREE.MathUtils.degToRad(base.rotationDeg.z + adjustment.rotationDeg.z),
+      descriptor.rotationOrder,
+    );
+    descriptor.object.scale.set(
+      base.scale.x * adjustment.scale.x,
+      base.scale.y * adjustment.scale.y,
+      base.scale.z * adjustment.scale.z,
+    );
+    descriptor.object.updateMatrixWorld(true);
+    referenceAdjustments.set(id, structuredClone(adjustment));
+    updateReferenceGuides();
+    renderer.render(scene, camera);
+    return structuredClone(adjustment);
+  };
+  const getReferenceObjectAdjustment = (id) => structuredClone(referenceAdjustments.get(id) || emptyReferenceAdjustment());
+  const resetReferenceObject = (id) => setReferenceObjectAdjustment(id, emptyReferenceAdjustment());
+  const resetReferenceScene = () => {
+    ensureReferenceObjects();
+    for (const id of referenceObjects.keys()) setReferenceObjectAdjustment(id, emptyReferenceAdjustment());
+  };
+  const applyReferenceSceneState = (objects = []) => {
+    ensureReferenceObjects();
+    for (const item of objects) {
+      if (item?.id && item.adjustment) setReferenceObjectAdjustment(item.id, item.adjustment);
+    }
+  };
+  const pickReferenceObject = (clientX, clientY) => {
+    ensureReferenceObjects();
+    const rect = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObjects(group.children, true).find(({ object }) => {
+      let current = object;
+      while (current && current !== group) {
+        if (referenceObjectIds.has(current)) return true;
+        current = current.parent;
+      }
+      return false;
+    });
+    if (!hit) return null;
+    let current = hit.object;
+    while (current && current !== group && !referenceObjectIds.has(current)) current = current.parent;
+    const id = current ? referenceObjectIds.get(current) : null;
+    return id && referenceObjects.has(id) ? publicReferenceDescriptor(referenceObjects.get(id)) : null;
+  };
+  const getReferenceSceneState = () => {
+    ensureReferenceObjects();
+    group.updateMatrixWorld(true);
+    return {
+      selectedObjectId: selectedReferenceObjectId,
+      coordinateSystem: { unit: "metre", upAxis: "+Y", frontAxis: "+Z", origin: "product-renderer-local" },
+      camera: {
+        positionM: { x: roundReferenceNumber(camera.position.x), y: roundReferenceNumber(camera.position.y), z: roundReferenceNumber(camera.position.z) },
+        targetM: { x: roundReferenceNumber(controls.target.x), y: roundReferenceNumber(controls.target.y), z: roundReferenceNumber(controls.target.z) },
+        fovDeg: roundReferenceNumber(camera.fov, 3),
+      },
+      objects: [...referenceObjects.values()].map((descriptor) => {
+        const adjustment = getReferenceObjectAdjustment(descriptor.id);
+        const edited = Object.values(adjustment.positionM).some((value) => Math.abs(value) > 1e-9)
+          || Object.values(adjustment.rotationDeg).some((value) => Math.abs(value) > 1e-9)
+          || Object.values(adjustment.scale).some((value) => Math.abs(value - 1) > 1e-9);
+        return {
+          ...publicReferenceDescriptor(descriptor),
+          edited,
+          base: structuredClone(descriptor.base),
+          adjustment,
+          resolved: transformSnapshot(descriptor.object),
+        };
+      }),
+    };
+  };
+
+  const lightColor = (temperature) => {
+    const t = THREE.MathUtils.clamp((temperature - 2500) / 7500, 0, 1);
+    return new THREE.Color().lerpColors(new THREE.Color("#ffd2a1"), new THREE.Color("#dceaff"), t);
+  };
+
+  const applyProjectView = () => {
+    if (!projectScene) return;
+    const model = projectScene.modelTransform;
+    group.position.set(model.position.x, model.position.y, model.position.z);
+    group.rotation.set(THREE.MathUtils.degToRad(model.rotationDeg.x), THREE.MathUtils.degToRad(model.rotationDeg.y), THREE.MathUtils.degToRad(model.rotationDeg.z));
+    group.scale.setScalar(model.scale);
+    camera.fov = projectScene.camera.fovDeg;
+    camera.updateProjectionMatrix();
+    const light = projectScene.lighting;
+    const azimuth = THREE.MathUtils.degToRad(light.azimuthDeg);
+    const elevation = THREE.MathUtils.degToRad(light.elevationDeg);
+    const distance = 14;
+    calibrationLight.position.set(Math.sin(azimuth) * Math.cos(elevation) * distance, Math.sin(elevation) * distance, Math.cos(azimuth) * Math.cos(elevation) * distance);
+    calibrationLight.color.copy(lightColor(light.colorTemperatureK));
+    calibrationLight.intensity = 0.7 + light.modelBrightness * 0.75;
+    hemisphereLight.intensity = 0.45 + light.modelBrightness * 0.45;
+    ambientLight.intensity = 0.08 + light.modelBrightness * 0.14;
+    calibrationLight.shadow.radius = 1 + light.shadowSoftness * 8;
+    shadowCatcher.material.opacity = light.shadowIntensity;
+    shadowCatcher.visible = Boolean(projectScene.photoAssetId);
+    ground.visible = !projectScene.photoAssetId;
+    shadow.visible = !projectScene.photoAssetId;
+    group.traverse((object) => { if (object.isMesh) object.castShadow = true; });
+    group.updateMatrixWorld(true);
+  };
+
+  const setProjectView = (nextScene) => { projectScene = nextScene ? structuredClone(nextScene) : null; applyProjectView(); };
+  const setCompositor = (nextCompositor) => { compositor = nextCompositor || null; };
+
+  const resetRoot = (name) => {
     scene.remove(group);
     group.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose();
       if (o instanceof THREE.Light) o.dispose();
     });
     group = new THREE.Group();
-    group.name = "PergolaVisualRoot";
+    group.name = name;
+    scene.add(group);
+    clearReferenceObjects();
+    applyProjectView();
+    return group;
+  };
+
+  const frameScene = (totalW, depth, height) => {
+    controls.target.set(0, height * 0.5, 0);
+    const radius = Math.max(totalW * 1.2, depth * 1.85, 8.7);
+    controls.maxDistance = Math.max(20, radius * 1.35);
+    camera.far = Math.max(100, radius * 4);
+    camera.updateProjectionMatrix();
+    const dims = `${paramsRef.productType}|${totalW}|${depth}`;
+    if (stateRef.lastDims === dims) return;
+    const first = stateRef.lastDims === undefined;
+    stateRef.lastDims = dims;
+    const dir = camera.position.clone().sub(controls.target);
+    if (first || radius > dir.length()) {
+      camera.position.copy(controls.target).addScaledVector(dir.normalize(), radius);
+      stateRef.desiredRadius = undefined;
+    } else {
+      stateRef.desiredRadius = radius;
+    }
+  };
+
+  const clearAnimationState = () => {
+    stateRef.slats = [];
+    stateRef.screens = { front: [], back: [], left: [], right: [] };
+    stateRef.screenBoxes = { front: [], back: [], left: [], right: [] };
+    stateRef.screenBars = { front: [], back: [], left: [], right: [] };
+    stateRef.screenGuides = { front: [], back: [], left: [], right: [] };
+    stateRef.glassPanes = [];
+  };
+
+  const rebuildPergola = (p) => {
+    resetRoot(p.productType === "carport" ? "CarportVisualRoot" : "PergolaVisualRoot");
     const slats = [];
 
     const H = p.height;
-    const post = 0.14;
-    const beam = 0.18;
+    const postWidth = profileMetres(p.profiles, "structural-post", "a", Number(p.visual?.postSize || 0.14));
+    const postDepth = profileMetres(p.profiles, "structural-post", "b", Number(p.visual?.postSize || 0.14));
+    const post = Math.max(postWidth, postDepth);
+    const beamDepth = profileMetres(p.profiles, "frame-beam", "a", post);
+    const beam = profileMetres(p.profiles, "frame-beam", "b", Number(p.visual?.beamHeight || 0.18));
+    const louvrePitch = profileMetres(p.profiles, "roof-louvre", "a", Number(p.visual?.louvrePitch || 0.21));
+    const louvreThickness = profileMetres(p.profiles, "roof-louvre", "b", Number(p.visual?.louvreThickness || 0.015));
     const D = p.depth;
     const totalW = p.widths.reduce((a, b) => a + b, 0);
 
     const buildModule = (cx, W) => {
-      const box = (w, h, d, x, y, z) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      const box = (w, h, d, x, y, z, profileId, axis) => {
+        const length = axis === "x" ? w : d;
+        const fallbackA = axis === "x" ? d : w;
+        const m = createProfileMesh(THREE, p.profiles, profileId, material, length, axis, fallbackA, h);
         m.position.set(cx + x, y, z);
         group.add(m);
       };
@@ -351,10 +774,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
       // Nogi budowane są globalnie po złożeniu modułów (patrz niżej), żeby
       // na styku dwóch modułów stała JEDNA wspólna noga, a nie dwie obok siebie.
       // Top frame
-      box(W, beam, post, 0, H - beam / 2, -(D - post) / 2);
-      box(W, beam, post, 0, H - beam / 2, (D - post) / 2);
-      box(post, beam, D - 2 * post, -(W - post) / 2, H - beam / 2, 0);
-      box(post, beam, D - 2 * post, (W - post) / 2, H - beam / 2, 0);
+      box(W, beam, beamDepth, 0, H - beam / 2, -(D - beamDepth) / 2, "frame-beam", "x");
+      box(W, beam, beamDepth, 0, H - beam / 2, (D - beamDepth) / 2, "frame-beam", "x");
+      box(beamDepth, beam, D - 2 * beamDepth, -(W - beamDepth) / 2, H - beam / 2, 0, "frame-beam", "z");
+      box(beamDepth, beam, D - 2 * beamDepth, (W - beamDepth) / 2, H - beam / 2, 0, "frame-beam", "z");
 
       // Linear LED: hairline strip along the inner bottom edge of the frame
       if (p.ledLinear) {
@@ -373,10 +796,33 @@ export function createPergolaCanvas(mountEl, initialParams) {
         mk(t, D - 2 * post, (W - post) / 2 - inset, 0);
       }
 
+      if (p.productType === "carport") {
+        const roofWidth = Math.max(0.2, W - 2 * post);
+        const roofDepth = Math.max(0.4, D - 2 * post);
+        const sheetThickness = Number(p.visual?.sheetThickness || 0.012);
+        const sheetPitch = Number(p.visual?.sheetPitch || 0.2);
+        const ribHeight = Number(p.visual?.sheetRibHeight || 0.035);
+        const fleeceThickness = Number(p.visual?.antiCondensationThickness || 0.006);
+        const roofY = H - beam / 2;
+        const sheet = new THREE.Mesh(createTrapezoidalSheetGeometry(roofWidth, roofDepth, sheetPitch, ribHeight, sheetThickness), slatMaterial);
+        sheet.position.set(cx, roofY, 0);
+        sheet.name = "CarportTrapezoidalSheet";
+        sheet.userData.profileId = "roof-sheet";
+        sheet.castShadow = true;
+        sheet.receiveShadow = true;
+        group.add(sheet);
+        const fleece = new THREE.Mesh(createTrapezoidalSheetGeometry(roofWidth, roofDepth, sheetPitch, ribHeight, fleeceThickness), antiCondensationMaterial);
+        fleece.position.set(cx, roofY - sheetThickness - 0.0008, 0);
+        fleece.name = "CarportAntiCondensationLayer";
+        fleece.receiveShadow = true;
+        group.add(fleece);
+        return;
+      }
+
       // Louvres (+ optional spots, ~1 per 1.5 m2)
       // Pitch == slat width, so closed louvres touch; at 90 deg the
       // 0.21 m blade stands proud of the 0.18 m collar
-      const pitch = 0.21;
+      const pitch = louvrePitch;
       const n = Math.max(3, Math.round((D - 2 * post) / pitch));
       const slatW = (D - 2 * post) / n;
       const span = W - 2 * post;
@@ -395,7 +841,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
       for (let i = 0; i < n; i++) {
         const z = -(D - 2 * post) / 2 + (i + 0.5) * ((D - 2 * post) / n);
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(span, 0.015, slatW * 1.01), slatMaterial);
+        const slat = createProfileMesh(THREE, p.profiles, "roof-louvre", slatMaterial, span, "x", slatW * 1.01, louvreThickness);
         slat.name = "RoofLouvre";
         slat.userData.arRole = "slat";
         slat.position.set(cx, H - beam / 2, z);
@@ -442,12 +888,12 @@ export function createPergolaCanvas(mountEl, initialParams) {
       const last = edges.length - 1;
       for (let j = 0; j < edges.length; j++) {
         // Skrajne słupy wsunięte o pół grubości do środka; wewnętrzne na styku.
-        const px = j === 0 ? edges[0] + post / 2
-          : j === last ? edges[last] - post / 2
+        const px = j === 0 ? edges[0] + postWidth / 2
+          : j === last ? edges[last] - postWidth / 2
           : edges[j];
         for (const sz of zSides) {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(post, H, post), material);
-          leg.position.set(px, H / 2, (sz * (D - post)) / 2);
+          const leg = createProfileMesh(THREE, p.profiles, "structural-post", material, H, "y", postWidth, postDepth);
+          leg.position.set(px, H / 2, (sz * (D - postDepth)) / 2);
           group.add(leg);
         }
       }
@@ -524,7 +970,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     const screenBoxes = { front: [], back: [], left: [], right: [] };
     const screenBars = { front: [], back: [], left: [], right: [] };
     const screenGuides = { front: [], back: [], left: [], right: [] };
-    const cassetteH = 0.105; // skrzynka rolety — 10,5 cm
+    const cassetteH = Number(p.visual?.screenCassetteHeight || 0.105); // skrzynka rolety — 10,5 cm
     const fabricTop = H - beam - cassetteH; // płótno startuje od spodu skrzynki
     const inset = 0.02;
     // Obrót płótna tak, by FrontSide (normalna) patrzyła NA ZEWNĄTRZ pergoli.
@@ -681,14 +1127,16 @@ export function createPergolaCanvas(mountEl, initialParams) {
     // ziemi do belki, w kolorze konstrukcji, z drobną stopką.
     if (p.extraLegs) {
       for (const leg of p.extraLegs) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(post, H, post), material);
+        const m = createProfileMesh(THREE, p.profiles, "structural-post", material, H, "y", postWidth, postDepth);
         m.position.set(leg.x, H / 2, leg.z);
         group.add(m);
-        const footPlate = new THREE.Mesh(new THREE.BoxGeometry(post * 1.6, 0.02, post * 1.6), material);
+        const footPlate = new THREE.Mesh(new THREE.BoxGeometry(postWidth * 1.6, 0.02, postDepth * 1.6), material);
         footPlate.position.set(leg.x, 0.01, leg.z);
         group.add(footPlate);
       }
     }
+
+    addStructureSideShutters({ THREE, root: group, config: p, width: totalW, depth: D, height: H, baseMaterial: material });
 
     ground.scale.setScalar(Math.max(totalW, D) * 1.9);
     shadow.scale.set(totalW * 1.6, D * 1.7, 1);
@@ -727,6 +1175,62 @@ export function createPergolaCanvas(mountEl, initialParams) {
         }
       }
     }
+    return group;
+  };
+
+  const rendererRegistry = new ProductRendererRegistry();
+  const pergolaRenderer = {
+    productType: "bioclimatic-pergola",
+    createScene: rebuildPergola,
+    updateScene: (_scene, config) => rebuildPergola(config),
+    disposeScene: () => {},
+    getBounds: () => new THREE.Box3().setFromObject(group),
+  };
+  const rendererContext = {
+    THREE,
+    resetRoot,
+    frameMaterial: material,
+    roofMaterial,
+    glassMaterial,
+    screenMaterial,
+    wallMaterial,
+    glowMaterial,
+    antiCondensationMaterial,
+    ground,
+    shadow,
+    frameScene,
+    clearAnimationState,
+  };
+  const verandaRenderer = createVerandaRenderer(rendererContext);
+  const carportRenderer = {
+    productType: "carport",
+    createScene: rebuildPergola,
+    updateScene: (_scene, config) => rebuildPergola(config),
+    disposeScene: () => {},
+    getBounds: () => new THREE.Box3().setFromObject(group),
+  };
+  rendererRegistry
+    .register(pergolaRenderer)
+    .register(verandaRenderer)
+    .register(carportRenderer)
+    .register(createWindowCoverRenderer(rendererContext, "window-screen"))
+    .register(createWindowCoverRenderer(rendererContext, "external-roller-shutter"))
+    .register(createFacadeBlindRenderer(rendererContext))
+    .register(createWindowCoverRenderer(rendererContext, "awning"))
+    .register(createMetalGarageRenderer(rendererContext));
+  let activeRenderer = null;
+  let activeProductScene = null;
+  const rebuild = (p) => {
+    const rendererModule = rendererRegistry.require(p.productType || "bioclimatic-pergola");
+    if (rendererModule !== activeRenderer) {
+      activeRenderer?.disposeScene(activeProductScene);
+      activeRenderer = rendererModule;
+      activeProductScene = rendererModule.createScene(p);
+    } else {
+      activeProductScene = rendererModule.updateScene(activeProductScene, p);
+    }
+    stateRef.activeProductType = rendererModule.productType;
+    return activeProductScene;
   };
 
   stateRef.group = group;
@@ -735,8 +1239,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
   stateRef.rebuild = rebuild;
   stateRef.controls = controls;
   rebuild(initialParams);
-  material.color.set(initialParams.frameColor);
-  slatMaterial.color.set(initialParams.slatColor);
+  if (initialParams.frameColor) material.color.set(initialParams.frameColor);
+  if (initialParams.slatColor) slatMaterial.color.set(initialParams.slatColor);
   const applyScreenColor = (hex) => {
     screenMaterial.color.set(hex);
     screenMaterial.emissive.copy(screenMaterial.color).multiplyScalar(SCREEN_GLOW);
@@ -748,6 +1252,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = el;
+    if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -758,13 +1263,16 @@ export function createPergolaCanvas(mountEl, initialParams) {
 
   let raf = 0;
   let visible = true;
+  let documentVisible = !document.hidden;
+  const onVisibilityChange = () => { documentVisible = !document.hidden; };
+  document.addEventListener("visibilitychange", onVisibilityChange);
   const io = new IntersectionObserver(([e]) => {
     visible = e.isIntersecting;
   });
   io.observe(el);
 
   const loop = () => {
-    if (visible) {
+    if (visible && documentVisible) {
       const p = paramsRef;
       if (p.spin && stateRef.slats) {
         const t = performance.now() / 1000;
@@ -824,6 +1332,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
       controls.maxPolarAngle = Math.acos(Math.max(-0.995, Math.min(0.995, cosMax)));
       controls.autoRotate = paramsRef.spin && !spinPaused;
       controls.update();
+      if (selectedReferenceObjectId) updateReferenceGuides();
       if (onFrame) onFrame();
       // Ease the camera distance toward the frame that fits the structure
       const des = stateRef.desiredRadius;
@@ -840,25 +1349,114 @@ export function createPergolaCanvas(mountEl, initialParams) {
   };
   raf = requestAnimationFrame(loop);
 
+  const geometrySignature = (params) => JSON.stringify({
+    productType: params.productType,
+    frameColor: params.frameColor,
+    slatColor: params.slatColor,
+    screenColor: params.screenColor,
+    construction: params.construction,
+    widths: params.widths,
+    depth: params.depth,
+    height: params.height,
+    ledLinear: params.ledLinear,
+    ledSpots: params.ledSpots,
+    glass: params.glass,
+    extraLegs: params.extraLegs,
+    width: params.width,
+    backHeight: params.backHeight,
+    frontHeight: params.frontHeight,
+    roofAngle: params.roofAngle,
+    roofFields: params.roofFields,
+    rafterCount: params.rafterCount,
+    postCount: params.postCount,
+    roofMaterial: params.roofMaterial,
+    leftWall: params.leftWall,
+    rightWall: params.rightWall,
+    frontWall: params.frontWall,
+    lighting: params.lighting,
+    rafterLeds: params.rafterLeds,
+    leftTriangle: params.leftTriangle,
+    rightTriangle: params.rightTriangle,
+    leftScreenSupport: params.leftScreenSupport,
+    rightScreenSupport: params.rightScreenSupport,
+    roofColor: params.roofColor,
+    antiCondensationLayer: params.antiCondensationLayer,
+    mounting: params.mounting,
+    guideType: params.guideType,
+    fabric: params.fabric,
+    fabricColor: params.fabricColor,
+    drive: params.drive,
+    openingPercent: params.openingPercent,
+    unitCount: params.unitCount,
+    windSensor: params.windSensor,
+    slatProfile: params.slatProfile,
+    armorColor: params.armorColor,
+    boxColor: params.boxColor,
+    guideColor: params.guideColor,
+    integratedMosquitoNet: params.integratedMosquitoNet,
+    projection: params.projection,
+    cassetteType: params.cassetteType,
+    pitch: params.pitch,
+    led: params.led,
+    sunSensor: params.sunSensor,
+    wallHeight: params.wallHeight,
+    roofType: params.roofType,
+    wallSheetOrientation: params.wallSheetOrientation,
+    wallColor: params.wallColor,
+    gateColor: params.gateColor,
+    gateType: params.gateType,
+    gateCount: params.gateCount,
+    windowCount: params.windowCount,
+    personnelDoor: params.personnelDoor,
+    sideCanopy: params.sideCanopy,
+    sideCanopySide: params.sideCanopySide,
+    sideCanopyWidth: params.sideCanopyWidth,
+    gateDrive: params.gateDrive,
+    gutters: params.gutters,
+    anchoring: params.anchoring,
+    antiCondensationFelt: params.antiCondensationFelt,
+    sideShutters: params.sideShutters,
+    slatAngle: params.slatAngle,
+    hardwareColor: params.hardwareColor,
+    weatherStation: params.weatherStation,
+    profiles: params.profiles,
+    visual: params.visual,
+  });
+  let lastGeometrySignature = geometrySignature(initialParams);
+
   function update(params) {
     paramsRef = params;
-    stateRef.rebuild?.(params);
-    stateRef.material?.color.set(params.frameColor);
-    stateRef.slatMaterial?.color.set(params.slatColor);
+    const nextSignature = geometrySignature(params);
+    if (nextSignature !== lastGeometrySignature) {
+      stateRef.rebuild?.(params);
+      lastGeometrySignature = nextSignature;
+    }
+    if (params.frameColor) stateRef.material?.color.set(params.frameColor);
+    if (params.slatColor) stateRef.slatMaterial?.color.set(params.slatColor);
     if (params.screenColor) applyScreenColor(params.screenColor);
-    if (stateRef.controls) stateRef.controls.autoRotate = params.spin;
+    if (stateRef.controls) stateRef.controls.autoRotate = params.spin && !spinPaused;
     if (!params.spin && stateRef.slats) {
       const rot = THREE.MathUtils.degToRad(params.slatAngle);
       for (const sl of stateRef.slats) sl.rotation.x = rot;
     }
+    applyProjectView();
   }
 
   function destroy() {
     cancelAnimationFrame(raf);
     io.disconnect();
     ro.disconnect();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
     controls.dispose();
+    activeRenderer?.disposeScene(activeProductScene);
+    referenceSelectionBox.geometry.dispose();
+    referenceSelectionBox.material.dispose();
+    referenceAxes.geometry.dispose();
+    for (const axesMaterial of Array.isArray(referenceAxes.material) ? referenceAxes.material : [referenceAxes.material]) axesMaterial.dispose();
     pmrem.dispose();
+    roofMaterial.dispose();
+    fleeceTexture.dispose();
+    antiCondensationMaterial.dispose();
     renderer.dispose();
     el.removeEventListener("pointerdown", armZoom);
     el.removeEventListener("pointerleave", disarmZoom);
@@ -877,12 +1475,16 @@ export function createPergolaCanvas(mountEl, initialParams) {
     out.width = src.width;
     out.height = src.height;
     const ctx = out.getContext("2d");
-    const g = ctx.createLinearGradient(0, 0, 0, out.height);
-    g.addColorStop(0, "#f6f3ee");
-    g.addColorStop(1, "#e9e3d9");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, out.width, out.height);
+    if (compositor?.drawBackground) compositor.drawBackground(ctx, out.width, out.height);
+    else {
+      const g = ctx.createLinearGradient(0, 0, 0, out.height);
+      g.addColorStop(0, "#f6f3ee");
+      g.addColorStop(1, "#e9e3d9");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, out.width, out.height);
+    }
     ctx.drawImage(src, 0, 0);
+    compositor?.drawForeground?.(ctx, out.width, out.height);
     return out.toDataURL("image/png");
   }
 
@@ -892,7 +1494,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
    * Geometrie i materiały są kopiowane, więc eksporter może je bezpiecznie
    * przetwarzać i zwalniać bez wpływu na interaktywną scenę konfiguratora.
    */
-  function createExportClone() {
+  function createExportClone(metadata = {}) {
     const selectedScreens = paramsRef.screens || {};
     const materialClones = new Map();
     const cloneMaterial = (sourceMaterial) => {
@@ -936,7 +1538,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
     };
 
     const root = cloneForExport(group) || new THREE.Group();
-    root.name = "PergolaRoot";
+    root.name = `${String(paramsRef.productType || "product").replaceAll("-", "_")}_Root`;
+    root.userData = { ...root.userData, ...metadata };
     root.visible = true;
     root.updateMatrixWorld(true);
 
@@ -971,5 +1574,53 @@ export function createPergolaCanvas(mountEl, initialParams) {
     return root;
   }
 
-  return { update, destroy, snapshot, createExportClone, setPlacement, getFacingSide, cameraDir, project, setSpinPaused, setOnFrame };
+  function setView(view) {
+    const bounds = new THREE.Box3().setFromObject(group);
+    if (bounds.isEmpty()) return;
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 1.65 + 1.8;
+    const directions = {
+      front: new THREE.Vector3(0, 0.22, 1),
+      back: new THREE.Vector3(0, 0.22, -1),
+      left: new THREE.Vector3(-1, 0.22, 0),
+      right: new THREE.Vector3(1, 0.22, 0),
+      top: new THREE.Vector3(0.001, 1, 0.001),
+      reset: new THREE.Vector3(0.66, 0.28, 0.76),
+    };
+    const direction = (directions[view] || directions.reset).normalize();
+    controls.target.copy(center);
+    camera.position.copy(center).addScaledVector(direction, radius);
+    camera.lookAt(center);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  return {
+    update,
+    destroy,
+    snapshot,
+    createExportClone,
+    setPlacement,
+    getFacingSide,
+    cameraDir,
+    project,
+    setSpinPaused,
+    setOnFrame,
+    setView,
+    setProjectView,
+    setCompositor,
+    listReferenceObjects,
+    selectReferenceObject,
+    pickReferenceObject,
+    setReferenceObjectAdjustment,
+    getReferenceObjectAdjustment,
+    resetReferenceObject,
+    resetReferenceScene,
+    applyReferenceSceneState,
+    getReferenceSceneState,
+    setReferenceGuidesVisible,
+    rendererCanvas: renderer.domElement,
+    registeredProducts: rendererRegistry.list(),
+  };
 }
