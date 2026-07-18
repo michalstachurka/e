@@ -10,7 +10,7 @@ Rozwiązanie było sprawne dla pergoli, lecz zakresy, etykiety i reguły produkt
 
 Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwiązanie etapowo:
 
-- jeden kontekst WebGL i jedna kamera obsługują oba produkty;
+- jeden kontekst WebGL i jedna kamera obsługują wszystkie produkty katalogu;
 - `ProductRendererRegistry` wybiera renderer na podstawie `productType`;
 - istniejąca pergola jest adapterem pierwszego modułu;
 - weranda jest osobnym rendererem parametrycznym;
@@ -76,7 +76,9 @@ Carport generuje jedną parametryczną geometrię blachy trapezowej i nakłada o
 
 Screen ZIP i roleta zewnętrzna używają wspólnego renderera osłon okiennych. Każda sztuka ma osobną wnękę, ścianę, parapet, ramę i szybę; domyślny montaż `reveal` umieszcza kasetę lub skrzynkę oraz prowadnice we wnęce. Ściana i okno są kontekstem podglądu oznaczonym `arExclude`, dlatego eksport AR zachowuje samą osłonę. Parametr `unitCount` dopuszcza od 1 do 8 sąsiadujących osłon. Limit jest częścią definicji produktu, a nie stałą polityką interfejsu; w obecnym katalogu chroni czytelność i płynność sceny Stage 1. Powtarzalne lamele rolety zewnętrznej są łączone w `InstancedMesh`, a kamera zwiększa zakres dla szerokich zestawów. Starsza konfiguracja bez `unitCount` otrzymuje wartość 1 podczas walidacji kontraktu.
 
-Opublikowane seedy carportu, screenu i rolety zewnętrznej mają wersję 3. Przy aktualizacji istniejącego tenanta poprzednia opublikowana lub robocza wersja jest archiwizowana, natomiast zapisane projekty nadal wskazują swój niezmienny `productVersionId`. Jeżeli numer wersji seeda jest już zajęty przez wersję utworzoną lub opublikowaną przez administratora, inicjalizacja nie podmienia jej i nie tworzy konkurencyjnego draftu. Dane techniczne, zakresy, kompatybilność, ceny i BOM tych produktów nadal mają status `demoOnly`.
+Garaż blaszany ma własny renderer `metal-garage`, bez dziedziczenia reguł carportu. Proceduralnie buduje szkielet, ściany i dach z przetłoczeniami, 1–2 nazwane bramy, 0–4 okna, drzwi wejściowe, opcjonalną wiatę boczną, orynnowanie, kotwienie, napęd oraz osobną warstwę antykondensacyjną. Powtarzalne żebra blachy są grupowane w `InstancedMesh`. Stabilne nazwy grup udostępniają istotne elementy w edytorze referencji 3D. Limity 2 bram i 4 okien należą do wersjonowanej definicji produktu Stage 1; nie są limitami planu ani stałą w rendererze. Renderer nie zna ceny, kompatybilności handlowej ani reguł producenta.
+
+Opublikowane seedy carportu, screenu i rolety zewnętrznej mają wersję 3, a garażu blaszanego wersję 1. Przy aktualizacji istniejącego tenanta poprzednia opublikowana lub robocza wersja jest archiwizowana, natomiast zapisane projekty nadal wskazują swój niezmienny `productVersionId`. Jeżeli numer wersji seeda jest już zajęty przez wersję utworzoną lub opublikowaną przez administratora, inicjalizacja nie podmienia jej i nie tworzy konkurencyjnego draftu. Dane techniczne, zakresy, kompatybilność, ceny i BOM tych produktów nadal mają status `demoOnly`.
 
 ### Edytor referencji geometrii 3D
 
@@ -184,7 +186,7 @@ Procesor sprawdza sygnaturę JPG/PNG/WebP, restrykcyjny base64, limit bajtów i 
 
 `ConfiguratorStore` oddziela trasy Fastify od dialektu bazy i od synchronicznego API `node:sqlite`. Wszystkie wywołania w warstwie HTTP są `await`-owane. `ConfiguratorDatabase` implementuje SQLite, a `PostgresConfiguratorDatabase` ten sam kontrakt dla PostgreSQL. `DATASTORE=sqlite|postgres` wybiera adapter jawnie; obecność samego `DATABASE_URL` nie zmienia aktywnego magazynu.
 
-Operatorskie `npm run tenant:provision` tworzy nowego tenanta w jednej transakcji: branding, administratora, kategorię, osobne definicje i identyfikatory wersji obu produktów oraz aktywne domeny. Nie ma publicznego endpointu onboardingu. Niepowodzenie, w tym konflikt domeny, wycofuje całą operację.
+Operatorskie `npm run tenant:provision` tworzy nowego tenanta w jednej transakcji: branding, administratora, kategorię, osobne definicje i identyfikatory wersji wszystkich aktywnych produktów oraz aktywne domeny. Nie ma publicznego endpointu onboardingu. Niepowodzenie, w tym konflikt domeny, wycofuje całą operację.
 
 Publiczna definicja profilu zawiera stabilne `id`, nazwę, zastosowanie, wymiary `aMm` i `bMm`, typ uproszczonego przekroju oraz flagę `demoOnly`. Panel administratora pozwala zmienić oba wymiary w wersji roboczej. Renderer otrzymuje przekroje razem z definicją produktu, dlatego tenant może podmienić zatwierdzone profile bez forka frontendu.
 

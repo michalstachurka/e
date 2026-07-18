@@ -230,6 +230,23 @@ async function runDesktop() {
     return values.led === true && values.sunSensor === true && values.drive === "radio";
   });
   await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-awning.png") });
+  await page.locator('[data-product="metal-garage"]').click();
+  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().productType === "metal-garage");
+  await verifyMotionControl(page);
+  await page.locator('[data-catalog-range="width"]').evaluate((input) => { input.value = "6.25"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator('[data-catalog-select="roofType"]').selectOption("mono-rear");
+  await page.locator('[data-catalog-range="gateCount"]').evaluate((input) => { input.value = "1"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator('[data-catalog-range="windowCount"]').evaluate((input) => { input.value = "4"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.locator('[data-catalog-toggle="sideCanopy"]').click();
+  await page.locator('[data-catalog-select="sideCanopySide"]').selectOption("left");
+  await page.locator('[data-catalog-toggle="antiCondensationFelt"]').click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.width === 6.25 && values.roofType === "mono-rear" && values.gateCount === 1 && values.windowCount === 4
+      && values.sideCanopy === true && values.sideCanopySide === "left" && values.antiCondensationFelt === true;
+  });
+  await page.locator('[data-view="front"]').click();
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-metal-garage.png") });
 
   results.desktop = { shareUrl, consoleErrors, pageErrors, registeredProducts: await page.evaluate(() => window.sunProtectionConfigurator.getRegisteredProducts()), configuration: await page.evaluate(() => window.sunProtectionConfigurator.getConfiguration()) };
   await context.close();
@@ -343,14 +360,14 @@ async function runAdmin() {
   await page.waitForFunction(() => document.querySelector(".admin-profile-preview__marker")?.textContent === "Słup frontowy");
   if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error("Admin studio must keep exactly one live 3D renderer while switching products");
   await page.locator("#profileStudioSection").screenshot({ path: path.join(resultsDir, "admin-profile-studio-veranda.png") });
-  for (const index of [2, 3, 4, 5]) {
+  for (const index of [2, 3, 4, 5, 6]) {
     await page.locator(`[data-studio-product="${index}"]`).click();
     await page.waitForFunction(() => document.querySelectorAll("#adminProfileStudio .admin-profile-card").length >= 3);
     await page.waitForFunction(() => Boolean(document.querySelector(".admin-profile-preview__marker")?.textContent));
     if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error(`Admin studio lost its single renderer for product ${index}`);
   }
   await page.waitForSelector("#adminReferenceCanvas canvas");
-  if (await page.locator(".admin-reference-tabs button").count() !== 6) throw new Error("Reference editor does not expose all products");
+  if (await page.locator(".admin-reference-tabs button").count() !== 7) throw new Error("Reference editor does not expose all products");
   await page.locator('[data-reference-product="3"]').click();
   await page.waitForFunction(() => document.querySelector(".admin-reference-stage-panel strong")?.textContent === "Screen ZIP do okna");
   await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Kaseta screenu"));
@@ -379,6 +396,10 @@ async function runAdmin() {
   const pngReferenceDownload = await pngReferencePromise;
   const pngReferencePath = await pngReferenceDownload.path();
   if (!pngReferenceDownload.suggestedFilename().endsWith(".png") || !readFileSync(pngReferencePath).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error("Annotated reference PNG was not created");
+  await page.locator('[data-reference-product="6"]').click();
+  await page.waitForFunction(() => document.querySelector(".admin-reference-stage-panel strong")?.textContent === "Garaż blaszany");
+  await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Płaszczyzna bramy"));
+  if (await page.locator("[data-reference-object] option").count() < 25) throw new Error("Reference editor did not expose named garage elements");
   await page.locator("#referenceSceneSection").screenshot({ path: path.join(resultsDir, "admin-reference-editor.png") });
   await page.locator('[data-product-index="0"] [data-field="description"]').fill("Opis testowy wersji roboczej.");
   await page.locator('[data-product-index="0"] [data-action="save"]').click();

@@ -136,5 +136,31 @@ export const fallbackCatalog = Object.freeze({
       ],
       colors, visual: { cassetteWidth: 0.26, cassetteHeight: 0.14, frontBarHeight: 0.08, armWidth: 0.05, demoOnly: true },
     },
+    {
+      id: "product-metal-garage", productType: "metal-garage", name: "Garaż blaszany", description: "Parametryczny garaż z blachy trapezowej i wyposażeniem demo.", enabled: true, order: 70,
+      version: { id: "visnex-metal-garage-v1", number: 1, status: "published" },
+      steps: [
+        { id: "dimensions", label: "Bryła", order: 10 }, { id: "roof", label: "Dach i blacha", order: 20 }, { id: "openings", label: "Bramy i otwory", order: 30 }, { id: "equipment", label: "Wyposażenie", order: 40 }, { id: "summary", label: "Podsumowanie", order: 50 },
+      ],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 3, max: 8.5, step: 0.25, defaultValue: 5.5, demoOnly: true },
+        { key: "depth", label: "Głębokość", section: "dimensions", type: "range", unit: "m", min: 4, max: 8, step: 0.25, defaultValue: 6, demoOnly: true },
+        { key: "wallHeight", label: "Wysokość ściany", section: "dimensions", type: "range", unit: "m", min: 2.1, max: 2.8, step: 0.05, defaultValue: 2.4, demoOnly: true },
+        { key: "roofType", label: "Forma dachu", section: "roof", type: "select", defaultValue: "gable", demoOnly: true },
+        { key: "wallSheetOrientation", label: "Przetłoczenia", section: "roof", type: "select", defaultValue: "vertical", demoOnly: true },
+        { key: "gateType", label: "Typ bramy", section: "openings", type: "select", defaultValue: "sectional", demoOnly: true },
+        { key: "gateCount", label: "Liczba bram", section: "openings", type: "range", min: 1, max: 2, step: 1, defaultValue: 2, demoOnly: true },
+        { key: "windowCount", label: "Liczba okien", section: "openings", type: "range", min: 0, max: 4, step: 1, defaultValue: 2, demoOnly: true },
+        { key: "sideCanopyWidth", label: "Szerokość wiaty", section: "equipment", type: "range", unit: "m", min: 1.2, max: 3, step: 0.1, defaultValue: 2.4, demoOnly: true },
+      ],
+      profiles: [
+        { id: "garage-frame", label: "Rama konstrukcyjna", usage: "Szkielet ścian", aMm: 60, bMm: 40, shape: "rectangular", demoOnly: true },
+        { id: "garage-roof-purlin", label: "Płatew dachowa", usage: "Podparcie dachu", aMm: 50, bMm: 30, shape: "rectangular", demoOnly: true },
+        { id: "garage-gate-frame", label: "Rama bramy", usage: "Obramowanie otworu", aMm: 50, bMm: 40, shape: "rectangular", demoOnly: true },
+        { id: "garage-canopy-post", label: "Słup wiaty", usage: "Podparcie wiaty", aMm: 70, bMm: 70, shape: "rectangular", demoOnly: true },
+      ],
+      colors: colors.map((color) => ({ ...color, demoOnly: true })),
+      visual: { frameWidth: 0.06, wallSheetThickness: 0.018, wallRibPitch: 0.24, wallRibDepth: 0.026, roofRise: 0.5, monoRoofRise: 0.34, roofSheetThickness: 0.018, roofRibPitch: 0.24, roofRibDepth: 0.035, gateInset: 0.035, demoOnly: true },
+    },
   ],
 });

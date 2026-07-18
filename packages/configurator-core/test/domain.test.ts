@@ -10,6 +10,7 @@ const carportSeed = getProductSeed("carport")!;
 const screenSeed = getProductSeed("window-screen")!;
 const shutterSeed = getProductSeed("external-roller-shutter")!;
 const awningSeed = getProductSeed("awning")!;
+const garageSeed = getProductSeed("metal-garage")!;
 
 const pergola = (): PublicConfiguration => ({
   schemaVersion: "2.0",
@@ -143,6 +144,10 @@ test("validates and prices all newly catalogued MVP products", () => {
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "awning", productVersionId: awningSeed.definition.version.id,
       values: { width: 4.5, projection: 3, mounting: "wall", cassetteType: "full-cassette", pitch: 14, fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", led: true, windSensor: true, sunSensor: false, openingPercent: 85 },
     }, awningSeed],
+    [{
+      schemaVersion: "2.0", tenantSlug: "visnex", productType: "metal-garage", productVersionId: garageSeed.definition.version.id,
+      values: { width: 5.5, depth: 6, wallHeight: 2.4, roofType: "gable", wallSheetOrientation: "vertical", wallColor: "anthracite", roofColor: "anthracite", gateColor: "anthracite", gateType: "sectional", gateCount: 2, windowCount: 2, personnelDoor: true, sideCanopy: true, sideCanopySide: "right", sideCanopyWidth: 2.4, gateDrive: true, gutters: true, anchoring: true, antiCondensationFelt: true },
+    }, garageSeed],
   ];
   for (const [configuration, seed] of configurations) {
     const validation = validateConfiguration(configuration, seed.definition);
@@ -150,6 +155,23 @@ test("validates and prices all newly catalogued MVP products", () => {
     assert.ok(calculateQuote(configuration, seed.pricing).gross > 0);
     assert.ok(generateBom(configuration, validation.derived).items.length > 0);
   }
+});
+
+test("keeps the metal garage pilot bounded and fully demo-only", () => {
+  const configuration: PublicConfiguration = {
+    schemaVersion: "2.0", tenantSlug: "visnex", productType: "metal-garage", productVersionId: garageSeed.definition.version.id,
+    values: { width: 5.5, depth: 6, wallHeight: 2.4, roofType: "gable", wallSheetOrientation: "vertical", wallColor: "anthracite", roofColor: "anthracite", gateColor: "anthracite", gateType: "sectional", gateCount: 2, windowCount: 4, personnelDoor: true, sideCanopy: true, sideCanopySide: "right", sideCanopyWidth: 2.4, gateDrive: true, gutters: true, anchoring: true, antiCondensationFelt: true },
+  };
+  const validation = validateConfiguration(configuration, garageSeed.definition);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.derived.floorArea, 33);
+  assert.equal(validation.derived.coveredArea, 47.4);
+  assert.ok(validation.warnings.some((issue) => issue.code === "demo_only"));
+  assert.ok(garageSeed.definition.parameters.every((parameter) => parameter.demoOnly));
+  assert.ok(garageSeed.definition.profiles.every((profile) => profile.demoOnly));
+  assert.ok(generateBom(configuration, validation.derived).items.some((item) => item.label === "Napęd bramy" && item.quantity === 2));
+  assert.throws(() => PublicConfigurationSchema.parse({ ...configuration, values: { ...configuration.values, gateCount: 3 } }));
+  assert.throws(() => PublicConfigurationSchema.parse({ ...configuration, values: { ...configuration.values, windowCount: 5 } }));
 });
 
 test("keeps legacy window covers compatible and caps adjacent units at eight", () => {

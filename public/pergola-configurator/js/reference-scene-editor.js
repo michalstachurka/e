@@ -38,6 +38,18 @@ const OBJECT_LABELS = {
   AwningFoldingArm: "Ramię markizy",
   AwningLED: "LED markizy",
   AwningWeatherSensor: "Czujnik pogodowy",
+  MetalGarageVisualRoot: "Garaż blaszany",
+  GarageRoofSheet: "Poszycie dachu garażu",
+  GarageRoofRibs: "Przetłoczenia dachu garażu",
+  GarageAntiCondensationLayer: "Filc antykondensacyjny garażu",
+  GarageGateLeaf: "Płaszczyzna bramy garażowej",
+  GarageGateDrive: "Napęd bramy garażowej",
+  GarageWindowGlass: "Szyba okna garażu",
+  GaragePersonnelDoor: "Drzwi wejściowe garażu",
+  GarageSideCanopyRoof: "Dach wiaty bocznej",
+  GarageCanopyPost: "Słup wiaty bocznej",
+  GarageGutter: "Rynna garażu",
+  GarageDownpipe: "Rura spustowa garażu",
 };
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[character]);
@@ -169,7 +181,7 @@ export function createReferenceSceneEditor({ host, products, tenantSlug, admin, 
     if (previousState) preview.applyReferenceSceneState(previousState.objects);
     const options = objects.map((object) => `<option value="${object.id}">${escapeHtml(objectLabel(object))}</option>`).join("");
     host.querySelector("[data-reference-object]").innerHTML = options;
-    const priority = ["WindowScreenCassette", "RollerShutterBox", "CarportTrapezoidalSheet", "AwningCassette", "FrameBeam", "StructuralPost"];
+    const priority = ["GarageGateLeaf", "WindowScreenCassette", "RollerShutterBox", "CarportTrapezoidalSheet", "AwningCassette", "FrameBeam", "StructuralPost"];
     activeObjectId = previousState?.selectedObjectId && objects.some((object) => object.id === previousState.selectedObjectId)
       ? previousState.selectedObjectId
       : (objects.find((object) => priority.includes(object.name)) || objects[0])?.id || null;

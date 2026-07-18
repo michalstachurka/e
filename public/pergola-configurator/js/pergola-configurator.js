@@ -183,12 +183,34 @@ if (mount) {
       sunSensor: false,
       openingPercent: 85,
     },
+    metalGarage: {
+      width: 5.5,
+      depth: 6,
+      wallHeight: 2.4,
+      roofType: "gable",
+      wallSheetOrientation: "vertical",
+      wallColor: COLORS[0],
+      roofColor: COLORS[0],
+      gateColor: COLORS[0],
+      gateType: "sectional",
+      gateCount: 2,
+      windowCount: 2,
+      personnelDoor: true,
+      sideCanopy: false,
+      sideCanopySide: "right",
+      sideCanopyWidth: 2.4,
+      gateDrive: true,
+      gutters: true,
+      anchoring: true,
+      antiCondensationFelt: false,
+    },
   };
   const PRODUCT_STATE_KEYS = {
     carport: "carport",
     "window-screen": "windowScreen",
     "external-roller-shutter": "externalRollerShutter",
     awning: "awning",
+    "metal-garage": "metalGarage",
   };
   const catalogState = (productType = state.productType) => state[PRODUCT_STATE_KEYS[productType]];
   const structureColor = (id) => COLORS.find((color) => color.id === id) || COLORS[0];
@@ -321,6 +343,12 @@ if (mount) {
         frameColor: structureColor(configuration.values.frameColor),
         fabricColor: textileColor(configuration.values.fabricColor),
       });
+    } else if (configuration.productType === "metal-garage") {
+      Object.assign(state.metalGarage, configuration.values, {
+        wallColor: structureColor(configuration.values.wallColor),
+        roofColor: structureColor(configuration.values.roofColor),
+        gateColor: structureColor(configuration.values.gateColor),
+      });
     }
     return true;
   };
@@ -429,6 +457,18 @@ if (mount) {
     visual: activeDefinition()?.visual,
     profiles: activeDefinition()?.profiles,
   }));
+  paramsBuilders.set("metal-garage", () => ({
+    productType: "metal-garage",
+    ...state.metalGarage,
+    frameColor: "#343536",
+    slatColor: state.metalGarage.roofColor.value,
+    wallColor: state.metalGarage.wallColor.value,
+    roofColor: state.metalGarage.roofColor.value,
+    gateColor: state.metalGarage.gateColor.value,
+    spin: state.spin,
+    visual: activeDefinition()?.visual,
+    profiles: activeDefinition()?.profiles,
+  }));
   const params = () => paramsBuilders.get(state.productType)();
 
   // Stabilny kontrakt danych dla przyszłego panelu wycen i integracji CRM.
@@ -525,6 +565,27 @@ if (mount) {
     sunSensor: state.awning.sunSensor,
     openingPercent: state.awning.openingPercent,
   }));
+  configurationBuilders.set("metal-garage", () => ({
+    width: state.metalGarage.width,
+    depth: state.metalGarage.depth,
+    wallHeight: state.metalGarage.wallHeight,
+    roofType: state.metalGarage.roofType,
+    wallSheetOrientation: state.metalGarage.wallSheetOrientation,
+    wallColor: state.metalGarage.wallColor.id,
+    roofColor: state.metalGarage.roofColor.id,
+    gateColor: state.metalGarage.gateColor.id,
+    gateType: state.metalGarage.gateType,
+    gateCount: state.metalGarage.gateCount,
+    windowCount: state.metalGarage.windowCount,
+    personnelDoor: state.metalGarage.personnelDoor,
+    sideCanopy: state.metalGarage.sideCanopy,
+    sideCanopySide: state.metalGarage.sideCanopySide,
+    sideCanopyWidth: state.metalGarage.sideCanopyWidth,
+    gateDrive: state.metalGarage.gateDrive,
+    gutters: state.metalGarage.gutters,
+    anchoring: state.metalGarage.anchoring,
+    antiCondensationFelt: state.metalGarage.antiCondensationFelt,
+  }));
   const configurationPayload = () => ({
     schemaVersion: "2.0",
     tenantSlug,
@@ -571,7 +632,8 @@ if (mount) {
     else if (state.productType === "carport") specEl.textContent = `${state.carport.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.carport.depth.toFixed(1)} × ${state.carport.height.toFixed(2)} m · dach stały`;
     else if (state.productType === "window-screen") specEl.textContent = `${state.windowScreen.unitCount} × ${state.windowScreen.width.toFixed(2)} × ${state.windowScreen.height.toFixed(2)} m · opuszczenie ${state.windowScreen.openingPercent}%`;
     else if (state.productType === "external-roller-shutter") specEl.textContent = `${state.externalRollerShutter.unitCount} × ${state.externalRollerShutter.width.toFixed(2)} × ${state.externalRollerShutter.height.toFixed(2)} m · opuszczenie ${state.externalRollerShutter.openingPercent}%`;
-    else specEl.textContent = `${state.awning.width.toFixed(1)} × ${state.awning.projection.toFixed(1)} m · ${state.awning.pitch}° · wysunięcie ${state.awning.openingPercent}%`;
+    else if (state.productType === "awning") specEl.textContent = `${state.awning.width.toFixed(1)} × ${state.awning.projection.toFixed(1)} m · ${state.awning.pitch}° · wysunięcie ${state.awning.openingPercent}%`;
+    else specEl.textContent = `${state.metalGarage.width.toFixed(2)} × ${state.metalGarage.depth.toFixed(2)} × ${state.metalGarage.wallHeight.toFixed(2)} m · ${state.metalGarage.roofType === "gable" ? "dach dwuspadowy" : "dach jednospadowy"}`;
   };
 
   const push = () => {
@@ -618,6 +680,11 @@ if (mount) {
       title: "Zaprojektuj<br><em>swoją markizę.</em>",
       lead: "Ustaw szerokość, wysięg, kasetę, tkaninę, napęd, LED i automatykę pogodową.",
       ar: "Twoja markiza<br><em>w prawdziwej skali.</em>",
+    },
+    "metal-garage": {
+      title: "Zaprojektuj<br><em>garaż blaszany.</em>",
+      lead: "Ustaw bryłę, dach, przetłoczenia, bramy, otwory i wiatę boczną. Parametry techniczne pilota wymagają zatwierdzenia producenta.",
+      ar: "Twój garaż<br><em>w prawdziwej skali.</em>",
     },
   };
 
@@ -1091,6 +1158,22 @@ if (mount) {
         ${swatchesMarkup("armorColor", "Kolor pancerza", product.armorColor)}${swatchesMarkup("boxColor", "Kolor skrzynki", product.boxColor)}${swatchesMarkup("guideColor", "Kolor prowadnic", product.guideColor)}
         <div class="pergola3d__pills">${toggleMarkup("integratedMosquitoNet", "Zintegrowana moskitiera", product.integratedMosquitoNet)}</div>
       </div>`;
+    } else if (state.productType === "metal-garage") {
+      catalogControls.innerHTML = `<div class="catalog-control-grid">
+        <p class="pergola3d__hint demo-badge">Niezależny MVP garażu blaszanego. Gabaryty, przekroje, statyka, bramy, blacha, montaż i wyposażenie wymagają zatwierdzenia producenta.</p>
+        ${rangeMarkup("width", "Szerokość garażu", product.width, 2, "m")}${rangeMarkup("depth", "Głębokość garażu", product.depth, 2, "m")}${rangeMarkup("wallHeight", "Wysokość ściany", product.wallHeight, 2, "m")}
+        ${selectMarkup("roofType", "Forma dachu", product.roofType, [["mono-rear", "Jednospadowy do tyłu"], ["gable", "Dwuspadowy"]])}
+        ${selectMarkup("wallSheetOrientation", "Przetłoczenia ścian", product.wallSheetOrientation, [["vertical", "Pionowe"], ["horizontal", "Poziome"]])}
+        ${swatchesMarkup("wallColor", "Kolor ścian", product.wallColor)}${swatchesMarkup("roofColor", "Kolor dachu", product.roofColor)}
+        ${selectMarkup("gateType", "Typ bramy", product.gateType, [["up-and-over", "Uchylna"], ["double-leaf", "Dwuskrzydłowa"], ["sectional", "Segmentowa"]])}
+        ${rangeMarkup("gateCount", "Liczba bram · limit pilota", product.gateCount, 0, "szt.")}${rangeMarkup("windowCount", "Liczba okien", product.windowCount, 0, "szt.")}
+        ${swatchesMarkup("gateColor", "Kolor bram", product.gateColor)}
+        <div class="pergola3d__group"><span class="pergola3d__label">Otwory i obsługa</span><div class="pergola3d__pills">${toggleMarkup("personnelDoor", "Drzwi wejściowe", product.personnelDoor)}${toggleMarkup("gateDrive", "Napęd bramy", product.gateDrive)}</div></div>
+        <div class="pergola3d__group"><span class="pergola3d__label">Wiata boczna</span><div class="pergola3d__pills">${toggleMarkup("sideCanopy", "Dodaj wiatę", product.sideCanopy)}</div></div>
+        ${product.sideCanopy ? `${selectMarkup("sideCanopySide", "Strona wiaty", product.sideCanopySide, [["left", "Lewa"], ["right", "Prawa"]])}${rangeMarkup("sideCanopyWidth", "Szerokość wiaty", product.sideCanopyWidth, 1, "m")}` : ""}
+        <div class="pergola3d__group"><span class="pergola3d__label">Wyposażenie demonstracyjne</span><div class="pergola3d__pills">${toggleMarkup("gutters", "Orynnowanie", product.gutters)}${toggleMarkup("anchoring", "Kotwienie", product.anchoring)}${toggleMarkup("antiCondensationFelt", "Filc antykondensacyjny", product.antiCondensationFelt)}</div></div>
+        <div class="catalog-readonly"><strong>Limit sceny:</strong> maksymalnie 2 bramy i 4 okna. Ograniczenie chroni czytelność pilota oraz stabilny czas przebudowy geometrii.</div>
+      </div>`;
     } else {
       const manual = product.drive === "manual";
       catalogControls.innerHTML = `<div class="catalog-control-grid">
@@ -1471,6 +1554,16 @@ if (mount) {
       ["System", `${state.externalRollerShutter.mounting} · ${state.externalRollerShutter.slatProfile}`],
       ["Sterowanie", `${state.externalRollerShutter.drive} · opuszczenie ${state.externalRollerShutter.openingPercent}%`],
       ["Moskitiera", state.externalRollerShutter.integratedMosquitoNet ? "Zintegrowana" : "Brak"],
+    ];
+    if (state.productType === "metal-garage") return [
+      ["Produkt", "Garaż blaszany · demo"],
+      ["Wymiary", `${state.metalGarage.width.toFixed(2)} × ${state.metalGarage.depth.toFixed(2)} × ${state.metalGarage.wallHeight.toFixed(2)} m`],
+      ["Dach", `${state.metalGarage.roofType === "gable" ? "Dwuspadowy" : "Jednospadowy do tyłu"} · ${state.metalGarage.roofColor.label}`],
+      ["Ściany", `${state.metalGarage.wallSheetOrientation === "vertical" ? "Przetłoczenia pionowe" : "Przetłoczenia poziome"} · ${state.metalGarage.wallColor.label}`],
+      ["Bramy", `${state.metalGarage.gateCount} × ${state.metalGarage.gateType} · ${state.metalGarage.gateDrive ? "z napędem" : "bez napędu"}`],
+      ["Otwory", `${state.metalGarage.windowCount} okna · ${state.metalGarage.personnelDoor ? "drzwi wejściowe" : "bez drzwi"}`],
+      ["Wiata boczna", state.metalGarage.sideCanopy ? `${state.metalGarage.sideCanopySide === "left" ? "lewa" : "prawa"} · ${state.metalGarage.sideCanopyWidth.toFixed(1)} m` : "Brak"],
+      ["Wyposażenie", [state.metalGarage.gutters ? "rynny" : "", state.metalGarage.anchoring ? "kotwienie" : "", state.metalGarage.antiCondensationFelt ? "filc antykondensacyjny" : ""].filter(Boolean).join(", ") || "Bez dodatków"],
     ];
     return [
       ["Produkt", "Markiza tarasowa · demo"],

@@ -10,6 +10,7 @@ import { profileMetres } from "./core/profile-definitions.js";
 import { createProfileMesh } from "./core/svg-profile-geometry.js";
 import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
 import { createWindowCoverRenderer } from "./renderers/window-cover-renderer.js";
+import { createMetalGarageRenderer } from "./renderers/metal-garage-renderer.js";
 
 /** Soft radial ground shadow texture. */
 function shadowTexture() {
@@ -1190,6 +1191,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     screenMaterial,
     wallMaterial,
     glowMaterial,
+    antiCondensationMaterial,
     ground,
     shadow,
     frameScene,
@@ -1209,7 +1211,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
     .register(carportRenderer)
     .register(createWindowCoverRenderer(rendererContext, "window-screen"))
     .register(createWindowCoverRenderer(rendererContext, "external-roller-shutter"))
-    .register(createWindowCoverRenderer(rendererContext, "awning"));
+    .register(createWindowCoverRenderer(rendererContext, "awning"))
+    .register(createMetalGarageRenderer(rendererContext));
   let activeRenderer = null;
   let activeProductScene = null;
   const rebuild = (p) => {
@@ -1391,6 +1394,22 @@ export function createPergolaCanvas(mountEl, initialParams) {
     pitch: params.pitch,
     led: params.led,
     sunSensor: params.sunSensor,
+    wallHeight: params.wallHeight,
+    roofType: params.roofType,
+    wallSheetOrientation: params.wallSheetOrientation,
+    wallColor: params.wallColor,
+    gateColor: params.gateColor,
+    gateType: params.gateType,
+    gateCount: params.gateCount,
+    windowCount: params.windowCount,
+    personnelDoor: params.personnelDoor,
+    sideCanopy: params.sideCanopy,
+    sideCanopySide: params.sideCanopySide,
+    sideCanopyWidth: params.sideCanopyWidth,
+    gateDrive: params.gateDrive,
+    gutters: params.gutters,
+    anchoring: params.anchoring,
+    antiCondensationFelt: params.antiCondensationFelt,
     profiles: params.profiles,
     visual: params.visual,
   });

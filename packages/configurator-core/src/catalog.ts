@@ -41,6 +41,8 @@ const colors = [
   { id: "bronze", label: "Brąz", value: "#4A3527", demoOnly: true },
 ];
 
+const garageColors = colors.map((color) => ({ ...color, demoOnly: true as const }));
+
 export const productSeeds: ProductSeed[] = [
   {
     definition: {
@@ -266,6 +268,60 @@ export const productSeeds: ProductSeed[] = [
     },
     pricing: { basePrice: 2_900, pricePerSquareMeter: 280, moduleSurcharge: 0, optionSurcharge: 360, minimumPrice: 3_800, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
     bom: { profileAllowance: 1.05, demoOnly: true },
+  },
+  {
+    definition: {
+      id: "product-metal-garage",
+      productType: "metal-garage",
+      name: "Garaż blaszany",
+      description: "Parametryczny garaż z blachy trapezowej, bramami, otworami, wiatą boczną i wyposażeniem demonstracyjnym.",
+      enabled: true,
+      order: 70,
+      version: { id: "visnex-metal-garage-v1", number: 1, status: "published" },
+      steps: [
+        { id: "dimensions", label: "Bryła", order: 10 },
+        { id: "roof", label: "Dach i blacha", order: 20 },
+        { id: "openings", label: "Bramy i otwory", order: 30 },
+        { id: "equipment", label: "Wyposażenie", order: 40 },
+        { id: "summary", label: "Podsumowanie", order: 50 },
+      ],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 3, max: 8.5, step: 0.25, defaultValue: 5.5, hidden: false, demoOnly: true },
+        { key: "depth", label: "Głębokość", section: "dimensions", type: "range", unit: "m", min: 4, max: 8, step: 0.25, defaultValue: 6, hidden: false, demoOnly: true },
+        { key: "wallHeight", label: "Wysokość ściany", section: "dimensions", type: "range", unit: "m", min: 2.1, max: 2.8, step: 0.05, defaultValue: 2.4, hidden: false, demoOnly: true },
+        { key: "roofType", label: "Forma dachu", section: "roof", type: "select", defaultValue: "gable", hidden: false, demoOnly: true, options: [
+          { id: "mono-rear", label: "Jednospadowy do tyłu", demoOnly: true }, { id: "gable", label: "Dwuspadowy", demoOnly: true },
+        ] },
+        { key: "wallSheetOrientation", label: "Układ przetłoczeń ścian", section: "roof", type: "select", defaultValue: "vertical", hidden: false, demoOnly: true, options: [
+          { id: "vertical", label: "Pionowy", demoOnly: true }, { id: "horizontal", label: "Poziomy", demoOnly: true },
+        ] },
+        { key: "gateType", label: "Typ bramy", section: "openings", type: "select", defaultValue: "sectional", hidden: false, demoOnly: true, options: [
+          { id: "up-and-over", label: "Uchylna", demoOnly: true }, { id: "double-leaf", label: "Dwuskrzydłowa", demoOnly: true }, { id: "sectional", label: "Segmentowa", demoOnly: true },
+        ] },
+        { key: "gateCount", label: "Liczba bram", section: "openings", type: "range", min: 1, max: 2, step: 1, defaultValue: 2, hidden: false, demoOnly: true },
+        { key: "windowCount", label: "Liczba okien", section: "openings", type: "range", min: 0, max: 4, step: 1, defaultValue: 2, hidden: false, demoOnly: true },
+        { key: "personnelDoor", label: "Drzwi wejściowe", section: "openings", type: "toggle", defaultValue: true, hidden: false, demoOnly: true },
+        { key: "sideCanopy", label: "Wiata boczna", section: "equipment", type: "toggle", defaultValue: false, hidden: false, demoOnly: true },
+        { key: "sideCanopySide", label: "Strona wiaty", section: "equipment", type: "select", defaultValue: "right", hidden: false, demoOnly: true, options: [
+          { id: "left", label: "Lewa", demoOnly: true }, { id: "right", label: "Prawa", demoOnly: true },
+        ] },
+        { key: "sideCanopyWidth", label: "Szerokość wiaty", section: "equipment", type: "range", unit: "m", min: 1.2, max: 3, step: 0.1, defaultValue: 2.4, hidden: false, demoOnly: true },
+        { key: "gateDrive", label: "Napęd bramy", section: "equipment", type: "toggle", defaultValue: true, hidden: false, demoOnly: true },
+        { key: "gutters", label: "Orynnowanie", section: "equipment", type: "toggle", defaultValue: true, hidden: false, demoOnly: true },
+        { key: "anchoring", label: "Kotwienie", section: "equipment", type: "toggle", defaultValue: true, hidden: false, demoOnly: true },
+        { key: "antiCondensationFelt", label: "Filc antykondensacyjny", section: "equipment", type: "toggle", defaultValue: false, hidden: false, demoOnly: true },
+      ],
+      profiles: [
+        { id: "garage-frame", label: "Rama konstrukcyjna", usage: "Szkielet ścian i narożników", aMm: 60, bMm: 40, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+        { id: "garage-roof-purlin", label: "Płatew dachowa", usage: "Podparcie poszycia dachowego", aMm: 50, bMm: 30, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+        { id: "garage-gate-frame", label: "Rama bramy", usage: "Obramowanie otworu bramowego", aMm: 50, bMm: 40, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+        { id: "garage-canopy-post", label: "Słup wiaty", usage: "Podparcie zewnętrznej krawędzi wiaty", aMm: 70, bMm: 70, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+      ],
+      colors: garageColors,
+      visual: { frameWidth: 0.06, wallSheetThickness: 0.018, wallRibPitch: 0.24, wallRibDepth: 0.026, roofRise: 0.5, monoRoofRise: 0.34, roofSheetThickness: 0.018, roofRibPitch: 0.24, roofRibDepth: 0.035, gateInset: 0.035, demoOnly: true },
+    },
+    pricing: { basePrice: 6_900, pricePerSquareMeter: 240, moduleSurcharge: 1_200, optionSurcharge: 320, minimumPrice: 8_500, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
+    bom: { profileAllowance: 1.08, demoOnly: true },
   },
 ];
 

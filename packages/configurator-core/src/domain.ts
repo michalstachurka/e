@@ -144,6 +144,17 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     derived.unitCount = values.unitCount;
     derived.coverArea = round(values.width * values.height * values.unitCount, 2);
     warnings.push({ path: "values", message: "Dobór skrzynki, pancerza, prowadnic i maksymalnych wymiarów wymaga tabel producenta.", code: "demo_only" });
+  } else if (configuration.productType === "metal-garage") {
+    const values = configuration.values;
+    ["width", "depth", "wallHeight", "gateCount", "windowCount", "sideCanopyWidth"].forEach((key) => checkRange(errors, definition, key, values[key as keyof typeof values] as number));
+    derived.floorArea = round(values.width * values.depth, 2);
+    derived.coveredArea = round((values.width + (values.sideCanopy ? values.sideCanopyWidth : 0)) * values.depth, 2);
+    derived.gateCount = values.gateCount;
+    derived.windowCount = values.windowCount;
+    if (values.gateCount === 2 && values.width < 5) {
+      warnings.push({ path: "values.gateCount", message: "Dwie bramy przy tej szerokości wymagają indywidualnego podziału frontu.", code: "technical_review" });
+    }
+    warnings.push({ path: "values", message: "Gabaryty, przekroje, blacha, otwory, obciążenia i wyposażenie garażu są demonstracyjne i wymagają projektu producenta.", code: "demo_only" });
   } else {
     const values = configuration.values;
     checkRange(errors, definition, "width", values.width);
@@ -194,6 +205,13 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
     area = values.width * values.height * values.unitCount;
     options = (Number(values.drive !== "manual") + Number(values.integratedMosquitoNet) + Number(values.mounting !== "reveal") + Number(values.slatProfile === "extruded")) * values.unitCount;
     colorSurcharge = values.armorColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
+  } else if (configuration.productType === "metal-garage") {
+    const values = configuration.values;
+    modules = values.gateCount;
+    area = (values.width + (values.sideCanopy ? values.sideCanopyWidth : 0)) * values.depth;
+    options = values.windowCount + Number(values.personnelDoor) + Number(values.sideCanopy) + Number(values.gateDrive)
+      + Number(values.gutters) + Number(values.anchoring) + Number(values.antiCondensationFelt) + Number(values.roofType === "gable");
+    colorSurcharge = [values.wallColor, values.roofColor, values.gateColor].filter((color) => color !== "anthracite").length * rules.optionSurcharge * 0.25;
   } else {
     const values = configuration.values;
     area = values.width * values.projection;
@@ -274,6 +292,25 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
         { label: "Prowadnica pancerza", quantity: values.unitCount * 2, unit: "szt." },
         { label: "Pancerz rolety", quantity: round(values.width * values.height * values.unitCount, 2), unit: "m²" },
         ...(values.integratedMosquitoNet ? [{ label: "Moskietiera zintegrowana", quantity: values.unitCount, unit: "szt." }] : []),
+      ],
+    };
+  }
+  if (configuration.productType === "metal-garage") {
+    const values = configuration.values;
+    return {
+      demoOnly: true as const,
+      items: [
+        { label: "Szkielet garażu", quantity: 1, unit: "zest." },
+        { label: "Poszycie ścian z blachy trapezowej", quantity: round(2 * (values.width + values.depth) * values.wallHeight, 2), unit: "m²" },
+        { label: "Poszycie dachu", quantity: round((values.width + (values.sideCanopy ? values.sideCanopyWidth : 0)) * values.depth, 2), unit: "m²" },
+        { label: `Brama ${values.gateType}`, quantity: values.gateCount, unit: "szt." },
+        ...(values.windowCount ? [{ label: "Okno", quantity: values.windowCount, unit: "szt." }] : []),
+        ...(values.personnelDoor ? [{ label: "Drzwi wejściowe", quantity: 1, unit: "szt." }] : []),
+        ...(values.sideCanopy ? [{ label: "Wiata boczna", quantity: 1, unit: "zest." }] : []),
+        ...(values.gateDrive ? [{ label: "Napęd bramy", quantity: values.gateCount, unit: "szt." }] : []),
+        ...(values.gutters ? [{ label: "Orynnowanie", quantity: values.roofType === "gable" ? 2 : 1, unit: "kpl." }] : []),
+        ...(values.anchoring ? [{ label: "Kotwienie konstrukcji", quantity: 1, unit: "kpl." }] : []),
+        ...(values.antiCondensationFelt ? [{ label: "Warstwa antykondensacyjna", quantity: round(values.width * values.depth, 2), unit: "m²" }] : []),
       ],
     };
   }

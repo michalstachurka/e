@@ -7,6 +7,7 @@ export const ProductTypeSchema = z.enum([
   "window-screen",
   "external-roller-shutter",
   "awning",
+  "metal-garage",
 ]);
 export type ProductType = z.infer<typeof ProductTypeSchema>;
 
@@ -125,6 +126,28 @@ export const AwningValuesSchema = z.object({
   openingPercent: z.number().int().min(0).max(100),
 });
 
+export const MetalGarageValuesSchema = z.object({
+  width: z.number().finite(),
+  depth: z.number().finite(),
+  wallHeight: z.number().finite(),
+  roofType: z.enum(["mono-rear", "gable"]),
+  wallSheetOrientation: z.enum(["vertical", "horizontal"]),
+  wallColor: z.string().min(1).max(40),
+  roofColor: z.string().min(1).max(40),
+  gateColor: z.string().min(1).max(40),
+  gateType: z.enum(["up-and-over", "double-leaf", "sectional"]),
+  gateCount: z.number().int().min(1).max(2),
+  windowCount: z.number().int().min(0).max(4),
+  personnelDoor: z.boolean(),
+  sideCanopy: z.boolean(),
+  sideCanopySide: z.enum(["left", "right"]),
+  sideCanopyWidth: z.number().finite(),
+  gateDrive: z.boolean(),
+  gutters: z.boolean(),
+  anchoring: z.boolean(),
+  antiCondensationFelt: z.boolean(),
+});
+
 const ConfigurationBaseSchema = z.object({
   schemaVersion: z.literal("2.0"),
   tenantSlug: z.string().regex(/^[a-z0-9-]{2,50}$/),
@@ -155,6 +178,10 @@ export const PublicConfigurationSchema = z.discriminatedUnion("productType", [
   ConfigurationBaseSchema.extend({
     productType: z.literal("awning"),
     values: AwningValuesSchema,
+  }),
+  ConfigurationBaseSchema.extend({
+    productType: z.literal("metal-garage"),
+    values: MetalGarageValuesSchema,
   }),
 ]);
 export type PublicConfiguration = z.infer<typeof PublicConfigurationSchema>;

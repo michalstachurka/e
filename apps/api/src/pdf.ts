@@ -45,6 +45,15 @@ function configurationRows(configuration: PublicConfiguration) {
       ["Naped", values.drive], ["Opuszczenie", `${values.openingPercent}%`], ["Moskitiera", values.integratedMosquitoNet ? "tak" : "nie"],
     ];
   }
+  if (configuration.productType === "metal-garage") {
+    const values = configuration.values;
+    return [
+      ["Wymiar", `${values.width} x ${values.depth} x ${values.wallHeight} m`], ["Dach", values.roofType],
+      ["Bramy", `${values.gateCount} x ${values.gateType}`], ["Okna", `${values.windowCount}`],
+      ["Wiata boczna", values.sideCanopy ? `${values.sideCanopySide} / ${values.sideCanopyWidth} m` : "nie"],
+      ["Wyposazenie", [values.gutters ? "rynny" : "", values.anchoring ? "kotwienie" : "", values.antiCondensationFelt ? "filc" : ""].filter(Boolean).join(", ") || "brak"],
+    ];
+  }
   const values = configuration.values;
   return [
     ["Wymiar", `${values.width} x ${values.projection} m`], ["Montaz", values.mounting], ["Kaseta", values.cassetteType],

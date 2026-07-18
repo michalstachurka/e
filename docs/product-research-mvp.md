@@ -1,4 +1,4 @@
-# Założenia produktowe MVP: osłony okienne i markizy
+# Założenia produktowe MVP: osłony okienne, markizy i garaże blaszane
 
 Dokument opisuje wyłącznie strukturę wyboru używaną przez MVP. Nie stanowi dokumentacji technicznej, tabeli dopuszczalnych wymiarów ani instrukcji montażu. Wszystkie zakresy, przekroje, ceny i reguły w katalogu są oznaczone jako demonstracyjne do czasu przypisania ich do konkretnego producenta i zatwierdzenia technicznego.
 
@@ -35,6 +35,16 @@ Materiały referencyjne:
 - markilux 990: https://www.markilux.com/en-us/awning/folding-arm-awning/markilux-990
 - przegląd markiz kasetowych markilux: https://www.markilux.com/en-us/awning/cassette-awnings
 - dane czujnika wiatru/słońca Somfy: https://service.somfy.com/downloads/master_v5_b2c/technicaldata_sheet_eosun_v2_hz_-_gb.pdf
+
+## Garaż blaszany
+
+Analiza publicznego konfiguratora Gregstal wykazała typowy podział decyzji na bryłę i dach, wykończenie blachy, bramy oraz wyposażenie dodatkowe, takie jak otwory, wiata, napęd, orynnowanie, kotwienie i warstwa antykondensacyjna. visNEX wykorzystuje wyłącznie ten ogólny wzorzec funkcjonalny. Nie kopiuje kodu, zasobów, tekstur, nazw handlowych, palet, zakresów ani reguł producenta.
+
+Niezależny MVP rozdziela: szerokość, głębokość, wysokość ściany, dach jedno- lub dwuspadowy, kierunek przetłoczeń ścian, osobne kolory ścian/dachu/bram, typ i liczbę bram, liczbę okien, drzwi wejściowe, stronę i szerokość wiaty, napęd, orynnowanie, kotwienie oraz filc antykondensacyjny. Stage 1 ogranicza scenę do 2 bram i 4 okien. Wszystkie wartości techniczne i handlowe są `demoOnly`.
+
+Materiał analizowany funkcjonalnie:
+
+- konfigurator garaży Gregstal: https://gregstalgaraze.pl/konfigurator/
 
 ## Granica SaaS
 

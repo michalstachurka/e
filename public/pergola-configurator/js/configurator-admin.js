@@ -173,6 +173,35 @@ function buildProfilePreviewParams(definition) {
       spin: false, profiles: definition.profiles, visual: definition.visual,
     };
   }
+  if (definition.productType === "metal-garage") {
+    return {
+      productType: "metal-garage",
+      width: Number(parameterDefault(definition, "width", 5.5)),
+      depth: Number(parameterDefault(definition, "depth", 6)),
+      wallHeight: Number(parameterDefault(definition, "wallHeight", 2.4)),
+      roofType: parameterDefault(definition, "roofType", "gable"),
+      wallSheetOrientation: parameterDefault(definition, "wallSheetOrientation", "vertical"),
+      wallColor: frameColor,
+      roofColor: frameColor,
+      gateColor: frameColor,
+      gateType: parameterDefault(definition, "gateType", "sectional"),
+      gateCount: Number(parameterDefault(definition, "gateCount", 2)),
+      windowCount: Number(parameterDefault(definition, "windowCount", 2)),
+      personnelDoor: true,
+      sideCanopy: true,
+      sideCanopySide: parameterDefault(definition, "sideCanopySide", "right"),
+      sideCanopyWidth: Number(parameterDefault(definition, "sideCanopyWidth", 2.4)),
+      gateDrive: true,
+      gutters: true,
+      anchoring: true,
+      antiCondensationFelt: true,
+      frameColor,
+      slatColor: frameColor,
+      spin: false,
+      profiles: definition.profiles,
+      visual: definition.visual,
+    };
+  }
   const widths = parameterDefault(definition, "moduleWidths", [4]);
   return {
     productType: definition.productType,
@@ -272,6 +301,16 @@ function profileAnnotationPoints(params, profile) {
       "awning-arm": { target: [params.width * 0.3, 2.65, projected / 2], a: [[params.width * 0.3 - a / 2, 2.65, projected / 2], [params.width * 0.3 + a / 2, 2.65, projected / 2]], b: [[params.width * 0.3 + a / 2, 2.65 - b / 2, projected / 2], [params.width * 0.3 + a / 2, 2.65 + b / 2, projected / 2]] },
     };
     return points[profile.id] || points["awning-cassette"];
+  }
+  if (params.productType === "metal-garage") {
+    const canopyDirection = params.sideCanopySide === "left" ? -1 : 1;
+    const points = {
+      "garage-frame": { target: [params.width / 2 - a / 2, params.wallHeight * 0.42, params.depth / 2 - b / 2], a: [[params.width / 2 - a, params.wallHeight * 0.42, params.depth / 2], [params.width / 2, params.wallHeight * 0.42, params.depth / 2]], b: [[params.width / 2, params.wallHeight * 0.42, params.depth / 2 - b], [params.width / 2, params.wallHeight * 0.42, params.depth / 2]] },
+      "garage-roof-purlin": { target: [0, params.wallHeight + Number(params.visual?.roofRise || 0.5), 0], a: [[-a / 2, params.wallHeight + Number(params.visual?.roofRise || 0.5), 0], [a / 2, params.wallHeight + Number(params.visual?.roofRise || 0.5), 0]], b: [[a / 2, params.wallHeight + Number(params.visual?.roofRise || 0.5) - b / 2, 0], [a / 2, params.wallHeight + Number(params.visual?.roofRise || 0.5) + b / 2, 0]] },
+      "garage-gate-frame": { target: [params.width * 0.22, Math.min(2.18, params.wallHeight - 0.12), params.depth / 2], a: [[params.width * 0.22 - a / 2, Math.min(2.18, params.wallHeight - 0.12), params.depth / 2], [params.width * 0.22 + a / 2, Math.min(2.18, params.wallHeight - 0.12), params.depth / 2]], b: [[params.width * 0.22 + a / 2, Math.min(2.18, params.wallHeight - 0.12) - b / 2, params.depth / 2], [params.width * 0.22 + a / 2, Math.min(2.18, params.wallHeight - 0.12) + b / 2, params.depth / 2]] },
+      "garage-canopy-post": { target: [canopyDirection * (params.width / 2 + params.sideCanopyWidth - a / 2), params.wallHeight * 0.38, params.depth / 2 - b / 2], a: [[canopyDirection * (params.width / 2 + params.sideCanopyWidth - a), params.wallHeight * 0.38, params.depth / 2], [canopyDirection * (params.width / 2 + params.sideCanopyWidth), params.wallHeight * 0.38, params.depth / 2]], b: [[canopyDirection * (params.width / 2 + params.sideCanopyWidth), params.wallHeight * 0.38, params.depth / 2 - b], [canopyDirection * (params.width / 2 + params.sideCanopyWidth), params.wallHeight * 0.38, params.depth / 2]] },
+    };
+    return points[profile.id] || points["garage-frame"];
   }
   const width = params.widths.reduce((sum, value) => sum + value, 0);
   const beamHeight = (params.profiles.find((item) => item.id === "frame-beam")?.bMm || 180) / 1000;

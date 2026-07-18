@@ -54,6 +54,19 @@ const pergolaConfiguration = {
   },
 };
 
+const garageConfiguration = {
+  schemaVersion: "2.0",
+  tenantSlug: "visnex",
+  productType: "metal-garage",
+  productVersionId: "visnex-metal-garage-v1",
+  values: {
+    width: 5.5, depth: 6, wallHeight: 2.4, roofType: "gable", wallSheetOrientation: "vertical",
+    wallColor: "anthracite", roofColor: "anthracite", gateColor: "anthracite", gateType: "sectional",
+    gateCount: 2, windowCount: 2, personnelDoor: true, sideCanopy: true, sideCanopySide: "right", sideCanopyWidth: 2.4,
+    gateDrive: true, gutters: true, anchoring: true, antiCondensationFelt: true,
+  },
+};
+
 test("resolves and locks tenant context for mapped custom domains", async () => {
   assert.deepEqual(parseTenantHostMap("Pilot.Example.Test.=visnex,invalid=/admin"), { "pilot.example.test": "visnex" });
   const shared = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "shared.example.test" } });
@@ -80,7 +93,7 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
   assert.equal(catalog.statusCode, 200);
   assert.equal(catalog.json().tenant.name, "Pilot A");
   assert.equal(catalog.json().tenant.branding.companyName, "Pilot A");
-  assert.equal(catalog.json().products.length, 6);
+  assert.equal(catalog.json().products.length, 7);
   assert.ok(catalog.json().products.every((product: { id: string; version: { id: string } }) => product.id.includes("pilot-a") && product.version.id.startsWith("pilot-a-")));
 
   const configuration = structuredClone(pergolaConfiguration);
@@ -119,14 +132,18 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
 test("returns tenant catalog and product definition", async () => {
   const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
   assert.equal(catalog.statusCode, 200);
-  assert.equal(catalog.json().products.length, 6);
+  assert.equal(catalog.json().products.length, 7);
   assert.deepEqual(catalog.json().products.map((item: { productType: string }) => item.productType), [
-    "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "awning",
+    "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "awning", "metal-garage",
   ]);
   const screen = catalog.json().products.find((item: { productType: string }) => item.productType === "window-screen");
   assert.equal(screen.version.number, 3);
   assert.equal(screen.parameters.find((parameter: { key: string }) => parameter.key === "unitCount").max, 8);
   assert.equal(screen.parameters.find((parameter: { key: string }) => parameter.key === "mounting").defaultValue, "reveal");
+  const garage = catalog.json().products.find((item: { productType: string }) => item.productType === "metal-garage");
+  assert.equal(garage.version.id, "visnex-metal-garage-v1");
+  assert.equal(garage.parameters.find((parameter: { key: string }) => parameter.key === "gateCount").max, 2);
+  assert.ok(garage.parameters.every((parameter: { demoOnly: boolean }) => parameter.demoOnly));
   const product = await app.inject({ method: "GET", url: "/api/public/visnex/products/veranda" });
   assert.equal(product.statusCode, 200);
   assert.equal(product.json().product.productType, "veranda");
@@ -288,6 +305,14 @@ test("generates a demo quote, public BOM and server PDF", async () => {
   assert.equal(pdf.statusCode, 200);
   assert.equal(pdf.headers["content-type"], "application/pdf");
   assert.equal(pdf.rawPayload.subarray(0, 4).toString(), "%PDF");
+
+  const garageQuote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration: garageConfiguration } });
+  assert.equal(garageQuote.statusCode, 201);
+  assert.equal(garageQuote.json().quote.demoOnly, true);
+  assert.ok(garageQuote.json().bom.items.some((item: { label: string; quantity: number }) => item.label === "Brama sectional" && item.quantity === 2));
+  const garagePdf = await app.inject({ method: "POST", url: "/api/public/visnex/pdf", payload: { configuration: garageConfiguration } });
+  assert.equal(garagePdf.statusCode, 200);
+  assert.equal(garagePdf.rawPayload.subarray(0, 4).toString(), "%PDF");
 });
 
 test("protects admin routes and allows an authenticated draft read", async () => {
