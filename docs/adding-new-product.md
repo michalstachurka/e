@@ -53,6 +53,7 @@ Zasady renderera:
 
 - używaj `BoxGeometry`, `PlaneGeometry`, `ExtrudeGeometry` i uproszczonych geometrii;
 - używaj `InstancedMesh` dla elementów powtarzalnych;
+- jawnie określaj i testuj limity liczby powtarzalnych elementów; limit katalogu produktu oddzielaj od przyszłych limitów planu SaaS;
 - nie odwzorowuj komór profili, śrub i technologii produkcji;
 - nie twórz nowego `WebGLRenderer` przy zmianie produktu;
 - zwalniaj geometrie i materiały produktu;

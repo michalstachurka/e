@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { PublicConfiguration } from "../../contracts/src/index.js";
+import { PublicConfigurationSchema, type PublicConfiguration } from "../../contracts/src/index.js";
 import { getProductSeed } from "../src/catalog.js";
 import { calculateLouvreCount, calculatePostPositions, calculateQuote, deriveVerandaSlope, generateBom, serializeConfiguration, validateConfiguration } from "../src/domain.js";
 
@@ -133,11 +133,11 @@ test("validates and prices all newly catalogued MVP products", () => {
     }, carportSeed],
     [{
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "window-screen", productVersionId: screenSeed.definition.version.id,
-      values: { width: 2, height: 2.2, mounting: "front", guideType: "zip", fabric: "transparent", fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", openingPercent: 80, windSensor: true },
+      values: { width: 2, height: 2.2, unitCount: 1, mounting: "reveal", guideType: "zip", fabric: "transparent", fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", openingPercent: 80, windSensor: true },
     }, screenSeed],
     [{
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "external-roller-shutter", productVersionId: shutterSeed.definition.version.id,
-      values: { width: 1.6, height: 2.1, mounting: "front", slatProfile: "aluminium-foam", armorColor: "anthracite", boxColor: "anthracite", guideColor: "anthracite", drive: "radio", integratedMosquitoNet: true, openingPercent: 65 },
+      values: { width: 1.6, height: 2.1, unitCount: 1, mounting: "reveal", slatProfile: "aluminium-foam", armorColor: "anthracite", boxColor: "anthracite", guideColor: "anthracite", drive: "radio", integratedMosquitoNet: true, openingPercent: 65 },
     }, shutterSeed],
     [{
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "awning", productVersionId: awningSeed.definition.version.id,
@@ -150,6 +150,25 @@ test("validates and prices all newly catalogued MVP products", () => {
     assert.ok(calculateQuote(configuration, seed.pricing).gross > 0);
     assert.ok(generateBom(configuration, validation.derived).items.length > 0);
   }
+});
+
+test("keeps legacy window covers compatible and caps adjacent units at eight", () => {
+  const legacy = PublicConfigurationSchema.parse({
+    schemaVersion: "2.0", tenantSlug: "visnex", productType: "window-screen", productVersionId: "legacy-screen-v1",
+    values: { width: 1.5, height: 2, mounting: "front", guideType: "zip", fabric: "transparent", fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", openingPercent: 70, windSensor: false },
+  });
+  assert.equal(legacy.values.unitCount, 1);
+
+  const multi = PublicConfigurationSchema.parse({
+    ...legacy,
+    productVersionId: screenSeed.definition.version.id,
+    values: { ...legacy.values, mounting: "reveal", unitCount: 8 },
+  });
+  const validation = validateConfiguration(multi, screenSeed.definition);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.derived.coverArea, 24);
+  assert.ok(generateBom(multi, validation.derived).items.some((item) => item.label === "Kaseta screen" && item.quantity === 8));
+  assert.throws(() => PublicConfigurationSchema.parse({ ...multi, values: { ...multi.values, unitCount: 9 } }));
 });
 
 test("requires an electric awning drive for weather automation", () => {

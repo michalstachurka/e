@@ -123,6 +123,10 @@ test("returns tenant catalog and product definition", async () => {
   assert.deepEqual(catalog.json().products.map((item: { productType: string }) => item.productType), [
     "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "awning",
   ]);
+  const screen = catalog.json().products.find((item: { productType: string }) => item.productType === "window-screen");
+  assert.equal(screen.version.number, 3);
+  assert.equal(screen.parameters.find((parameter: { key: string }) => parameter.key === "unitCount").max, 8);
+  assert.equal(screen.parameters.find((parameter: { key: string }) => parameter.key === "mounting").defaultValue, "reveal");
   const product = await app.inject({ method: "GET", url: "/api/public/visnex/products/veranda" });
   assert.equal(product.statusCode, 200);
   assert.equal(product.json().product.productType, "veranda");

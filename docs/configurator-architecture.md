@@ -71,6 +71,12 @@ Weranda składa się z parametrycznych belek, słupów, krokwi, pól dachowych i
 
 Na bokach werandy prostokątna zabudowa i górny trójkąt są osobnymi decyzjami. Dla rolety ZIP kaseta jest pozioma, tkanina wychodzi z jej dolnej krawędzi i schodzi do podłoża, a obszar nad kasetą nie jest automatycznie wypełniany. Lewy i prawy trójkąt mogą niezależnie użyć materiału dostępnego dla zabudów bocznych. Opcjonalny profil podpierający jest montowany bezpośrednio nad kasetą i może zostać włączony wyłącznie dla rolety ZIP; zależność sprawdza backend.
 
+Carport generuje jedną parametryczną geometrię blachy trapezowej i nakłada od spodu oddzielną, obowiązkową warstwę antykondensacyjną. Tekstura włókniny jest proceduralna i nie wymaga zewnętrznego pliku. Kolor widocznej od góry blachy pozostaje parametrem produktu, a geometria i materiał spodu są rozdzielone, dzięki czemu późniejsze zatwierdzone dane producenta można podmienić w wersji katalogu bez przebudowy hosta Three.js.
+
+Screen ZIP i roleta zewnętrzna używają wspólnego renderera osłon okiennych. Każda sztuka ma osobną wnękę, ścianę, parapet, ramę i szybę; domyślny montaż `reveal` umieszcza kasetę lub skrzynkę oraz prowadnice we wnęce. Ściana i okno są kontekstem podglądu oznaczonym `arExclude`, dlatego eksport AR zachowuje samą osłonę. Parametr `unitCount` dopuszcza od 1 do 8 sąsiadujących osłon. Limit jest częścią definicji produktu, a nie stałą polityką interfejsu; w obecnym katalogu chroni czytelność i płynność sceny Stage 1. Powtarzalne lamele rolety zewnętrznej są łączone w `InstancedMesh`, a kamera zwiększa zakres dla szerokich zestawów. Starsza konfiguracja bez `unitCount` otrzymuje wartość 1 podczas walidacji kontraktu.
+
+Opublikowane seedy carportu, screenu i rolety zewnętrznej mają wersję 3. Przy aktualizacji istniejącego tenanta poprzednia opublikowana lub robocza wersja jest archiwizowana, natomiast zapisane projekty nadal wskazują swój niezmienny `productVersionId`. Jeżeli numer wersji seeda jest już zajęty przez wersję utworzoną lub opublikowaną przez administratora, inicjalizacja nie podmienia jej i nie tworzy konkurencyjnego draftu. Dane techniczne, zakresy, kompatybilność, ceny i BOM tych produktów nadal mają status `demoOnly`.
+
 ### API
 
 `apps/api` to osobna aplikacja Fastify. Korzysta z:
@@ -250,6 +256,7 @@ Onboarding pilota korzysta z `NEW_TENANT_NAME`, `NEW_TENANT_ADMIN_PASSWORD` i ar
 - Kalibracja jest świadomie wspomagana ręcznie. Nie estymuje automatycznie pełnej kamery z niedostatecznej liczby punktów, nie wykonuje segmentacji AI i nie obiecuje dokładności pomiarowej.
 - PDF MVP używa bezpiecznego fontu bazowego i transliteracji znaków w warstwie serwerowej. Produkcyjny szablon wymaga zatwierdzonego fontu TTF/OTF i finalnego brandingu.
 - Pergola nadal przebudowuje część geometrii po zmianach konstrukcyjnych. Dalsza optymalizacja lameli do jednego `InstancedMesh` pozostaje osobnym zadaniem wydajnościowym.
+- Limit 8 sąsiadujących screenów lub rolet jest limitem obecnej wersji produktu, a nie limitem planu SaaS. Przyszłe limity planów powinny być rozstrzygane przez centralne capabilities i walidowane ponownie przez API.
 - Przekroje seedów, w tym profil podpierający kasetę ZIP, pozostają danymi demonstracyjnymi do czasu przekazania kart technicznych producenta. Interfejs nie przedstawia ich jako zatwierdzonych danych wykonawczych.
 - Sposób montażu pozostałych zabudów bocznych werandy nie został w tej iteracji przebudowany; kolejne zmiany mogą korzystać z rozdzielonych pól prostokąta i trójkąta bez migracji całego produktu.
 

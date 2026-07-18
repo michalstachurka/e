@@ -87,6 +87,16 @@ async function configurePage(context) {
   });
 }
 
+async function verifyMotionControl(page) {
+  const button = page.locator("#pergolaSpin");
+  if (await button.getAttribute("aria-pressed") !== "true") await button.click();
+  await button.click();
+  if (await button.getAttribute("aria-pressed") !== "false") throw new Error("Visualization motion did not stop");
+  if (!/Uruchom wizualizację/.test(await button.textContent())) throw new Error("Stopped motion label is missing");
+  await button.click();
+  if (await button.getAttribute("aria-pressed") !== "true") throw new Error("Visualization motion did not restart");
+}
+
 async function runDesktop() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   await configurePage(context);
@@ -104,6 +114,7 @@ async function runDesktop() {
   await page.waitForFunction(() => document.querySelector("#pergolaMount")?.getAttribute("aria-busy") === "false");
   await page.waitForFunction(() => document.querySelector("#configuratorNotice")?.classList.contains("is-valid"));
   if (await page.locator(".dimension-guide, .profile-specs, .profile-card").count()) throw new Error("Technical profile tooling leaked into the public configurator");
+  await verifyMotionControl(page);
 
   const photoInput = page.locator("#propertyPhotoInput");
   await photoInput.setInputFiles({
@@ -128,6 +139,7 @@ async function runDesktop() {
 
   await page.locator('[data-product="veranda"]').click();
   await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().productType === "veranda");
+  await verifyMotionControl(page);
   await page.locator("#verandaAngle").evaluate((input) => { input.value = "9"; input.dispatchEvent(new Event("input", { bubbles: true })); });
   await page.locator("#verandaLeftWall").selectOption("zip-screen");
   await page.locator("#verandaLeftTriangle").selectOption("solid");
@@ -144,7 +156,6 @@ async function runDesktop() {
   await page.waitForFunction(() => document.querySelector("#pergolaMount")?.classList.contains("has-property-photo"));
   if (await page.evaluate(() => window.sunProtectionConfigurator.getProject().scene.photoTransform.rotationDeg) !== 2.5) throw new Error("Photo transform was not restored");
   await page.locator("#verandaControls").screenshot({ path: path.join(resultsDir, "desktop-veranda-controls.png") });
-  await page.locator("#pergolaSpin").click();
   await page.locator('[data-view="left"]').click();
   await page.waitForTimeout(350);
   await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-veranda-zip.png") });
@@ -176,20 +187,42 @@ async function runDesktop() {
 
   await page.locator('[data-product="carport"]').click();
   await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().productType === "carport");
+  await verifyMotionControl(page);
   await page.locator('[data-catalog-toggle="ledLinear"]').click();
   await page.locator('[data-catalog-action="add-leg"]').click();
   await page.waitForFunction(() => {
     const values = window.sunProtectionConfigurator.getConfiguration().values;
     return values.ledLinear === true && values.antiCondensationLayer === true && values.extraLegs.length === 1;
   });
+  await page.locator('[data-view="top"]').click();
+  await page.waitForTimeout(250);
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-carport-roof-top.png") });
+  await page.locator('[data-view="front"]').click();
+  await page.waitForTimeout(250);
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-carport-roof-underside.png") });
   await page.locator('[data-product="window-screen"]').click();
+  await verifyMotionControl(page);
   await page.locator('[data-catalog-select="drive"]').selectOption("solar");
   await page.locator('[data-catalog-range="openingPercent"]').evaluate((input) => { input.value = "45"; input.dispatchEvent(new Event("input", { bubbles: true })); });
-  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.openingPercent === 45);
+  for (let index = 1; index < 8; index += 1) await page.locator('[data-window-unit-action="add"]').click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.openingPercent === 45 && values.unitCount === 8 && values.mounting === "reveal";
+  });
+  if (!await page.locator('[data-window-unit-action="add"]').isDisabled()) throw new Error("Window screen limit is not enforced");
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-window-screens-eight.png") });
   await page.locator('[data-product="external-roller-shutter"]').click();
+  await verifyMotionControl(page);
   await page.locator('[data-catalog-toggle="integratedMosquitoNet"]').click();
-  await page.waitForFunction(() => window.sunProtectionConfigurator.getConfiguration().values.integratedMosquitoNet === true);
+  for (let index = 1; index < 8; index += 1) await page.locator('[data-window-unit-action="add"]').click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.integratedMosquitoNet === true && values.unitCount === 8 && values.mounting === "reveal";
+  });
+  if (!await page.locator('[data-window-unit-action="add"]').isDisabled()) throw new Error("External shutter limit is not enforced");
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-external-shutters-eight.png") });
   await page.locator('[data-product="awning"]').click();
+  await verifyMotionControl(page);
   await page.locator('[data-catalog-toggle="led"]').click();
   await page.locator('[data-catalog-toggle="sunSensor"]').click();
   await page.waitForFunction(() => {
