@@ -190,9 +190,13 @@ async function runDesktop() {
   await verifyMotionControl(page);
   await page.locator('[data-catalog-toggle="ledLinear"]').click();
   await page.locator('[data-catalog-action="add-leg"]').click();
+  await page.locator('[data-side-shutter-side="front"]').click();
+  await page.locator('[data-side-shutter-select="sideShutterBladeOrientation"]').selectOption("vertical");
+  await page.locator('[data-side-shutter-select="sideShutterPanelMotion"]').selectOption("sliding");
   await page.waitForFunction(() => {
     const values = window.sunProtectionConfigurator.getConfiguration().values;
-    return values.ledLinear === true && values.antiCondensationLayer === true && values.extraLegs.length === 1;
+    return values.ledLinear === true && values.antiCondensationLayer === true && values.extraLegs.length === 1
+      && values.sideShutters.sides.front === true && values.sideShutters.bladeOrientation === "vertical" && values.sideShutters.panelMotion === "sliding";
   });
   await page.locator('[data-view="top"]').click();
   await page.waitForTimeout(250);
@@ -221,6 +225,18 @@ async function runDesktop() {
   });
   if (!await page.locator('[data-window-unit-action="add"]').isDisabled()) throw new Error("External shutter limit is not enforced");
   await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-external-shutters-eight.png") });
+  await page.locator('[data-product="facade-blind"]').click();
+  await verifyMotionControl(page);
+  await page.locator('[data-catalog-select="slatProfile"]').selectOption("c80");
+  await page.locator('[data-catalog-select="guideType"]').selectOption("cables");
+  await page.locator('[data-catalog-range="slatAngle"]').evaluate((input) => { input.value = "30"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+  for (let index = 1; index < 8; index += 1) await page.locator('[data-window-unit-action="add"]').click();
+  await page.waitForFunction(() => {
+    const values = window.sunProtectionConfigurator.getConfiguration().values;
+    return values.slatProfile === "c80" && values.guideType === "cables" && values.slatAngle === 30 && values.unitCount === 8;
+  });
+  if (!await page.locator('[data-window-unit-action="add"]').isDisabled()) throw new Error("Facade blind limit is not enforced");
+  await page.locator(".pergola3d__stage").screenshot({ path: path.join(resultsDir, "desktop-facade-blinds-eight.png") });
   await page.locator('[data-product="awning"]').click();
   await verifyMotionControl(page);
   await page.locator('[data-catalog-toggle="led"]').click();
@@ -360,14 +376,14 @@ async function runAdmin() {
   await page.waitForFunction(() => document.querySelector(".admin-profile-preview__marker")?.textContent === "Słup frontowy");
   if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error("Admin studio must keep exactly one live 3D renderer while switching products");
   await page.locator("#profileStudioSection").screenshot({ path: path.join(resultsDir, "admin-profile-studio-veranda.png") });
-  for (const index of [2, 3, 4, 5, 6]) {
+  for (const index of [2, 3, 4, 5, 6, 7]) {
     await page.locator(`[data-studio-product="${index}"]`).click();
     await page.waitForFunction(() => document.querySelectorAll("#adminProfileStudio .admin-profile-card").length >= 3);
     await page.waitForFunction(() => Boolean(document.querySelector(".admin-profile-preview__marker")?.textContent));
     if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error(`Admin studio lost its single renderer for product ${index}`);
   }
   await page.waitForSelector("#adminReferenceCanvas canvas");
-  if (await page.locator(".admin-reference-tabs button").count() !== 7) throw new Error("Reference editor does not expose all products");
+  if (await page.locator(".admin-reference-tabs button").count() !== 8) throw new Error("Reference editor does not expose all products");
   await page.locator('[data-reference-product="3"]').click();
   await page.waitForFunction(() => document.querySelector(".admin-reference-stage-panel strong")?.textContent === "Screen ZIP do okna");
   await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Kaseta screenu"));
@@ -378,6 +394,8 @@ async function runAdmin() {
   if (await page.locator('[data-reference-transform="positionM.x"][type="range"]').inputValue() !== "0.25") throw new Error("Reference transform controls are not synchronized");
   await page.locator('[data-reference-product="4"]').click();
   await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Skrzynka rolety"));
+  await page.locator('[data-reference-product="5"]').click();
+  await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Rynna górna żaluzji"));
   await page.locator('[data-reference-product="3"]').click();
   if (await referencePositionX.inputValue() !== "0.25") throw new Error("Reference adjustment was not preserved while switching products");
   await page.locator('[data-reference-view="front"]').click();

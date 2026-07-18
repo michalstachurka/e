@@ -1,5 +1,6 @@
 import { profileMetres } from "../core/profile-definitions.js";
 import { createProfileGeometry, createProfileMesh } from "../core/svg-profile-geometry.js";
+import { addStructureSideShutters } from "./side-shutter-system.js";
 
 export function createVerandaRenderer(context) {
   const {
@@ -243,6 +244,7 @@ export function createVerandaRenderer(context) {
     if (config.leftWall !== "top-wedge") addTriangleFill(root, "left", config.leftTriangle, config);
     if (config.rightWall !== "top-wedge") addTriangleFill(root, "right", config.rightTriangle, config);
     addFrontFill(root, config.frontWall, config);
+    addStructureSideShutters({ THREE, root, config, width: config.width, depth: config.depth, height: config.frontHeight, baseMaterial: frameMaterial });
 
     ground.scale.setScalar(Math.max(config.width, config.depth) * 1.9);
     shadow.scale.set(config.width * 1.55, config.depth * 1.65, 1);

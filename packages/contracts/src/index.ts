@@ -6,6 +6,7 @@ export const ProductTypeSchema = z.enum([
   "carport",
   "window-screen",
   "external-roller-shutter",
+  "facade-blind",
   "awning",
   "metal-garage",
 ]);
@@ -26,6 +27,28 @@ export const ExtraLegSchema = z.object({
   side: z.enum(["front", "back", "left", "right"]),
 });
 
+const EmptySideSelection = { front: false, back: false, left: false, right: false } as const;
+
+export const StructureSideShuttersSchema = z.object({
+  formatVersion: z.literal("1.0").default("1.0"),
+  sides: SideSelectionSchema.default(EmptySideSelection),
+  bladeOrientation: z.enum(["horizontal", "vertical"]).default("horizontal"),
+  panelMotion: z.enum(["fixed", "sliding"]).default("fixed"),
+  bladeMotion: z.enum(["fixed", "adjustable"]).default("adjustable"),
+  bladeAngle: z.number().finite().min(0).max(90).default(35),
+  openingPercent: z.number().int().min(0).max(100).default(0),
+  color: z.string().min(1).max(40).default("anthracite"),
+}).default({
+  formatVersion: "1.0",
+  sides: EmptySideSelection,
+  bladeOrientation: "horizontal",
+  panelMotion: "fixed",
+  bladeMotion: "adjustable",
+  bladeAngle: 35,
+  openingPercent: 0,
+  color: "anthracite",
+});
+
 export const PergolaValuesSchema = z.object({
   construction: z.enum(["freestanding", "wall", "roof"]),
   moduleWidths: z.array(z.number().finite()).min(1).max(2),
@@ -40,6 +63,7 @@ export const PergolaValuesSchema = z.object({
   screens: SideSelectionSchema,
   glass: SideSelectionSchema,
   extraLegs: z.array(ExtraLegSchema).max(12),
+  sideShutters: StructureSideShuttersSchema,
 });
 
 const VerandaSideWallSchema = z.enum(["none", "full-glass", "sliding-glass", "zip-screen", "solid", "top-wedge"]);
@@ -66,6 +90,7 @@ export const VerandaValuesSchema = z.object({
   lighting: z.boolean().default(false),
   rafterLeds: z.array(z.number().int().nonnegative()).max(20).default([]),
   extraLegs: z.array(ExtraLegSchema).max(12).default([]),
+  sideShutters: StructureSideShuttersSchema,
 });
 
 export const CarportValuesSchema = z.object({
@@ -81,6 +106,7 @@ export const CarportValuesSchema = z.object({
   screens: SideSelectionSchema,
   glass: SideSelectionSchema,
   extraLegs: z.array(ExtraLegSchema).max(12),
+  sideShutters: StructureSideShuttersSchema,
 });
 
 export const WindowScreenValuesSchema = z.object({
@@ -109,6 +135,21 @@ export const ExternalRollerShutterValuesSchema = z.object({
   drive: z.enum(["manual", "wired", "radio", "solar"]),
   integratedMosquitoNet: z.boolean(),
   openingPercent: z.number().int().min(0).max(100),
+});
+
+export const FacadeBlindValuesSchema = z.object({
+  width: z.number().finite(),
+  height: z.number().finite(),
+  unitCount: z.number().int().min(1).max(8).default(1),
+  mounting: z.enum(["front", "reveal", "under-plaster"]),
+  slatProfile: z.enum(["c80", "z90"]),
+  guideType: z.enum(["rails", "cables"]),
+  slatAngle: z.number().int().min(0).max(90),
+  openingPercent: z.number().int().min(0).max(100),
+  slatColor: z.string().min(1).max(40),
+  hardwareColor: z.string().min(1).max(40),
+  drive: z.enum(["manual", "wired", "radio", "solar"]),
+  weatherStation: z.boolean(),
 });
 
 export const AwningValuesSchema = z.object({
@@ -174,6 +215,10 @@ export const PublicConfigurationSchema = z.discriminatedUnion("productType", [
   ConfigurationBaseSchema.extend({
     productType: z.literal("external-roller-shutter"),
     values: ExternalRollerShutterValuesSchema,
+  }),
+  ConfigurationBaseSchema.extend({
+    productType: z.literal("facade-blind"),
+    values: FacadeBlindValuesSchema,
   }),
   ConfigurationBaseSchema.extend({
     productType: z.literal("awning"),

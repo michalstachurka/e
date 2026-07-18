@@ -19,6 +19,22 @@ const OBJECT_LABELS = {
   RollerShutterGuide: "Prowadnica rolety",
   RollerShutterSlatsBatched: "Pancerz rolety",
   IntegratedMosquitoNet: "Moskitiera zintegrowana",
+  FacadeBlindVisualRoot: "Żaluzja fasadowa",
+  FacadeBlindInReveal: "Komplet żaluzji fasadowej we wnęce",
+  FacadeBlindHeadrail: "Rynna górna żaluzji",
+  FacadeBlindCoverPanel: "Osłona pakietu lameli",
+  FacadeBlindGuideRail: "Prowadnica szynowa żaluzji",
+  FacadeBlindGuideCable: "Linka prowadząca żaluzji",
+  FacadeBlindBottomRail: "Listwa dolna żaluzji",
+  FacadeBlindLadderTape: "Taśma drabinkowa",
+  FacadeBlindWeatherStation: "Automatyka pogodowa",
+  FacadeBlindSlats_C80_Batched: "Lamele C80",
+  FacadeBlindSlats_Z90_Batched: "Lamele Z90",
+  AluminiumSideShutters: "Shutters aluminiowy",
+  SideShutterTopTrack: "Górna szyna paneli shutters",
+  SideShutterBottomGuide: "Dolna prowadnica paneli shutters",
+  SideShutterPanel: "Panel shutters",
+  SideShutterBlades: "Lamele shutters",
   WindowFrameTop: "Rama okna · góra",
   WindowFrameBottom: "Rama okna · dół",
   WindowFrameLeft: "Rama okna · lewa",
@@ -54,9 +70,16 @@ const OBJECT_LABELS = {
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[character]);
 
-const humanise = (name) => OBJECT_LABELS[name] || String(name)
-  .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-  .replaceAll("_", " ");
+const humanise = (name) => {
+  if (String(name).startsWith("SideShutterBlades_")) return "Lamele shutters";
+  if (String(name).startsWith("SideShutterPanel_")) return "Panel shutters";
+  if (String(name).startsWith("SideShutterFrame")) return "Rama panelu shutters";
+  if (String(name).startsWith("SideShutterTopTrack_")) return "Górna szyna paneli shutters";
+  if (String(name).startsWith("SideShutterBottomGuide_")) return "Dolna prowadnica paneli shutters";
+  return OBJECT_LABELS[name] || String(name)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ");
+};
 
 const objectLabel = (object) => `${humanise(object.name)} · ${object.occurrence}${object.profileId ? ` · ${object.profileId}` : ""}`;
 
@@ -181,7 +204,7 @@ export function createReferenceSceneEditor({ host, products, tenantSlug, admin, 
     if (previousState) preview.applyReferenceSceneState(previousState.objects);
     const options = objects.map((object) => `<option value="${object.id}">${escapeHtml(objectLabel(object))}</option>`).join("");
     host.querySelector("[data-reference-object]").innerHTML = options;
-    const priority = ["GarageGateLeaf", "WindowScreenCassette", "RollerShutterBox", "CarportTrapezoidalSheet", "AwningCassette", "FrameBeam", "StructuralPost"];
+    const priority = ["GarageGateLeaf", "WindowScreenCassette", "RollerShutterBox", "FacadeBlindHeadrail", "CarportTrapezoidalSheet", "AwningCassette", "SideShutterBlades_front_1_horizontal_adjustable", "FrameBeam", "StructuralPost"];
     activeObjectId = previousState?.selectedObjectId && objects.some((object) => object.id === previousState.selectedObjectId)
       ? previousState.selectedObjectId
       : (objects.find((object) => priority.includes(object.name)) || objects[0])?.id || null;

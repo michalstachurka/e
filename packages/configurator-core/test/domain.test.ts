@@ -9,8 +9,20 @@ const verandaSeed = getProductSeed("veranda")!;
 const carportSeed = getProductSeed("carport")!;
 const screenSeed = getProductSeed("window-screen")!;
 const shutterSeed = getProductSeed("external-roller-shutter")!;
+const facadeBlindSeed = getProductSeed("facade-blind")!;
 const awningSeed = getProductSeed("awning")!;
 const garageSeed = getProductSeed("metal-garage")!;
+
+const emptySideShutters = () => ({
+  formatVersion: "1.0" as const,
+  sides: { front: false, back: false, left: false, right: false },
+  bladeOrientation: "horizontal" as const,
+  panelMotion: "fixed" as const,
+  bladeMotion: "adjustable" as const,
+  bladeAngle: 35,
+  openingPercent: 0,
+  color: "anthracite",
+});
 
 const pergola = (): PublicConfiguration => ({
   schemaVersion: "2.0",
@@ -30,6 +42,7 @@ const pergola = (): PublicConfiguration => ({
     ledSpots: false,
     screens: { front: false, back: false, left: false, right: false },
     glass: { front: false, back: false, left: false, right: false },
+    sideShutters: emptySideShutters(),
     extraLegs: [],
   },
 });
@@ -62,6 +75,7 @@ const veranda = (): PublicConfiguration => {
       lighting: false,
       rafterLeds: [],
       extraLegs: [],
+      sideShutters: emptySideShutters(),
     },
   };
 };
@@ -130,7 +144,7 @@ test("validates and prices all newly catalogued MVP products", () => {
   const configurations: Array<[PublicConfiguration, typeof carportSeed]> = [
     [{
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "carport", productVersionId: carportSeed.definition.version.id,
-      values: { construction: "freestanding", moduleWidths: [4], depth: 5.5, height: 2.7, frameColor: "anthracite", roofColor: "anthracite", screenColor: "piaskowy", antiCondensationLayer: true, ledLinear: false, screens: sides, glass: sides, extraLegs: [] },
+      values: { construction: "freestanding", moduleWidths: [4], depth: 5.5, height: 2.7, frameColor: "anthracite", roofColor: "anthracite", screenColor: "piaskowy", antiCondensationLayer: true, ledLinear: false, screens: sides, glass: sides, sideShutters: emptySideShutters(), extraLegs: [] },
     }, carportSeed],
     [{
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "window-screen", productVersionId: screenSeed.definition.version.id,
@@ -140,6 +154,10 @@ test("validates and prices all newly catalogued MVP products", () => {
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "external-roller-shutter", productVersionId: shutterSeed.definition.version.id,
       values: { width: 1.6, height: 2.1, unitCount: 1, mounting: "reveal", slatProfile: "aluminium-foam", armorColor: "anthracite", boxColor: "anthracite", guideColor: "anthracite", drive: "radio", integratedMosquitoNet: true, openingPercent: 65 },
     }, shutterSeed],
+    [{
+      schemaVersion: "2.0", tenantSlug: "visnex", productType: "facade-blind", productVersionId: facadeBlindSeed.definition.version.id,
+      values: { width: 2, height: 2.4, unitCount: 2, mounting: "reveal", slatProfile: "z90", guideType: "rails", slatAngle: 45, openingPercent: 85, slatColor: "anthracite", hardwareColor: "anthracite", drive: "radio", weatherStation: true },
+    }, facadeBlindSeed],
     [{
       schemaVersion: "2.0", tenantSlug: "visnex", productType: "awning", productVersionId: awningSeed.definition.version.id,
       values: { width: 4.5, projection: 3, mounting: "wall", cassetteType: "full-cassette", pitch: 14, fabricColor: "piaskowy", frameColor: "anthracite", drive: "radio", led: true, windSensor: true, sunSensor: false, openingPercent: 85 },
@@ -191,6 +209,56 @@ test("keeps legacy window covers compatible and caps adjacent units at eight", (
   assert.equal(validation.derived.coverArea, 24);
   assert.ok(generateBom(multi, validation.derived).items.some((item) => item.label === "Kaseta screen" && item.quantity === 8));
   assert.throws(() => PublicConfigurationSchema.parse({ ...multi, values: { ...multi.values, unitCount: 9 } }));
+});
+
+test("keeps legacy structures compatible and validates versioned aluminium shutters", () => {
+  const legacy = PublicConfigurationSchema.parse({
+    ...pergola(),
+    productVersionId: "legacy-pergola-v1",
+    values: Object.fromEntries(Object.entries(pergola().values).filter(([key]) => key !== "sideShutters")),
+  });
+  assert.equal(legacy.values.sideShutters.formatVersion, "1.0");
+  assert.equal(Object.values(legacy.values.sideShutters.sides).some(Boolean), false);
+
+  const configuration = pergola();
+  configuration.values.sideShutters = {
+    ...emptySideShutters(),
+    sides: { front: true, back: false, left: true, right: false },
+    bladeOrientation: "vertical",
+    panelMotion: "sliding",
+    bladeMotion: "fixed",
+    openingPercent: 40,
+  };
+  const valid = validateConfiguration(configuration, pergolaSeed.definition);
+  assert.equal(valid.valid, true);
+  assert.equal(valid.derived.sideShutterSides, 2);
+  assert.ok(generateBom(configuration, valid.derived).items.some((item) => item.label.includes("lamele pionowe")));
+
+  configuration.values.screens.front = true;
+  const conflict = validateConfiguration(configuration, pergolaSeed.definition);
+  assert.ok(conflict.errors.some((issue) => issue.path === "values.sideShutters.sides.front" && issue.code === "conflict"));
+});
+
+test("validates facade blind motion, automation and the eight-unit renderer boundary", () => {
+  const configuration: PublicConfiguration = {
+    schemaVersion: "2.0",
+    tenantSlug: "visnex",
+    productType: "facade-blind",
+    productVersionId: facadeBlindSeed.definition.version.id,
+    values: { width: 2, height: 2.4, unitCount: 8, mounting: "under-plaster", slatProfile: "c80", guideType: "cables", slatAngle: 30, openingPercent: 72, slatColor: "anthracite", hardwareColor: "anthracite", drive: "radio", weatherStation: true },
+  };
+  const validation = validateConfiguration(configuration, facadeBlindSeed.definition);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.derived.coverArea, 38.4);
+  assert.ok(validation.warnings.some((issue) => issue.code === "demo_only"));
+  assert.ok(facadeBlindSeed.definition.parameters.every((parameter) => parameter.demoOnly));
+  assert.ok(facadeBlindSeed.definition.profiles.every((profile) => profile.demoOnly));
+  assert.ok(generateBom(configuration, validation.derived).items.some((item) => item.label === "Linka prowadząca" && item.quantity === 16));
+  assert.throws(() => PublicConfigurationSchema.parse({ ...configuration, values: { ...configuration.values, unitCount: 9 } }));
+
+  const manual = structuredClone(configuration);
+  manual.values.drive = "manual";
+  assert.ok(validateConfiguration(manual, facadeBlindSeed.definition).errors.some((issue) => issue.path === "values.weatherStation" && issue.code === "dependency"));
 });
 
 test("requires an electric awning drive for weather automation", () => {

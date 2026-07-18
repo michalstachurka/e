@@ -3,6 +3,15 @@ import type { PublicConfiguration } from "../../../packages/contracts/src/index.
 
 const fold = (value: string) => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "");
 
+function sideShutterRows(settings: { sides: Record<string, boolean>; bladeOrientation: string; panelMotion: string; bladeMotion: string; bladeAngle: number }) {
+  const sides = Object.entries(settings.sides).filter(([, enabled]) => enabled).map(([side]) => side);
+  if (!sides.length) return [];
+  return [[
+    "Shutters aluminiowe",
+    `${sides.join(", ")} / ${settings.bladeOrientation} / panel ${settings.panelMotion} / lamele ${settings.bladeMotion} ${settings.bladeAngle} deg`,
+  ]];
+}
+
 function configurationRows(configuration: PublicConfiguration) {
   if (configuration.productType === "bioclimatic-pergola") {
     const values = configuration.values;
@@ -13,6 +22,7 @@ function configurationRows(configuration: PublicConfiguration) {
       ["Wysokosc", `${values.height} m`],
       ["Kat lameli", `${values.slatAngle} deg`],
       ["Kolor", values.frameColor],
+      ...sideShutterRows(values.sideShutters),
     ];
   }
   if (configuration.productType === "veranda") {
@@ -21,6 +31,7 @@ function configurationRows(configuration: PublicConfiguration) {
       ["Szerokosc", `${values.width} m`], ["Glebokosc", `${values.depth} m`],
       ["Wysokosc tyl/przod", `${values.backHeight} / ${values.frontHeight} m`], ["Kat dachu", `${values.roofAngle} deg`],
       ["Pola / krokwie", `${values.roofFields} / ${values.rafterCount}`], ["Pokrycie", values.roofMaterial],
+      ...sideShutterRows(values.sideShutters),
     ];
   }
   if (configuration.productType === "carport") {
@@ -29,6 +40,7 @@ function configurationRows(configuration: PublicConfiguration) {
       ["Konstrukcja", values.construction], ["Szerokosc", `${values.moduleWidths.join(" + ")} m`],
       ["Glebokosc", `${values.depth} m`], ["Wysokosc", `${values.height} m`],
       ["Dach", `blacha trapezowa / ${values.roofColor}`], ["Spod", "warstwa antykondensacyjna"],
+      ...sideShutterRows(values.sideShutters),
     ];
   }
   if (configuration.productType === "window-screen") {
@@ -43,6 +55,14 @@ function configurationRows(configuration: PublicConfiguration) {
     return [
       ["Liczba rolet", `${values.unitCount}`], ["Wymiar jednej", `${values.width} x ${values.height} m`], ["Montaz", values.mounting], ["Pancerz", values.slatProfile],
       ["Naped", values.drive], ["Opuszczenie", `${values.openingPercent}%`], ["Moskitiera", values.integratedMosquitoNet ? "tak" : "nie"],
+    ];
+  }
+  if (configuration.productType === "facade-blind") {
+    const values = configuration.values;
+    return [
+      ["Liczba zaluzji", `${values.unitCount}`], ["Wymiar jednej", `${values.width} x ${values.height} m`],
+      ["Montaz", values.mounting], ["Lamele", values.slatProfile.toUpperCase()], ["Prowadzenie", values.guideType],
+      ["Kat lameli", `${values.slatAngle} deg`], ["Opuszczenie", `${values.openingPercent}%`], ["Naped", values.drive],
     ];
   }
   if (configuration.productType === "metal-garage") {

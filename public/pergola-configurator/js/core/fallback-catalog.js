@@ -5,6 +5,11 @@ const colors = [
   { id: "bronze", label: "Brąz", value: "#4A3527", demoOnly: true },
 ];
 
+const sideShutterProfiles = [
+  { id: "side-shutter-frame", label: "Rama shuttersa", usage: "Obwodowa rama panelu bocznego", aMm: 45, bMm: 38, shape: "rectangular", demoOnly: true },
+  { id: "side-shutter-blade", label: "Lamela shuttersa", usage: "Pionowa lub pozioma lamela panelu", aMm: 90, bMm: 16, shape: "louvre", demoOnly: true },
+];
+
 export const fallbackCatalog = Object.freeze({
   tenant: {
     slug: "visnex",
@@ -41,9 +46,10 @@ export const fallbackCatalog = Object.freeze({
         { id: "structural-post", label: "Słup konstrukcyjny", usage: "Podparcie pionowe konstrukcji", aMm: 140, bMm: 140, shape: "rectangular", demoOnly: true },
         { id: "frame-beam", label: "Belka ramy", usage: "Obwodowa rama dachu", aMm: 140, bMm: 180, shape: "rectangular", demoOnly: true },
         { id: "roof-louvre", label: "Lamela dachowa", usage: "Ruchome wypełnienie dachu", aMm: 210, bMm: 15, shape: "louvre", demoOnly: true },
+        ...sideShutterProfiles,
       ],
       colors,
-      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, louvreThickness: 0.015, demoOnly: true },
+      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, louvreThickness: 0.015, sideShutterPanelMaxWidth: 1.2, sideShutterFrameWidth: 0.045, sideShutterBladePitch: 0.12, demoOnly: true },
     },
     {
       id: "product-veranda",
@@ -69,9 +75,10 @@ export const fallbackCatalog = Object.freeze({
         { id: "frame-beam", label: "Belka konstrukcyjna", usage: "Belka przyścienna i frontowa", aMm: 130, bMm: 170, shape: "rectangular", demoOnly: true },
         { id: "roof-rafter", label: "Krokiew dachowa", usage: "Podparcie pola dachowego", aMm: 80, bMm: 122, shape: "rectangular", demoOnly: true },
         { id: "screen-support", label: "Profil pod kasetę ZIP", usage: "Opcjonalne podparcie kasety na boku", aMm: 50, bMm: 80, shape: "rectangular", demoOnly: true },
+        ...sideShutterProfiles,
       ],
       colors,
-      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, rafterHeight: 0.122, roofThickness: 0.018, screenCassetteHeight: 0.105, screenCassetteDepth: 0.11, demoOnly: true },
+      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, rafterHeight: 0.122, roofThickness: 0.018, screenCassetteHeight: 0.105, screenCassetteDepth: 0.11, sideShutterPanelMaxWidth: 1.2, sideShutterFrameWidth: 0.045, sideShutterBladePitch: 0.12, demoOnly: true },
     },
     {
       id: "product-carport", productType: "carport", name: "Carport", description: "Carport z nieruchomą blachą trapezową.", enabled: true, order: 30,
@@ -85,8 +92,9 @@ export const fallbackCatalog = Object.freeze({
         { id: "structural-post", label: "Słup konstrukcyjny", usage: "Podparcie pionowe", aMm: 140, bMm: 140, shape: "rectangular", demoOnly: true },
         { id: "frame-beam", label: "Belka ramy", usage: "Rama dachu", aMm: 140, bMm: 180, shape: "rectangular", demoOnly: true },
         { id: "roof-sheet", label: "Blacha trapezowa", usage: "Stałe poszycie", aMm: 200, bMm: 35, shape: "louvre", demoOnly: true },
+        ...sideShutterProfiles,
       ],
-      colors, visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetRibHeight: 0.035, sheetThickness: 0.012, antiCondensationThickness: 0.006, demoOnly: true },
+      colors, visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetRibHeight: 0.035, sheetThickness: 0.012, antiCondensationThickness: 0.006, sideShutterPanelMaxWidth: 1.2, sideShutterFrameWidth: 0.045, sideShutterBladePitch: 0.12, demoOnly: true },
     },
     {
       id: "product-window-screen", productType: "window-screen", name: "Screen ZIP do okna", description: "Zewnętrzny screen okienny.", enabled: true, order: 40,
@@ -119,6 +127,26 @@ export const fallbackCatalog = Object.freeze({
         { id: "shutter-slat", label: "Profil pancerza", usage: "Pozioma osłona", aMm: 39, bMm: 8, shape: "louvre", demoOnly: true },
       ],
       colors, visual: { boxSize: 0.165, guideWidth: 0.053, slatPitch: 0.039, demoOnly: true },
+    },
+    {
+      id: "product-facade-blind", productType: "facade-blind", name: "Żaluzja fasadowa", description: "Zewnętrzna żaluzja z aluminiowymi lamelami C/Z.", enabled: true, order: 55,
+      version: { id: "visnex-facade-blind-v1", number: 1, status: "published" }, steps: [],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 0.6, max: 5, step: 0.05, defaultValue: 2, demoOnly: true },
+        { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 0.8, max: 5, step: 0.05, defaultValue: 2.4, demoOnly: true },
+        { key: "unitCount", label: "Liczba sąsiadujących żaluzji", section: "dimensions", type: "range", min: 1, max: 8, step: 1, defaultValue: 1, demoOnly: true },
+        { key: "openingPercent", label: "Opuszczenie", section: "slats", type: "range", unit: "%", min: 0, max: 100, step: 1, defaultValue: 85, demoOnly: true },
+        { key: "slatAngle", label: "Kąt lameli", section: "slats", type: "range", unit: "°", min: 0, max: 90, step: 1, defaultValue: 45, demoOnly: true },
+      ],
+      profiles: [
+        { id: "facade-blind-headrail", label: "Rynna górna", usage: "Mechanizm podnoszenia", aMm: 58, bMm: 56, shape: "rectangular", demoOnly: true },
+        { id: "facade-blind-guide", label: "Prowadnica boczna", usage: "Prowadzenie pakietu", aMm: 25, bMm: 40, shape: "rectangular", demoOnly: true },
+        { id: "facade-blind-c80", label: "Lamela C80", usage: "Profil otwarty C", aMm: 80, bMm: 8, shape: "louvre", demoOnly: true },
+        { id: "facade-blind-z90", label: "Lamela Z90", usage: "Profil domykający Z", aMm: 90, bMm: 12, shape: "louvre", demoOnly: true },
+        { id: "facade-blind-bottom", label: "Listwa dolna", usage: "Dolna krawędź pakietu", aMm: 80, bMm: 18, shape: "rectangular", demoOnly: true },
+      ],
+      colors: colors.map((color) => ({ ...color, demoOnly: true })),
+      visual: { headrailWidth: 0.058, headrailHeight: 0.056, guideWidth: 0.025, slatPitchC80: 0.075, slatPitchZ90: 0.083, slatDepthC80: 0.08, slatDepthZ90: 0.09, slatThickness: 0.004, bottomRailHeight: 0.055, demoOnly: true },
     },
     {
       id: "product-awning", productType: "awning", name: "Markiza tarasowa", description: "Markiza z kasetą i automatyką.", enabled: true, order: 60,

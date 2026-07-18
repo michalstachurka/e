@@ -91,6 +91,16 @@ if (mount) {
   const SIDE_LABELS = { front: "Przód", back: "Tył", left: "Lewa", right: "Prawa" };
   const SIDES = ["front", "back", "left", "right"];
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+  const emptySideShutters = () => ({
+    formatVersion: "1.0",
+    sides: { front: false, back: false, left: false, right: false },
+    bladeOrientation: "horizontal",
+    panelMotion: "fixed",
+    bladeMotion: "adjustable",
+    bladeAngle: 35,
+    openingPercent: 0,
+    color: COLORS[0],
+  });
 
   const state = {
     productType: "bioclimatic-pergola",
@@ -107,6 +117,7 @@ if (mount) {
     screenFabric: SCREEN_COLORS[0],
     glass: { front: false, back: false, left: false, right: false },
     extraLegs: [], // dodatkowe nogi: [{x, z}] w metrach
+    sideShutters: emptySideShutters(),
     spin: true,
     veranda: {
       width: 4.5,
@@ -129,6 +140,7 @@ if (mount) {
       lighting: false,
       rafterLeds: [],
       extraLegs: [],
+      sideShutters: emptySideShutters(),
     },
     carport: {
       construction: "freestanding",
@@ -142,6 +154,7 @@ if (mount) {
       screens: { front: false, back: false, left: false, right: false },
       glass: { front: false, back: false, left: false, right: false },
       extraLegs: [],
+      sideShutters: emptySideShutters(),
     },
     windowScreen: {
       width: 2,
@@ -168,6 +181,20 @@ if (mount) {
       drive: "radio",
       integratedMosquitoNet: false,
       openingPercent: 65,
+    },
+    facadeBlind: {
+      width: 2,
+      height: 2.4,
+      unitCount: 1,
+      mounting: "reveal",
+      slatProfile: "z90",
+      guideType: "rails",
+      slatAngle: 45,
+      openingPercent: 85,
+      slatColor: COLORS[0],
+      hardwareColor: COLORS[0],
+      drive: "radio",
+      weatherStation: true,
     },
     awning: {
       width: 4.5,
@@ -209,6 +236,7 @@ if (mount) {
     carport: "carport",
     "window-screen": "windowScreen",
     "external-roller-shutter": "externalRollerShutter",
+    "facade-blind": "facadeBlind",
     awning: "awning",
     "metal-garage": "metalGarage",
   };
@@ -275,6 +303,17 @@ if (mount) {
   };
   applyFromURL();
 
+  const hydrateSideShutters = (value) => {
+    const defaults = emptySideShutters();
+    return {
+      ...defaults,
+      ...(value || {}),
+      formatVersion: "1.0",
+      sides: { ...defaults.sides, ...(value?.sides || {}) },
+      color: structureColor(value?.color || "anthracite"),
+    };
+  };
+
   const hydrateConfiguration = (configuration) => {
     if (!configuration || !productDefinitions.has(configuration.productType)) return false;
     state.productType = configuration.productType;
@@ -293,6 +332,7 @@ if (mount) {
       state.screens = { ...values.screens };
       state.glass = { ...values.glass };
       state.extraLegs = values.extraLegs.map((leg) => ({ ...leg }));
+      state.sideShutters = hydrateSideShutters(values.sideShutters);
     } else if (configuration.productType === "veranda") {
       const values = { ...configuration.values };
       if (values.leftWall === "top-wedge") {
@@ -316,6 +356,7 @@ if (mount) {
           : [];
       state.veranda.lighting = state.veranda.rafterLeds.length > 0;
       state.veranda.extraLegs = (configuration.values.extraLegs || []).map((leg) => ({ ...leg }));
+      state.veranda.sideShutters = hydrateSideShutters(configuration.values.sideShutters);
     } else if (configuration.productType === "carport") {
       const values = configuration.values;
       Object.assign(state.carport, values, {
@@ -324,6 +365,7 @@ if (mount) {
         roofColor: structureColor(values.roofColor),
         screenColor: textileColor(values.screenColor),
         extraLegs: values.extraLegs.map((leg) => ({ ...leg })),
+        sideShutters: hydrateSideShutters(values.sideShutters),
       });
     } else if (configuration.productType === "window-screen") {
       Object.assign(state.windowScreen, configuration.values, {
@@ -337,6 +379,12 @@ if (mount) {
         armorColor: structureColor(configuration.values.armorColor),
         boxColor: structureColor(configuration.values.boxColor),
         guideColor: structureColor(configuration.values.guideColor),
+      });
+    } else if (configuration.productType === "facade-blind") {
+      Object.assign(state.facadeBlind, configuration.values, {
+        unitCount: configuration.values.unitCount || 1,
+        slatColor: structureColor(configuration.values.slatColor),
+        hardwareColor: structureColor(configuration.values.hardwareColor),
       });
     } else if (configuration.productType === "awning") {
       Object.assign(state.awning, configuration.values, {
@@ -373,6 +421,8 @@ if (mount) {
   }
 
   const activeDefinition = () => productDefinitions.get(state.productType);
+  const sideShutterParams = (settings) => ({ ...settings, sides: { ...settings.sides }, color: settings.color.value });
+  const sideShutterValues = (settings) => ({ ...settings, sides: { ...settings.sides }, color: settings.color.id });
   const paramsBuilders = new Map();
   paramsBuilders.set("bioclimatic-pergola", () => ({
     productType: "bioclimatic-pergola",
@@ -389,6 +439,7 @@ if (mount) {
     screenColor: state.screenFabric.value,
     glass: { ...state.glass },
     extraLegs: state.extraLegs.map((l) => ({ ...l })),
+    sideShutters: sideShutterParams(state.sideShutters),
     spin: state.spin,
     visual: activeDefinition()?.visual,
     profiles: activeDefinition()?.profiles,
@@ -404,6 +455,7 @@ if (mount) {
     spin: state.spin,
     visual: activeDefinition()?.visual,
     profiles: activeDefinition()?.profiles,
+    sideShutters: sideShutterParams(state.veranda.sideShutters),
   }));
   paramsBuilders.set("carport", () => ({
     productType: "carport",
@@ -421,6 +473,7 @@ if (mount) {
     screens: { ...state.carport.screens },
     glass: { ...state.carport.glass },
     extraLegs: state.carport.extraLegs.map((leg) => ({ ...leg })),
+    sideShutters: sideShutterParams(state.carport.sideShutters),
     spin: state.spin,
     visual: activeDefinition()?.visual,
     profiles: activeDefinition()?.profiles,
@@ -443,6 +496,16 @@ if (mount) {
     armorColor: state.externalRollerShutter.armorColor.value,
     boxColor: state.externalRollerShutter.boxColor.value,
     guideColor: state.externalRollerShutter.guideColor.value,
+    spin: state.spin,
+    visual: activeDefinition()?.visual,
+    profiles: activeDefinition()?.profiles,
+  }));
+  paramsBuilders.set("facade-blind", () => ({
+    productType: "facade-blind",
+    ...state.facadeBlind,
+    frameColor: state.facadeBlind.hardwareColor.value,
+    slatColor: state.facadeBlind.slatColor.value,
+    hardwareColor: state.facadeBlind.hardwareColor.value,
     spin: state.spin,
     visual: activeDefinition()?.visual,
     profiles: activeDefinition()?.profiles,
@@ -483,11 +546,12 @@ if (mount) {
     frameColor: state.frame.id,
     slatColor: state.slat.id,
     screenColor: state.screenFabric.id,
-      ledLinear: state.ledLinear,
-      ledSpots: state.ledSpots,
-      screens: { ...state.screens },
-      glass: { ...state.glass },
-      extraLegs: state.extraLegs.map((leg) => ({ ...leg })),
+    ledLinear: state.ledLinear,
+    ledSpots: state.ledSpots,
+    screens: { ...state.screens },
+    glass: { ...state.glass },
+    extraLegs: state.extraLegs.map((leg) => ({ ...leg })),
+    sideShutters: sideShutterValues(state.sideShutters),
   }));
   configurationBuilders.set("veranda", () => ({
     width: state.veranda.width,
@@ -510,6 +574,7 @@ if (mount) {
     lighting: state.veranda.lighting,
     rafterLeds: [...state.veranda.rafterLeds],
     extraLegs: state.veranda.extraLegs.map((leg) => ({ ...leg })),
+    sideShutters: sideShutterValues(state.veranda.sideShutters),
   }));
   configurationBuilders.set("carport", () => ({
     construction: state.carport.construction,
@@ -524,6 +589,7 @@ if (mount) {
     screens: { ...state.carport.screens },
     glass: { ...state.carport.glass },
     extraLegs: state.carport.extraLegs.map((leg) => ({ ...leg })),
+    sideShutters: sideShutterValues(state.carport.sideShutters),
   }));
   configurationBuilders.set("window-screen", () => ({
     width: state.windowScreen.width,
@@ -550,6 +616,20 @@ if (mount) {
     drive: state.externalRollerShutter.drive,
     integratedMosquitoNet: state.externalRollerShutter.integratedMosquitoNet,
     openingPercent: state.externalRollerShutter.openingPercent,
+  }));
+  configurationBuilders.set("facade-blind", () => ({
+    width: state.facadeBlind.width,
+    height: state.facadeBlind.height,
+    unitCount: state.facadeBlind.unitCount,
+    mounting: state.facadeBlind.mounting,
+    slatProfile: state.facadeBlind.slatProfile,
+    guideType: state.facadeBlind.guideType,
+    slatAngle: state.facadeBlind.slatAngle,
+    openingPercent: state.facadeBlind.openingPercent,
+    slatColor: state.facadeBlind.slatColor.id,
+    hardwareColor: state.facadeBlind.hardwareColor.id,
+    drive: state.facadeBlind.drive,
+    weatherStation: state.facadeBlind.weatherStation,
   }));
   configurationBuilders.set("awning", () => ({
     width: state.awning.width,
@@ -632,6 +712,7 @@ if (mount) {
     else if (state.productType === "carport") specEl.textContent = `${state.carport.widths.map((w) => w.toFixed(1)).join(" + ")} × ${state.carport.depth.toFixed(1)} × ${state.carport.height.toFixed(2)} m · dach stały`;
     else if (state.productType === "window-screen") specEl.textContent = `${state.windowScreen.unitCount} × ${state.windowScreen.width.toFixed(2)} × ${state.windowScreen.height.toFixed(2)} m · opuszczenie ${state.windowScreen.openingPercent}%`;
     else if (state.productType === "external-roller-shutter") specEl.textContent = `${state.externalRollerShutter.unitCount} × ${state.externalRollerShutter.width.toFixed(2)} × ${state.externalRollerShutter.height.toFixed(2)} m · opuszczenie ${state.externalRollerShutter.openingPercent}%`;
+    else if (state.productType === "facade-blind") specEl.textContent = `${state.facadeBlind.unitCount} × ${state.facadeBlind.width.toFixed(2)} × ${state.facadeBlind.height.toFixed(2)} m · ${state.facadeBlind.slatProfile.toUpperCase()} · ${state.facadeBlind.slatAngle}°`;
     else if (state.productType === "awning") specEl.textContent = `${state.awning.width.toFixed(1)} × ${state.awning.projection.toFixed(1)} m · ${state.awning.pitch}° · wysunięcie ${state.awning.openingPercent}%`;
     else specEl.textContent = `${state.metalGarage.width.toFixed(2)} × ${state.metalGarage.depth.toFixed(2)} × ${state.metalGarage.wallHeight.toFixed(2)} m · ${state.metalGarage.roofType === "gable" ? "dach dwuspadowy" : "dach jednospadowy"}`;
   };
@@ -676,6 +757,11 @@ if (mount) {
       lead: "Ustaw gabaryt, montaż, pancerz, napęd i opcjonalną moskitierę. Dobór techniczny wymaga tabel konkretnego systemu.",
       ar: "Twoja roleta<br><em>w prawdziwej skali.</em>",
     },
+    "facade-blind": {
+      title: "Dobierz<br><em>żaluzję fasadową.</em>",
+      lead: "Ustaw gabaryt, profil C/Z, prowadzenie, stopień opuszczenia i niezależny kąt aluminiowych lameli.",
+      ar: "Twoja żaluzja<br><em>w prawdziwej skali.</em>",
+    },
     awning: {
       title: "Zaprojektuj<br><em>swoją markizę.</em>",
       lead: "Ustaw szerokość, wysięg, kasetę, tkaninę, napęd, LED i automatykę pogodową.",
@@ -698,6 +784,7 @@ if (mount) {
     document.getElementById("verandaControls").hidden = state.productType !== "veranda";
     document.getElementById("catalogProductControls").hidden = !PRODUCT_STATE_KEYS[state.productType];
     if (PRODUCT_STATE_KEYS[state.productType]) renderCatalogControls();
+    renderStructureShutterControls();
     productSwitcher.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.product === state.productType)));
     const copy = PRODUCT_COPY[state.productType];
     document.getElementById("configuratorTitle").innerHTML = copy.title;
@@ -859,7 +946,9 @@ if (mount) {
     btn.addEventListener("click", () => {
       const side = btn.dataset.side;
       state.screens[side] = !state.screens[side];
+      if (state.screens[side]) state.sideShutters.sides[side] = false;
       btn.setAttribute("aria-pressed", String(state.screens[side]));
+      renderStructureShutterControls();
       push();
     });
   });
@@ -885,7 +974,9 @@ if (mount) {
     btn.addEventListener("click", () => {
       const side = btn.dataset.side;
       state.glass[side] = !state.glass[side];
+      if (state.glass[side]) state.sideShutters.sides[side] = false;
       btn.setAttribute("aria-pressed", String(state.glass[side]));
+      renderStructureShutterControls();
       push();
     });
   });
@@ -986,7 +1077,9 @@ if (mount) {
     select.value = state.veranda[key];
     select.addEventListener("change", () => {
       state.veranda[key] = select.value;
+      if (select.value !== "none") state.veranda.sideShutters.sides[side || "front"] = false;
       if (side) syncVerandaSideAssembly(side);
+      renderStructureShutterControls();
       push();
     });
   };
@@ -1107,12 +1200,82 @@ if (mount) {
   const swatchesMarkup = (key, label, selected, palette = COLORS) => `<div class="pergola3d__group"><span class="pergola3d__label">${label}</span><div class="pergola3d__swatches">${palette.map((color) => `<button type="button" data-catalog-color="${key}" data-color-id="${color.id}" aria-pressed="${selected.id === color.id}"><i style="--sw:${color.value}"></i><span>${color.label}</span></button>`).join("")}</div></div>`;
   const toggleMarkup = (key, label, value, disabled = false) => `<button type="button" data-catalog-toggle="${key}" aria-pressed="${value}"${disabled ? " disabled" : ""}>${label}</button>`;
   const sideMarkup = (key, label, values) => `<div class="pergola3d__group"><span class="pergola3d__label">${label}</span><div class="pergola3d__pills">${SIDES.map((side) => `<button type="button" data-catalog-side="${key}" data-side="${side}" aria-pressed="${values[side]}">${SIDE_LABELS[side]}</button>`).join("")}</div></div>`;
-  const windowUnitMarkup = (count) => {
+  const windowUnitMarkup = (count, noun = "Osłony") => {
     const maximum = Number(parameterFor("unitCount")?.max || 8);
-    return `<div class="pergola3d__group window-unit-control"><span class="pergola3d__label">Rolety obok siebie · <b>${count}</b> / ${maximum}</span><div class="pergola3d__pills"><button type="button" data-window-unit-action="remove"${count <= 1 ? " disabled" : ""}>Usuń ostatnią</button><button type="button" data-window-unit-action="add"${count >= maximum ? " disabled" : ""}>Dodaj roletę obok</button></div><small>Każda roleta otrzymuje osobną wnękę okienną. Limit ${maximum} chroni płynność sceny 3D.</small></div>`;
+    return `<div class="pergola3d__group window-unit-control"><span class="pergola3d__label">${noun} obok siebie · <b>${count}</b> / ${maximum}</span><div class="pergola3d__pills"><button type="button" data-window-unit-action="remove"${count <= 1 ? " disabled" : ""}>Usuń ostatnią</button><button type="button" data-window-unit-action="add"${count >= maximum ? " disabled" : ""}>Dodaj obok</button></div><small>Każda osłona otrzymuje osobną wnękę okienną. Limit ${maximum} chroni płynność sceny 3D.</small></div>`;
   };
   const MOUNTING_LABELS = [["front", "Natynkowy"], ["reveal", "We wnęce"], ["under-plaster", "Podtynkowy"], ["top-mounted", "Nadstawny"]];
   const DRIVE_LABELS = [["manual", "Ręczny"], ["wired", "Przewodowy"], ["radio", "Radiowy / smart home"], ["solar", "Solarny"]];
+
+  const structureShutterControls = document.getElementById("structureShutterControls");
+  const STRUCTURE_SHUTTER_PRODUCTS = new Set(["bioclimatic-pergola", "veranda", "carport"]);
+  const activeStructureSideShutters = () => state.productType === "bioclimatic-pergola"
+    ? state.sideShutters
+    : state.productType === "veranda"
+      ? state.veranda.sideShutters
+      : state.carport.sideShutters;
+  const clearSideShutterConflict = (side) => {
+    if (state.productType === "bioclimatic-pergola") {
+      state.screens[side] = false;
+      state.glass[side] = false;
+      screensGroup.querySelector(`[data-side="${side}"]`)?.setAttribute("aria-pressed", "false");
+      glassGroup.querySelector(`[data-side="${side}"]`)?.setAttribute("aria-pressed", "false");
+    } else if (state.productType === "carport") {
+      state.carport.screens[side] = false;
+      state.carport.glass[side] = false;
+    } else if (state.productType === "veranda") {
+      if (side === "left") { state.veranda.leftWall = "none"; document.getElementById("verandaLeftWall").value = "none"; syncVerandaSideAssembly("left"); }
+      if (side === "right") { state.veranda.rightWall = "none"; document.getElementById("verandaRightWall").value = "none"; syncVerandaSideAssembly("right"); }
+      if (side === "front") { state.veranda.frontWall = "none"; document.getElementById("verandaFrontWall").value = "none"; }
+    }
+  };
+  const renderStructureShutterControls = () => {
+    const supported = STRUCTURE_SHUTTER_PRODUCTS.has(state.productType);
+    structureShutterControls.hidden = !supported;
+    if (!supported) return;
+    const settings = activeStructureSideShutters();
+    const availableSides = state.productType === "veranda" ? ["front", "left", "right"] : SIDES;
+    const selectedCount = availableSides.filter((side) => settings.sides[side]).length;
+    structureShutterControls.innerHTML = `<section class="catalog-control-grid side-shutter-controls">
+      <header class="side-shutter-controls__head"><div><span class="pergola3d__label">Shutters aluminiowe · boki konstrukcji</span><strong>${selectedCount ? `${selectedCount} wybrane` : "Wyłączone"}</strong></div><small>Wspólny moduł 1.0 · dane demonstracyjne</small></header>
+      <p class="pergola3d__hint">Ruch panelu i ruch lameli to dwie osobne decyzje. Panel może być stały lub przesuwny, a jego pionowe albo poziome lamele — zamocowane pod stałym kątem lub regulowane.</p>
+      <div class="pergola3d__group"><span class="pergola3d__label">Boki</span><div class="pergola3d__pills">${availableSides.map((side) => `<button type="button" data-side-shutter-side="${side}" aria-pressed="${settings.sides[side]}">${SIDE_LABELS[side]}</button>`).join("")}</div></div>
+      ${selectMarkup("sideShutterBladeOrientation", "Kierunek lameli", settings.bladeOrientation, [["horizontal", "Poziome"], ["vertical", "Pionowe"]]).replaceAll("data-catalog-select", "data-side-shutter-select")}
+      ${selectMarkup("sideShutterPanelMotion", "Ruch całego panelu", settings.panelMotion, [["fixed", "Panel stały"], ["sliding", "Panel przesuwny"]]).replaceAll("data-catalog-select", "data-side-shutter-select")}
+      ${selectMarkup("sideShutterBladeMotion", "Ruch lameli", settings.bladeMotion, [["fixed", "Lamele stałe"], ["adjustable", "Lamele regulowane"]]).replaceAll("data-catalog-select", "data-side-shutter-select")}
+      <label class="pergola3d__slider"><span class="pergola3d__label">${settings.bladeMotion === "fixed" ? "Kąt montażowy" : "Aktualny kąt lameli"} · <b data-side-shutter-output="bladeAngle">${settings.bladeAngle}</b>°</span><input type="range" data-side-shutter-range="bladeAngle" min="0" max="90" step="1" value="${settings.bladeAngle}"></label>
+      ${settings.panelMotion === "sliding" ? `<label class="pergola3d__slider"><span class="pergola3d__label">Przesunięcie / złożenie paneli · <b data-side-shutter-output="openingPercent">${settings.openingPercent}</b>%</span><input type="range" data-side-shutter-range="openingPercent" min="0" max="100" step="1" value="${settings.openingPercent}"></label>` : ""}
+      <div class="pergola3d__group"><span class="pergola3d__label">Kolor aluminium</span><div class="pergola3d__swatches">${COLORS.map((color) => `<button type="button" data-side-shutter-color="${color.id}" aria-pressed="${settings.color.id === color.id}"><i style="--sw:${color.value}"></i><span>${color.label}</span></button>`).join("")}</div></div>
+      <div class="catalog-readonly"><strong>Granica pilota:</strong> do 4 paneli na bok, generowanych automatycznie z rozpiętości. Limit geometrii jest niezależny od przyszłych limitów planu SaaS.</div>
+    </section>`;
+    const rerender = () => {
+      if (state.productType === "carport") renderCatalogControls();
+      renderStructureShutterControls();
+      push();
+    };
+    structureShutterControls.querySelectorAll("[data-side-shutter-side]").forEach((button) => button.addEventListener("click", () => {
+      const side = button.dataset.sideShutterSide;
+      settings.sides[side] = !settings.sides[side];
+      if (settings.sides[side]) clearSideShutterConflict(side);
+      rerender();
+    }));
+    structureShutterControls.querySelectorAll("[data-side-shutter-select]").forEach((select) => select.addEventListener("change", () => {
+      const keys = { sideShutterBladeOrientation: "bladeOrientation", sideShutterPanelMotion: "panelMotion", sideShutterBladeMotion: "bladeMotion" };
+      settings[keys[select.dataset.sideShutterSelect]] = select.value;
+      if (settings.panelMotion === "fixed") settings.openingPercent = 0;
+      rerender();
+    }));
+    structureShutterControls.querySelectorAll("[data-side-shutter-range]").forEach((input) => input.addEventListener("input", () => {
+      const key = input.dataset.sideShutterRange;
+      settings[key] = Number(input.value);
+      structureShutterControls.querySelector(`[data-side-shutter-output="${key}"]`).textContent = input.value;
+      push();
+    }));
+    structureShutterControls.querySelectorAll("[data-side-shutter-color]").forEach((button) => button.addEventListener("click", () => {
+      settings.color = structureColor(button.dataset.sideShutterColor);
+      rerender();
+    }));
+  };
 
   const renderCatalogControls = () => {
     const product = catalogState();
@@ -1157,6 +1320,21 @@ if (mount) {
         ${selectMarkup("drive", "Napęd", product.drive, DRIVE_LABELS)}
         ${swatchesMarkup("armorColor", "Kolor pancerza", product.armorColor)}${swatchesMarkup("boxColor", "Kolor skrzynki", product.boxColor)}${swatchesMarkup("guideColor", "Kolor prowadnic", product.guideColor)}
         <div class="pergola3d__pills">${toggleMarkup("integratedMosquitoNet", "Zintegrowana moskitiera", product.integratedMosquitoNet)}</div>
+      </div>`;
+    } else if (state.productType === "facade-blind") {
+      const manual = product.drive === "manual";
+      catalogControls.innerHTML = `<div class="catalog-control-grid">
+        <p class="pergola3d__hint demo-badge">Model rozdziela podnoszenie pakietu i obrót lameli. Gabaryty, wysokość pakietu, prowadzenie i klasy wiatrowe wymagają tabel konkretnego producenta.</p>
+        ${windowUnitMarkup(product.unitCount, "Żaluzje")}
+        ${rangeMarkup("width", "Szerokość jednej wnęki", product.width, 2, "m")}${rangeMarkup("height", "Wysokość jednej wnęki", product.height, 2, "m")}
+        ${rangeMarkup("openingPercent", "Stopień opuszczenia pakietu", product.openingPercent, 0, "%")}${rangeMarkup("slatAngle", "Kąt lameli", product.slatAngle, 0, "°")}
+        ${selectMarkup("mounting", "Sposób montażu", product.mounting, MOUNTING_LABELS.filter(([id]) => id !== "top-mounted"))}
+        ${selectMarkup("slatProfile", "Geometria lameli", product.slatProfile, [["c80", "C80 · profil otwarty"], ["z90", "Z90 · profil domykający"]])}
+        ${selectMarkup("guideType", "Prowadzenie boczne", product.guideType, [["rails", "Prowadnice szynowe"], ["cables", "Prowadzenie linkowe"]])}
+        ${selectMarkup("drive", "Napęd", product.drive, DRIVE_LABELS)}
+        ${swatchesMarkup("slatColor", "Kolor lameli", product.slatColor)}${swatchesMarkup("hardwareColor", "Kolor osłony i prowadnic", product.hardwareColor)}
+        <div class="pergola3d__group"><span class="pergola3d__label">Automatyka</span><div class="pergola3d__pills">${toggleMarkup("weatherStation", "Stacja pogodowa", product.weatherStation, manual)}</div></div>
+        <div class="catalog-readonly"><strong>Profile C80/Z90:</strong> renderowane jako różne uproszczone przekroje. Dokładna geometria, uszczelki i wysokość zwiniętego pakietu pozostają po stronie zatwierdzonego katalogu producenta.</div>
       </div>`;
     } else if (state.productType === "metal-garage") {
       catalogControls.innerHTML = `<div class="catalog-control-grid">
@@ -1207,6 +1385,7 @@ if (mount) {
         product.windSensor = false;
         product.sunSensor = false;
       }
+      if (state.productType === "facade-blind" && select.dataset.catalogSelect === "drive" && select.value === "manual") product.weatherStation = false;
       rerenderAndPush();
     }));
     catalogControls.querySelectorAll("[data-catalog-toggle]").forEach((button) => button.addEventListener("click", () => {
@@ -1220,7 +1399,10 @@ if (mount) {
       rerenderAndPush();
     }));
     catalogControls.querySelectorAll("[data-catalog-side]").forEach((button) => button.addEventListener("click", () => {
-      product[button.dataset.catalogSide][button.dataset.side] = !product[button.dataset.catalogSide][button.dataset.side];
+      const side = button.dataset.side;
+      product[button.dataset.catalogSide][side] = !product[button.dataset.catalogSide][side];
+      if (product[button.dataset.catalogSide][side] && product.sideShutters) product.sideShutters.sides[side] = false;
+      renderStructureShutterControls();
       rerenderAndPush();
     }));
     catalogControls.querySelectorAll("[data-carport-modules]").forEach((button) => button.addEventListener("click", () => {
@@ -1506,6 +1688,11 @@ if (mount) {
   };
   const WALL_LABELS = Object.fromEntries([...WALL_OPTIONS, ["top-wedge", "Klin górny · starszy zapis"]]);
   const TRIANGLE_LABELS = Object.fromEntries(TRIANGLE_OPTIONS);
+  const sideShutterSummary = (settings) => {
+    const sides = SIDES.filter((side) => settings.sides[side]).map((side) => SIDE_LABELS[side]);
+    if (!sides.length) return "Brak";
+    return `${sides.join(", ")} · lamele ${settings.bladeOrientation === "horizontal" ? "poziome" : "pionowe"} ${settings.bladeMotion === "adjustable" ? "regulowane" : "stałe"} · panel ${settings.panelMotion === "sliding" ? "przesuwny" : "stały"}`;
+  };
   const summaryHost = document.getElementById("configurationSummaryList");
   const quotePreview = document.getElementById("quotePreview");
   const notice = document.getElementById("configuratorNotice");
@@ -1521,6 +1708,7 @@ if (mount) {
       ["Wymiary", `${state.widths.map((width) => width.toFixed(1)).join(" + ")} × ${state.depth.toFixed(1)} × ${state.height.toFixed(2)} m`],
       ["Lamele", `${state.angle}°`],
       ["Wyposażenie", `${Number(state.ledLinear) + Number(state.ledSpots) + SIDES.filter((side) => state.screens[side] || state.glass[side]).length} wybrane`],
+      ["Shutters aluminiowe", sideShutterSummary(state.sideShutters)],
     ];
     if (state.productType === "veranda") return [
       ["Produkt", "Weranda · demo"],
@@ -1532,6 +1720,7 @@ if (mount) {
       ["Podparcie kasety", [state.veranda.leftScreenSupport ? "lewa" : "", state.veranda.rightScreenSupport ? "prawa" : ""].filter(Boolean).join(", ") || "Bez profilu dodatkowego"],
       ["LED liniowy na krokwiach", state.veranda.rafterLeds.length ? state.veranda.rafterLeds.map((index) => index + 1).join(", ") : "Bez LED"],
       ["Dodatkowe nogi", String(state.veranda.extraLegs.length)],
+      ["Shutters aluminiowe", sideShutterSummary(state.veranda.sideShutters)],
     ];
     if (state.productType === "carport") return [
       ["Produkt", "Carport · demo"],
@@ -1539,6 +1728,7 @@ if (mount) {
       ["Wymiary", `${state.carport.widths.map((width) => width.toFixed(1)).join(" + ")} × ${state.carport.depth.toFixed(1)} × ${state.carport.height.toFixed(2)} m`],
       ["Dach", `Blacha trapezowa ${state.carport.roofColor.label} · warstwa antykondensacyjna od dołu`],
       ["Wyposażenie", `${Number(state.carport.ledLinear) + SIDES.filter((side) => state.carport.screens[side] || state.carport.glass[side]).length + state.carport.extraLegs.length} wybrane`],
+      ["Shutters aluminiowe", sideShutterSummary(state.carport.sideShutters)],
     ];
     if (state.productType === "window-screen") return [
       ["Produkt", "Screen ZIP do okna · demo"],
@@ -1554,6 +1744,14 @@ if (mount) {
       ["System", `${state.externalRollerShutter.mounting} · ${state.externalRollerShutter.slatProfile}`],
       ["Sterowanie", `${state.externalRollerShutter.drive} · opuszczenie ${state.externalRollerShutter.openingPercent}%`],
       ["Moskitiera", state.externalRollerShutter.integratedMosquitoNet ? "Zintegrowana" : "Brak"],
+    ];
+    if (state.productType === "facade-blind") return [
+      ["Produkt", "Żaluzja fasadowa · demo"],
+      ["Żaluzje", `${state.facadeBlind.unitCount} szt. obok siebie`],
+      ["Wymiar jednej", `${state.facadeBlind.width.toFixed(2)} × ${state.facadeBlind.height.toFixed(2)} m`],
+      ["System", `${state.facadeBlind.mounting} · ${state.facadeBlind.slatProfile.toUpperCase()} · ${state.facadeBlind.guideType}`],
+      ["Pozycja", `opuszczenie ${state.facadeBlind.openingPercent}% · lamele ${state.facadeBlind.slatAngle}°`],
+      ["Sterowanie", `${state.facadeBlind.drive}${state.facadeBlind.weatherStation ? " · stacja pogodowa" : ""}`],
     ];
     if (state.productType === "metal-garage") return [
       ["Produkt", "Garaż blaszany · demo"],

@@ -11,6 +11,8 @@ import { createProfileMesh } from "./core/svg-profile-geometry.js";
 import { createVerandaRenderer } from "./renderers/veranda-renderer.js";
 import { createWindowCoverRenderer } from "./renderers/window-cover-renderer.js";
 import { createMetalGarageRenderer } from "./renderers/metal-garage-renderer.js";
+import { createFacadeBlindRenderer } from "./renderers/facade-blind-renderer.js";
+import { addStructureSideShutters } from "./renderers/side-shutter-system.js";
 
 /** Soft radial ground shadow texture. */
 function shadowTexture() {
@@ -1134,6 +1136,8 @@ export function createPergolaCanvas(mountEl, initialParams) {
       }
     }
 
+    addStructureSideShutters({ THREE, root: group, config: p, width: totalW, depth: D, height: H, baseMaterial: material });
+
     ground.scale.setScalar(Math.max(totalW, D) * 1.9);
     shadow.scale.set(totalW * 1.6, D * 1.7, 1);
     scene.add(group);
@@ -1211,6 +1215,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     .register(carportRenderer)
     .register(createWindowCoverRenderer(rendererContext, "window-screen"))
     .register(createWindowCoverRenderer(rendererContext, "external-roller-shutter"))
+    .register(createFacadeBlindRenderer(rendererContext))
     .register(createWindowCoverRenderer(rendererContext, "awning"))
     .register(createMetalGarageRenderer(rendererContext));
   let activeRenderer = null;
@@ -1410,6 +1415,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
     gutters: params.gutters,
     anchoring: params.anchoring,
     antiCondensationFelt: params.antiCondensationFelt,
+    sideShutters: params.sideShutters,
+    slatAngle: params.slatAngle,
+    hardwareColor: params.hardwareColor,
+    weatherStation: params.weatherStation,
     profiles: params.profiles,
     visual: params.visual,
   });

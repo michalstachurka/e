@@ -16,6 +16,9 @@ export interface ValidationResult {
   configuration?: PublicConfiguration;
 }
 
+type StructureSideShutters = Extract<PublicConfiguration, { productType: "carport" }>['values']['sideShutters'];
+type StructureSide = keyof StructureSideShutters['sides'];
+
 const round = (value: number, precision = 3) => Number(value.toFixed(precision));
 
 export function calculateLouvreCount(depth: number, pitch = 0.21, postSize = 0.14) {
@@ -49,6 +52,31 @@ function checkRange(errors: ValidationIssue[], definition: ProductDefinition, ke
   if (!parameter) return;
   if (parameter.min !== undefined && value < parameter.min) errors.push({ path: `values.${key}`, message: `${parameter.label}: minimum ${parameter.min}${parameter.unit || ""}.`, code: "too_small" });
   if (parameter.max !== undefined && value > parameter.max) errors.push({ path: `values.${key}`, message: `${parameter.label}: maksimum ${parameter.max}${parameter.unit || ""}.`, code: "too_big" });
+}
+
+function validateStructureSideShutters(options: {
+  settings: StructureSideShutters;
+  width: number;
+  depth: number;
+  height: number;
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
+  derived: Record<string, number | number[]>;
+  blockedSides?: Partial<Record<StructureSide, boolean>>;
+}) {
+  const { settings, width, depth, height, errors, warnings, derived, blockedSides = {} } = options;
+  const selected = (Object.keys(settings.sides) as StructureSide[]).filter((side) => settings.sides[side]);
+  if (!selected.length) return;
+  const area = selected.reduce((sum, side) => sum + (side === "front" || side === "back" ? width : depth) * height, 0);
+  derived.sideShutterSides = selected.length;
+  derived.sideShutterArea = round(area, 2);
+  for (const side of selected) {
+    if (blockedSides[side]) errors.push({ path: `values.sideShutters.sides.${side}`, message: "Shutters koliduje z inną zabudową tego boku.", code: "conflict" });
+  }
+  if (settings.panelMotion === "fixed" && settings.openingPercent > 0) {
+    warnings.push({ path: "values.sideShutters.openingPercent", message: "Przesunięcie panelu jest używane wyłącznie dla shuttersów przesuwnych.", code: "ignored_value" });
+  }
+  warnings.push({ path: "values.sideShutters", message: "Profile, rozstaw, okucia, prowadnice i odporność wiatrowa shuttersów aluminiowych są demonstracyjne.", code: "demo_only" });
 }
 
 export function validateConfiguration(input: unknown, definition: ProductDefinition): ValidationResult {
@@ -85,6 +113,12 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     derived.louvresPerModule = calculateLouvreCount(values.depth, pitch, postSize);
     derived.totalLouvres = Number(derived.louvresPerModule) * values.moduleWidths.length;
     derived.totalWidth = round(values.moduleWidths.reduce((sum, width) => sum + width, 0));
+    validateStructureSideShutters({
+      settings: values.sideShutters,
+      width: Number(derived.totalWidth), depth: values.depth, height: values.height,
+      errors, warnings, derived,
+      blockedSides: Object.fromEntries((Object.keys(values.sideShutters.sides) as StructureSide[]).map((side) => [side, values.screens[side] || values.glass[side]])),
+    });
     if (values.extraLegs.length > 8) warnings.push({ path: "values.extraLegs", message: "Duża liczba dodatkowych słupów wymaga oceny technicznej.", code: "technical_review" });
   } else if (configuration.productType === "veranda") {
     const values = configuration.values;
@@ -112,6 +146,12 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
       errors.push({ path: "values.rafterLeds", message: "Wybrano LED dla krokwi, która nie istnieje.", code: "dependency" });
     }
     if (values.extraLegs.length > 8) warnings.push({ path: "values.extraLegs", message: "Duża liczba dodatkowych nóg wymaga oceny technicznej.", code: "technical_review" });
+    validateStructureSideShutters({
+      settings: values.sideShutters,
+      width: values.width, depth: values.depth, height: values.frontHeight,
+      errors, warnings, derived,
+      blockedSides: { front: values.frontWall !== "none", back: true, left: values.leftWall !== "none", right: values.rightWall !== "none" },
+    });
     warnings.push({ path: "values", message: "Parametry werandy i wypełnień są demonstracyjne i wymagają danych technicznych producenta.", code: "demo_only" });
   } else if (configuration.productType === "carport") {
     const values = configuration.values;
@@ -124,6 +164,12 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     checkRange(errors, definition, "height", values.height);
     derived.totalWidth = round(values.moduleWidths.reduce((sum, width) => sum + width, 0));
     derived.roofArea = round(Number(derived.totalWidth) * values.depth, 2);
+    validateStructureSideShutters({
+      settings: values.sideShutters,
+      width: Number(derived.totalWidth), depth: values.depth, height: values.height,
+      errors, warnings, derived,
+      blockedSides: Object.fromEntries((Object.keys(values.sideShutters.sides) as StructureSide[]).map((side) => [side, values.screens[side] || values.glass[side]])),
+    });
     if (values.extraLegs.length > 8) warnings.push({ path: "values.extraLegs", message: "Duża liczba dodatkowych słupów wymaga oceny technicznej.", code: "technical_review" });
     warnings.push({ path: "values", message: "Nośność, rozstaw podpór i parametry blachy są demonstracyjne i wymagają obliczeń producenta.", code: "demo_only" });
   } else if (configuration.productType === "window-screen") {
@@ -144,6 +190,16 @@ export function validateConfiguration(input: unknown, definition: ProductDefinit
     derived.unitCount = values.unitCount;
     derived.coverArea = round(values.width * values.height * values.unitCount, 2);
     warnings.push({ path: "values", message: "Dobór skrzynki, pancerza, prowadnic i maksymalnych wymiarów wymaga tabel producenta.", code: "demo_only" });
+  } else if (configuration.productType === "facade-blind") {
+    const values = configuration.values;
+    ["width", "height", "unitCount", "openingPercent", "slatAngle"].forEach((key) => checkRange(errors, definition, key, values[key as keyof typeof values] as number));
+    derived.unitCount = values.unitCount;
+    derived.coverArea = round(values.width * values.height * values.unitCount, 2);
+    derived.visibleSlatArea = round(Number(derived.coverArea) * values.openingPercent / 100, 2);
+    if (values.drive === "manual" && values.weatherStation) {
+      errors.push({ path: "values.weatherStation", message: "Automatyka pogodowa wymaga napędu elektrycznego.", code: "dependency" });
+    }
+    warnings.push({ path: "values", message: "Gabaryty, wysokość pakietu, prowadzenie, napęd i odporność wiatrowa żaluzji fasadowej wymagają tabel producenta.", code: "demo_only" });
   } else if (configuration.productType === "metal-garage") {
     const values = configuration.values;
     ["width", "depth", "wallHeight", "gateCount", "windowCount", "sideCanopyWidth"].forEach((key) => checkRange(errors, definition, key, values[key as keyof typeof values] as number));
@@ -185,6 +241,8 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
     modules = values.moduleWidths.length;
     options = Number(values.ledLinear) + countSelected(values.screens) + countSelected(values.glass) + values.extraLegs.length;
     options += "ledSpots" in values ? Number(values.ledSpots) : 0;
+    const shutterSides = countSelected(values.sideShutters.sides);
+    options += shutterSides + (shutterSides ? Number(values.sideShutters.panelMotion === "sliding") + Number(values.sideShutters.bladeMotion === "adjustable") : 0);
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   } else if (configuration.productType === "veranda") {
     const values = configuration.values;
@@ -192,6 +250,8 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
     options = (values.rafterLeds?.length || Number(values.lighting)) + (values.extraLegs?.length || 0)
       + [values.leftWall, values.rightWall, values.frontWall, values.leftTriangle, values.rightTriangle].filter((value) => value !== "none").length
       + Number(values.leftScreenSupport) + Number(values.rightScreenSupport);
+    const shutterSides = countSelected(values.sideShutters.sides);
+    options += shutterSides + (shutterSides ? Number(values.sideShutters.panelMotion === "sliding") + Number(values.sideShutters.bladeMotion === "adjustable") : 0);
     colorSurcharge = values.frameColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   } else if (configuration.productType === "window-screen") {
     const values = configuration.values;
@@ -205,6 +265,12 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
     area = values.width * values.height * values.unitCount;
     options = (Number(values.drive !== "manual") + Number(values.integratedMosquitoNet) + Number(values.mounting !== "reveal") + Number(values.slatProfile === "extruded")) * values.unitCount;
     colorSurcharge = values.armorColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
+  } else if (configuration.productType === "facade-blind") {
+    const values = configuration.values;
+    modules = values.unitCount;
+    area = values.width * values.height * values.unitCount;
+    options = (Number(values.drive !== "manual") + Number(values.weatherStation) + Number(values.mounting !== "reveal") + Number(values.guideType === "rails")) * values.unitCount;
+    colorSurcharge = values.slatColor === "anthracite" ? 0 : rules.optionSurcharge * 0.5;
   } else if (configuration.productType === "metal-garage") {
     const values = configuration.values;
     modules = values.gateCount;
@@ -224,6 +290,16 @@ export function calculateQuote(configuration: PublicConfiguration, rules: Pricin
   return { currency: "PLN", net, vat, gross: net + vat, vatRate: rules.vatRate, demoOnly: true as const };
 }
 
+function sideShutterBomItems(settings: StructureSideShutters, width: number, depth: number, height: number) {
+  const selected = (Object.keys(settings.sides) as StructureSide[]).filter((side) => settings.sides[side]);
+  if (!selected.length) return [];
+  const area = selected.reduce((sum, side) => sum + (side === "front" || side === "back" ? width : depth) * height, 0);
+  return [
+    { label: `Shutters aluminiowe · lamele ${settings.bladeOrientation === "horizontal" ? "poziome" : "pionowe"}`, quantity: round(area, 2), unit: "m²" },
+    { label: `System paneli ${settings.panelMotion === "sliding" ? "przesuwnych" : "stałych"}`, quantity: selected.length, unit: "bok" },
+  ];
+}
+
 export function generateBom(configuration: PublicConfiguration, derived: Record<string, number | number[]>) {
   if (configuration.productType === "bioclimatic-pergola") {
     const values = configuration.values;
@@ -236,6 +312,7 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
         { label: "Słup konstrukcyjny", quantity: standardPosts + values.extraLegs.length, unit: "szt." },
         { label: "Lamela dachowa", quantity: Number(derived.totalLouvres || 0), unit: "szt." },
         { label: "Powierzchnia zadaszenia", quantity: round(values.moduleWidths.reduce((sum, width) => sum + width, 0) * values.depth, 2), unit: "m²" },
+        ...sideShutterBomItems(values.sideShutters, values.moduleWidths.reduce((sum, width) => sum + width, 0), values.depth, values.height),
       ],
     };
   }
@@ -249,6 +326,7 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
         { label: "Zestaw ramy modułu", quantity: modules, unit: "zest." },
         { label: "Słup konstrukcyjny", quantity: standardPosts + values.extraLegs.length, unit: "szt." },
         { label: "Blacha trapezowa z warstwą antykondensacyjną", quantity: round(values.moduleWidths.reduce((sum, width) => sum + width, 0) * values.depth, 2), unit: "m²" },
+        ...sideShutterBomItems(values.sideShutters, values.moduleWidths.reduce((sum, width) => sum + width, 0), values.depth, values.height),
       ],
     };
   }
@@ -268,6 +346,7 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
         ...(triangleCount ? [{ label: "Wypełnienie trójkąta bocznego", quantity: triangleCount, unit: "szt." }] : []),
         ...(supportCount ? [{ label: "Profil podpierający kasetę rolety", quantity: supportCount, unit: "szt." }] : []),
         { label: "Powierzchnia zadaszenia", quantity: round(values.width * values.depth, 2), unit: "m²" },
+        ...sideShutterBomItems(values.sideShutters, values.width, values.depth, values.frontHeight),
       ],
     };
   }
@@ -292,6 +371,20 @@ export function generateBom(configuration: PublicConfiguration, derived: Record<
         { label: "Prowadnica pancerza", quantity: values.unitCount * 2, unit: "szt." },
         { label: "Pancerz rolety", quantity: round(values.width * values.height * values.unitCount, 2), unit: "m²" },
         ...(values.integratedMosquitoNet ? [{ label: "Moskietiera zintegrowana", quantity: values.unitCount, unit: "szt." }] : []),
+      ],
+    };
+  }
+  if (configuration.productType === "facade-blind") {
+    const values = configuration.values;
+    return {
+      demoOnly: true as const,
+      items: [
+        { label: "Rynna górna żaluzji", quantity: values.unitCount, unit: "szt." },
+        { label: values.guideType === "rails" ? "Prowadnica szynowa" : "Linka prowadząca", quantity: values.unitCount * 2, unit: "szt." },
+        { label: `Pakiet lameli ${values.slatProfile.toUpperCase()}`, quantity: round(values.width * values.height * values.unitCount, 2), unit: "m²" },
+        { label: "Listwa dolna", quantity: values.unitCount, unit: "szt." },
+        ...(values.drive !== "manual" ? [{ label: `Napęd ${values.drive}`, quantity: values.unitCount, unit: "szt." }] : []),
+        ...(values.weatherStation ? [{ label: "Automatyka pogodowa", quantity: 1, unit: "zest." }] : []),
       ],
     };
   }

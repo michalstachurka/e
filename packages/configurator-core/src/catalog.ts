@@ -43,6 +43,16 @@ const colors = [
 
 const garageColors = colors.map((color) => ({ ...color, demoOnly: true as const }));
 
+const sideShutterParameters = [
+  { key: "sideShutters.bladeAngle", label: "Kąt lameli shuttersów", section: "side-shutters", type: "range" as const, unit: "°", min: 0, max: 90, step: 1, defaultValue: 35, hidden: false, demoOnly: true },
+  { key: "sideShutters.openingPercent", label: "Przesunięcie paneli shuttersów", section: "side-shutters", type: "range" as const, unit: "%", min: 0, max: 100, step: 1, defaultValue: 0, hidden: false, demoOnly: true },
+];
+
+const sideShutterProfiles = [
+  { id: "side-shutter-frame", label: "Rama shuttersa", usage: "Obwodowa rama panelu bocznego", aMm: 45, bMm: 38, shape: "rectangular" as const, geometryType: "BOX" as const, demoOnly: true },
+  { id: "side-shutter-blade", label: "Lamela shuttersa", usage: "Pionowa lub pozioma lamela panelu", aMm: 90, bMm: 16, shape: "louvre" as const, geometryType: "BOX" as const, demoOnly: true },
+];
+
 export const productSeeds: ProductSeed[] = [
   {
     definition: {
@@ -65,14 +75,16 @@ export const productSeeds: ProductSeed[] = [
         { key: "depth", label: "Wysięg", section: "dimensions", type: "range", unit: "m", min: 2.5, max: 4.5, step: 0.1, defaultValue: 3.2, hidden: false, demoOnly: false },
         { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 2.2, max: 3.2, step: 0.05, defaultValue: 2.6, hidden: false, demoOnly: false },
         { key: "slatAngle", label: "Otwarcie lameli", section: "structure", type: "range", unit: "°", min: 0, max: 120, step: 1, defaultValue: 35, hidden: false, demoOnly: false },
+        ...sideShutterParameters,
       ],
       profiles: [
         { id: "structural-post", label: "Słup konstrukcyjny", usage: "Podparcie pionowe konstrukcji", aMm: 140, bMm: 140, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "frame-beam", label: "Belka ramy", usage: "Obwodowa rama dachu", aMm: 140, bMm: 180, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "roof-louvre", label: "Lamela dachowa", usage: "Ruchome wypełnienie dachu", aMm: 210, bMm: 15, shape: "louvre", geometryType: "BOX", demoOnly: true },
+        ...sideShutterProfiles,
       ],
       colors,
-      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, louvreThickness: 0.015, demoOnly: true },
+      visual: { postSize: 0.14, beamHeight: 0.18, louvrePitch: 0.21, louvreThickness: 0.015, sideShutterPanelMaxWidth: 1.2, sideShutterFrameWidth: 0.045, sideShutterBladePitch: 0.12, demoOnly: true },
     },
     pricing: { basePrice: 8_900, pricePerSquareMeter: 620, moduleSurcharge: 1_450, optionSurcharge: 780, minimumPrice: 12_000, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
     bom: { profileAllowance: 1.06, demoOnly: true },
@@ -104,15 +116,17 @@ export const productSeeds: ProductSeed[] = [
         { key: "postCount", label: "Liczba słupów", section: "structure", type: "range", min: 2, max: 6, step: 1, defaultValue: 3, hidden: false, demoOnly: true },
         { key: "rafterLeds", label: "LED liniowy na wybranych krokwiach", section: "finish", type: "positions", defaultValue: [], hidden: false, demoOnly: true },
         { key: "extraLegs", label: "Dodatkowe nogi", section: "structure", type: "positions", defaultValue: [], hidden: false, demoOnly: true },
+        ...sideShutterParameters,
       ],
       profiles: [
         { id: "structural-post", label: "Słup frontowy", usage: "Podparcie pionowe frontu", aMm: 130, bMm: 130, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "frame-beam", label: "Belka konstrukcyjna", usage: "Belka przyścienna i frontowa", aMm: 130, bMm: 170, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "roof-rafter", label: "Krokiew dachowa", usage: "Podparcie pola dachowego", aMm: 80, bMm: 122, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "screen-support", label: "Profil pod kasetę ZIP", usage: "Opcjonalne podparcie kasety na boku", aMm: 50, bMm: 80, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+        ...sideShutterProfiles,
       ],
       colors,
-      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, rafterHeight: 0.122, roofThickness: 0.018, screenCassetteHeight: 0.105, screenCassetteDepth: 0.11, demoOnly: true },
+      visual: { postSize: 0.13, beamHeight: 0.17, rafterWidth: 0.08, rafterHeight: 0.122, roofThickness: 0.018, screenCassetteHeight: 0.105, screenCassetteDepth: 0.11, sideShutterPanelMaxWidth: 1.2, sideShutterFrameWidth: 0.045, sideShutterBladePitch: 0.12, demoOnly: true },
     },
     pricing: { basePrice: 6_400, pricePerSquareMeter: 510, moduleSurcharge: 0, optionSurcharge: 690, minimumPrice: 9_500, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
     bom: { profileAllowance: 1.08, demoOnly: true },
@@ -140,14 +154,16 @@ export const productSeeds: ProductSeed[] = [
         { key: "roofColor", label: "Kolor blachy od góry", section: "roof", type: "select", defaultValue: "anthracite", hidden: false, demoOnly: true, options: colors.map(({ id, label, demoOnly }) => ({ id, label, demoOnly })) },
         { key: "antiCondensationLayer", label: "Warstwa antykondensacyjna od dołu", section: "roof", type: "toggle", defaultValue: true, hidden: false, demoOnly: true },
         { key: "extraLegs", label: "Dodatkowe nogi", section: "structure", type: "positions", defaultValue: [], hidden: false, demoOnly: true },
+        ...sideShutterParameters,
       ],
       profiles: [
         { id: "structural-post", label: "Słup konstrukcyjny", usage: "Podparcie pionowe konstrukcji", aMm: 140, bMm: 140, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "frame-beam", label: "Belka ramy", usage: "Obwodowa rama dachu", aMm: 140, bMm: 180, shape: "rectangular", geometryType: "BOX", demoOnly: true },
         { id: "roof-sheet", label: "Blacha trapezowa", usage: "Nieruchome poszycie dachu", aMm: 200, bMm: 35, shape: "louvre", geometryType: "BOX", demoOnly: true },
+        ...sideShutterProfiles,
       ],
       colors,
-      visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetRibHeight: 0.035, sheetThickness: 0.012, antiCondensationThickness: 0.006, demoOnly: true },
+      visual: { postSize: 0.14, beamHeight: 0.18, sheetPitch: 0.2, sheetRibHeight: 0.035, sheetThickness: 0.012, antiCondensationThickness: 0.006, sideShutterPanelMaxWidth: 1.2, sideShutterFrameWidth: 0.045, sideShutterBladePitch: 0.12, demoOnly: true },
     },
     pricing: { basePrice: 7_900, pricePerSquareMeter: 430, moduleSurcharge: 1_250, optionSurcharge: 690, minimumPrice: 11_000, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
     bom: { profileAllowance: 1.07, demoOnly: true },
@@ -229,6 +245,54 @@ export const productSeeds: ProductSeed[] = [
     },
     pricing: { basePrice: 1_250, pricePerSquareMeter: 330, moduleSurcharge: 0, optionSurcharge: 240, minimumPrice: 1_650, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
     bom: { profileAllowance: 1.04, demoOnly: true },
+  },
+  {
+    definition: {
+      id: "product-facade-blind",
+      productType: "facade-blind",
+      name: "Żaluzja fasadowa",
+      description: "Zewnętrzna żaluzja aluminiowa z podnoszeniem pakietu i niezależną regulacją kąta lameli C/Z.",
+      enabled: true,
+      order: 55,
+      version: { id: "visnex-facade-blind-v1", number: 1, status: "published" },
+      steps: [
+        { id: "dimensions", label: "Wymiary", order: 10 },
+        { id: "mounting", label: "Montaż", order: 20 },
+        { id: "slats", label: "Lamele", order: 30 },
+        { id: "drive", label: "Sterowanie", order: 40 },
+        { id: "summary", label: "Podsumowanie", order: 50 },
+      ],
+      parameters: [
+        { key: "width", label: "Szerokość", section: "dimensions", type: "range", unit: "m", min: 0.6, max: 5, step: 0.05, defaultValue: 2, hidden: false, demoOnly: true },
+        { key: "height", label: "Wysokość", section: "dimensions", type: "range", unit: "m", min: 0.8, max: 5, step: 0.05, defaultValue: 2.4, hidden: false, demoOnly: true },
+        { key: "unitCount", label: "Liczba sąsiadujących żaluzji", section: "dimensions", type: "range", min: 1, max: 8, step: 1, defaultValue: 1, hidden: false, demoOnly: true },
+        { key: "openingPercent", label: "Stopień opuszczenia pakietu", section: "slats", type: "range", unit: "%", min: 0, max: 100, step: 1, defaultValue: 85, hidden: false, demoOnly: true },
+        { key: "slatAngle", label: "Kąt lameli", section: "slats", type: "range", unit: "°", min: 0, max: 90, step: 1, defaultValue: 45, hidden: false, demoOnly: true },
+        { key: "mounting", label: "Sposób montażu", section: "mounting", type: "select", defaultValue: "reveal", hidden: false, demoOnly: true, options: [
+          { id: "front", label: "Natynkowy", demoOnly: true }, { id: "reveal", label: "We wnęce", demoOnly: true }, { id: "under-plaster", label: "Podtynkowy", demoOnly: true },
+        ] },
+        { key: "slatProfile", label: "Geometria lameli", section: "slats", type: "select", defaultValue: "z90", hidden: false, demoOnly: true, options: [
+          { id: "c80", label: "C80 · profil otwarty", demoOnly: true }, { id: "z90", label: "Z90 · profil domykający", demoOnly: true },
+        ] },
+        { key: "guideType", label: "Prowadzenie boczne", section: "mounting", type: "select", defaultValue: "rails", hidden: false, demoOnly: true, options: [
+          { id: "rails", label: "Prowadnice szynowe", demoOnly: true }, { id: "cables", label: "Prowadzenie linkowe", demoOnly: true },
+        ] },
+        { key: "drive", label: "Napęd", section: "drive", type: "select", defaultValue: "radio", hidden: false, demoOnly: true, options: [
+          { id: "manual", label: "Ręczny", demoOnly: true }, { id: "wired", label: "Przewodowy", demoOnly: true }, { id: "radio", label: "Radiowy", demoOnly: true }, { id: "solar", label: "Solarny", demoOnly: true },
+        ] },
+      ],
+      profiles: [
+        { id: "facade-blind-headrail", label: "Rynna górna", usage: "Mechanizm podnoszenia i obrotu", aMm: 58, bMm: 56, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+        { id: "facade-blind-guide", label: "Prowadnica boczna", usage: "Szynowe prowadzenie pakietu", aMm: 25, bMm: 40, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+        { id: "facade-blind-c80", label: "Lamela C80", usage: "Otwarta lamela fasadowa o przekroju C", aMm: 80, bMm: 8, shape: "louvre", geometryType: "BOX", demoOnly: true },
+        { id: "facade-blind-z90", label: "Lamela Z90", usage: "Domykająca lamela fasadowa o przekroju Z", aMm: 90, bMm: 12, shape: "louvre", geometryType: "BOX", demoOnly: true },
+        { id: "facade-blind-bottom", label: "Listwa dolna", usage: "Usztywnienie dolnej krawędzi pakietu", aMm: 80, bMm: 18, shape: "rectangular", geometryType: "BOX", demoOnly: true },
+      ],
+      colors: garageColors,
+      visual: { headrailWidth: 0.058, headrailHeight: 0.056, guideWidth: 0.025, slatPitchC80: 0.075, slatPitchZ90: 0.083, slatDepthC80: 0.08, slatDepthZ90: 0.09, slatThickness: 0.004, bottomRailHeight: 0.055, demoOnly: true },
+    },
+    pricing: { basePrice: 1_900, pricePerSquareMeter: 390, moduleSurcharge: 140, optionSurcharge: 260, minimumPrice: 2_350, multiplier: 1, vatRate: 0.23, rounding: 10, demoOnly: true },
+    bom: { profileAllowance: 1.05, demoOnly: true },
   },
   {
     definition: {

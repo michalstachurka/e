@@ -67,6 +67,17 @@ const garageConfiguration = {
   },
 };
 
+const facadeBlindConfiguration = {
+  schemaVersion: "2.0",
+  tenantSlug: "visnex",
+  productType: "facade-blind",
+  productVersionId: "visnex-facade-blind-v1",
+  values: {
+    width: 2, height: 2.4, unitCount: 2, mounting: "reveal", slatProfile: "z90", guideType: "rails",
+    slatAngle: 45, openingPercent: 85, slatColor: "anthracite", hardwareColor: "anthracite", drive: "radio", weatherStation: true,
+  },
+};
+
 test("resolves and locks tenant context for mapped custom domains", async () => {
   assert.deepEqual(parseTenantHostMap("Pilot.Example.Test.=visnex,invalid=/admin"), { "pilot.example.test": "visnex" });
   const shared = await app.inject({ method: "GET", url: "/api/runtime-context", headers: { host: "shared.example.test" } });
@@ -93,7 +104,7 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
   assert.equal(catalog.statusCode, 200);
   assert.equal(catalog.json().tenant.name, "Pilot A");
   assert.equal(catalog.json().tenant.branding.companyName, "Pilot A");
-  assert.equal(catalog.json().products.length, 7);
+  assert.equal(catalog.json().products.length, 8);
   assert.ok(catalog.json().products.every((product: { id: string; version: { id: string } }) => product.id.includes("pilot-a") && product.version.id.startsWith("pilot-a-")));
 
   const configuration = structuredClone(pergolaConfiguration);
@@ -132,9 +143,9 @@ test("provisions a fully isolated pilot tenant transactionally", async () => {
 test("returns tenant catalog and product definition", async () => {
   const catalog = await app.inject({ method: "GET", url: "/api/public/visnex/configurator" });
   assert.equal(catalog.statusCode, 200);
-  assert.equal(catalog.json().products.length, 7);
+  assert.equal(catalog.json().products.length, 8);
   assert.deepEqual(catalog.json().products.map((item: { productType: string }) => item.productType), [
-    "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "awning", "metal-garage",
+    "bioclimatic-pergola", "veranda", "carport", "window-screen", "external-roller-shutter", "facade-blind", "awning", "metal-garage",
   ]);
   const screen = catalog.json().products.find((item: { productType: string }) => item.productType === "window-screen");
   assert.equal(screen.version.number, 3);
@@ -144,6 +155,11 @@ test("returns tenant catalog and product definition", async () => {
   assert.equal(garage.version.id, "visnex-metal-garage-v1");
   assert.equal(garage.parameters.find((parameter: { key: string }) => parameter.key === "gateCount").max, 2);
   assert.ok(garage.parameters.every((parameter: { demoOnly: boolean }) => parameter.demoOnly));
+  const facadeBlind = catalog.json().products.find((item: { productType: string }) => item.productType === "facade-blind");
+  assert.equal(facadeBlind.version.id, "visnex-facade-blind-v1");
+  assert.equal(facadeBlind.parameters.find((parameter: { key: string }) => parameter.key === "unitCount").max, 8);
+  assert.deepEqual(facadeBlind.parameters.find((parameter: { key: string }) => parameter.key === "slatProfile").options.map((option: { id: string }) => option.id), ["c80", "z90"]);
+  assert.ok(facadeBlind.parameters.every((parameter: { demoOnly: boolean }) => parameter.demoOnly));
   const product = await app.inject({ method: "GET", url: "/api/public/visnex/products/veranda" });
   assert.equal(product.statusCode, 200);
   assert.equal(product.json().product.productType, "veranda");
@@ -313,6 +329,13 @@ test("generates a demo quote, public BOM and server PDF", async () => {
   const garagePdf = await app.inject({ method: "POST", url: "/api/public/visnex/pdf", payload: { configuration: garageConfiguration } });
   assert.equal(garagePdf.statusCode, 200);
   assert.equal(garagePdf.rawPayload.subarray(0, 4).toString(), "%PDF");
+
+  const facadeQuote = await app.inject({ method: "POST", url: "/api/public/visnex/quotes", payload: { configuration: facadeBlindConfiguration } });
+  assert.equal(facadeQuote.statusCode, 201);
+  assert.ok(facadeQuote.json().bom.items.some((item: { label: string; quantity: number }) => item.label === "Pakiet lameli Z90" && item.quantity === 9.6));
+  const facadePdf = await app.inject({ method: "POST", url: "/api/public/visnex/pdf", payload: { configuration: facadeBlindConfiguration } });
+  assert.equal(facadePdf.statusCode, 200);
+  assert.equal(facadePdf.rawPayload.subarray(0, 4).toString(), "%PDF");
 });
 
 test("protects admin routes and allows an authenticated draft read", async () => {

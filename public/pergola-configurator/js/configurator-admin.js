@@ -116,6 +116,17 @@ const parameterDefault = (definition, key, fallback) => {
   return value === undefined ? fallback : structuredClone(value);
 };
 
+const previewSideShutters = () => ({
+  formatVersion: "1.0",
+  sides: { front: true, back: false, left: false, right: false },
+  bladeOrientation: "horizontal",
+  panelMotion: "sliding",
+  bladeMotion: "adjustable",
+  bladeAngle: 35,
+  openingPercent: 18,
+  color: "anthracite",
+});
+
 function buildProfilePreviewParams(definition) {
   const frameColor = definition.colors?.[0]?.value || "#2B2D2E";
   if (definition.productType === "veranda") {
@@ -145,6 +156,7 @@ function buildProfilePreviewParams(definition) {
       screenColor: "#C9B79C",
       screens: { front: false, back: false, left: false, right: false },
       glass: { front: false, back: false, left: false, right: false },
+      sideShutters: previewSideShutters(),
       spin: false,
       profiles: definition.profiles,
       visual: definition.visual,
@@ -163,6 +175,27 @@ function buildProfilePreviewParams(definition) {
       unitCount: Number(parameterDefault(definition, "unitCount", 1)), mounting: "reveal", slatProfile: "aluminium-foam", armorColor: frameColor, boxColor: frameColor, guideColor: frameColor,
       frameColor, slatColor: frameColor, drive: "radio", integratedMosquitoNet: true, openingPercent: 65, spin: false,
       profiles: definition.profiles, visual: definition.visual,
+    };
+  }
+  if (definition.productType === "facade-blind") {
+    return {
+      productType: "facade-blind",
+      width: Number(parameterDefault(definition, "width", 2)),
+      height: Number(parameterDefault(definition, "height", 2.4)),
+      unitCount: Number(parameterDefault(definition, "unitCount", 1)),
+      mounting: "reveal",
+      slatProfile: "z90",
+      guideType: "rails",
+      slatAngle: Number(parameterDefault(definition, "slatAngle", 45)),
+      openingPercent: 78,
+      slatColor: frameColor,
+      hardwareColor: frameColor,
+      frameColor,
+      drive: "radio",
+      weatherStation: true,
+      spin: false,
+      profiles: definition.profiles,
+      visual: definition.visual,
     };
   }
   if (definition.productType === "awning") {
@@ -219,6 +252,7 @@ function buildProfilePreviewParams(definition) {
     screens: { front: false, back: false, left: false, right: false },
     screenColor: "#C9B79C",
     glass: { front: false, back: false, left: false, right: false },
+    sideShutters: previewSideShutters(),
     extraLegs: [],
     spin: false,
     profiles: definition.profiles,
@@ -264,6 +298,17 @@ function profileDiagram(profile) {
 function profileAnnotationPoints(params, profile) {
   const a = profile.aMm / 1000;
   const b = profile.bMm / 1000;
+  if (profile.id === "side-shutter-frame" || profile.id === "side-shutter-blade") {
+    const width = Number(params.width || params.widths?.reduce((sum, value) => sum + value, 0) || 4);
+    const height = Number(params.frontHeight || params.height || 2.6);
+    const z = Number(params.depth || 3.2) / 2 + 0.04;
+    const target = profile.id === "side-shutter-frame" ? [width * 0.43, height * 0.5, z] : [0, height * 0.52, z + 0.02];
+    return {
+      target,
+      a: [[target[0] - a / 2, target[1], target[2]], [target[0] + a / 2, target[1], target[2]]],
+      b: [[target[0] + a / 2, target[1] - b / 2, target[2]], [target[0] + a / 2, target[1] + b / 2, target[2]]],
+    };
+  }
   if (params.productType === "veranda") {
     const frontZ = params.depth / 2;
     const points = {
@@ -292,6 +337,17 @@ function profileAnnotationPoints(params, profile) {
       "shutter-slat": { target: [0, params.height * 0.65, 0.15], a: [[-a / 2, params.height * 0.65, 0.15], [a / 2, params.height * 0.65, 0.15]], b: [[a / 2, params.height * 0.65 - b / 2, 0.15], [a / 2, params.height * 0.65 + b / 2, 0.15]] },
     };
     return points[profile.id] || points["shutter-box"];
+  }
+  if (params.productType === "facade-blind") {
+    const sill = 0.28;
+    const points = {
+      "facade-blind-headrail": { target: [0, sill + params.height + 0.028, 0], a: [[-a / 2, sill + params.height + b, 0], [a / 2, sill + params.height + b, 0]], b: [[a / 2, sill + params.height, 0], [a / 2, sill + params.height + b, 0]] },
+      "facade-blind-guide": { target: [params.width / 2 + a / 2, sill + params.height * 0.5, 0], a: [[params.width / 2, sill + params.height * 0.5, 0], [params.width / 2 + a, sill + params.height * 0.5, 0]], b: [[params.width / 2 + a, sill + params.height * 0.5 - b / 2, 0], [params.width / 2 + a, sill + params.height * 0.5 + b / 2, 0]] },
+      "facade-blind-c80": { target: [0, sill + params.height * 0.62, 0.05], a: [[-a / 2, sill + params.height * 0.62, 0.05], [a / 2, sill + params.height * 0.62, 0.05]], b: [[a / 2, sill + params.height * 0.62 - b / 2, 0.05], [a / 2, sill + params.height * 0.62 + b / 2, 0.05]] },
+      "facade-blind-z90": { target: [0, sill + params.height * 0.62, 0.05], a: [[-a / 2, sill + params.height * 0.62, 0.05], [a / 2, sill + params.height * 0.62, 0.05]], b: [[a / 2, sill + params.height * 0.62 - b / 2, 0.05], [a / 2, sill + params.height * 0.62 + b / 2, 0.05]] },
+      "facade-blind-bottom": { target: [0, sill + params.height * 0.22, 0.04], a: [[-a / 2, sill + params.height * 0.22, 0.04], [a / 2, sill + params.height * 0.22, 0.04]], b: [[a / 2, sill + params.height * 0.22 - b / 2, 0.04], [a / 2, sill + params.height * 0.22 + b / 2, 0.04]] },
+    };
+    return points[profile.id] || points["facade-blind-headrail"];
   }
   if (params.productType === "awning") {
     const projected = params.projection * params.openingPercent / 100;
