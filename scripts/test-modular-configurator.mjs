@@ -297,7 +297,7 @@ async function runMobile() {
 }
 
 async function runAdmin() {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
@@ -349,11 +349,42 @@ async function runAdmin() {
     await page.waitForFunction(() => Boolean(document.querySelector(".admin-profile-preview__marker")?.textContent));
     if (await page.locator("#adminProfileStudio canvas").count() !== 1) throw new Error(`Admin studio lost its single renderer for product ${index}`);
   }
+  await page.waitForSelector("#adminReferenceCanvas canvas");
+  if (await page.locator(".admin-reference-tabs button").count() !== 6) throw new Error("Reference editor does not expose all products");
+  await page.locator('[data-reference-product="3"]').click();
+  await page.waitForFunction(() => document.querySelector(".admin-reference-stage-panel strong")?.textContent === "Screen ZIP do okna");
+  await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Kaseta screenu"));
+  if (await page.locator("#adminReferenceScene canvas").count() !== 1) throw new Error("Reference editor must keep exactly one live renderer");
+  if (await page.locator("[data-reference-object] option").count() < 12) throw new Error("Reference editor did not expose named screen and window objects");
+  const referencePositionX = page.locator('[data-reference-transform="positionM.x"][type="number"]');
+  await referencePositionX.fill("0.25");
+  if (await page.locator('[data-reference-transform="positionM.x"][type="range"]').inputValue() !== "0.25") throw new Error("Reference transform controls are not synchronized");
+  await page.locator('[data-reference-product="4"]').click();
+  await page.waitForFunction(() => document.querySelector("[data-reference-selected-label]")?.textContent.includes("Skrzynka rolety"));
+  await page.locator('[data-reference-product="3"]').click();
+  if (await referencePositionX.inputValue() !== "0.25") throw new Error("Reference adjustment was not preserved while switching products");
+  await page.locator('[data-reference-view="front"]').click();
+
+  const jsonReferencePromise = page.waitForEvent("download");
+  await page.locator('[data-reference-export="json"]').click();
+  const jsonReferenceDownload = await jsonReferencePromise;
+  const jsonReferencePath = await jsonReferenceDownload.path();
+  const referenceDocument = JSON.parse(readFileSync(jsonReferencePath, "utf8"));
+  const editedReferenceObject = referenceDocument.objects.find((object) => object.id === referenceDocument.selectedObjectId);
+  if (referenceDocument.formatVersion !== "1.0" || referenceDocument.tenantSlug !== "visnex" || referenceDocument.productType !== "window-screen") throw new Error("Reference JSON lost tenant or product version context");
+  if (!referenceDocument.productVersionId || referenceDocument.editedObjectCount !== 1 || editedReferenceObject?.adjustment?.positionM?.x !== 0.25) throw new Error("Reference JSON lost the selected transform");
+
+  const pngReferencePromise = page.waitForEvent("download");
+  await page.locator('[data-reference-export="png"]').click();
+  const pngReferenceDownload = await pngReferencePromise;
+  const pngReferencePath = await pngReferenceDownload.path();
+  if (!pngReferenceDownload.suggestedFilename().endsWith(".png") || !readFileSync(pngReferencePath).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error("Annotated reference PNG was not created");
+  await page.locator("#referenceSceneSection").screenshot({ path: path.join(resultsDir, "admin-reference-editor.png") });
   await page.locator('[data-product-index="0"] [data-field="description"]').fill("Opis testowy wersji roboczej.");
   await page.locator('[data-product-index="0"] [data-action="save"]').click();
   await page.waitForFunction(() => document.querySelector("#adminToast")?.classList.contains("is-visible"));
   await page.screenshot({ path: path.join(resultsDir, "admin.png"), fullPage: false });
-  results.admin = { pageErrors, consoleErrors, products: await page.locator(".admin-product").count(), profileCards: await profileCards.count(), previewCanvases: await page.locator("#adminProfileStudio canvas").count() };
+  results.admin = { pageErrors, consoleErrors, products: await page.locator(".admin-product").count(), profileCards: await profileCards.count(), previewCanvases: await page.locator("#adminProfileStudio canvas").count(), referenceObjects: referenceDocument.objects.length, referenceEditedObjects: referenceDocument.editedObjectCount };
   await context.close();
 }
 

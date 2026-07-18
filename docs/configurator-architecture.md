@@ -23,6 +23,7 @@ Migracja zachowuje istniejący landing page i renderer pergoli. Rozszerza rozwi�
 - centralny resolver możliwości łączy ustawienia platformy, planu, organizacji, produktu i roli;
 - wycena, publiczny BOM i PDF powstają po stronie serwera;
 - panel administratora edytuje wersję roboczą i publikuje nową wersję;
+- panel administratora tworzy jednoznaczne referencje korekt geometrii na tej samej scenie renderera;
 - zapisane projekty wskazują niezmienną wersję produktu.
 
 ## Podział odpowiedzialności
@@ -76,6 +77,14 @@ Carport generuje jedną parametryczną geometrię blachy trapezowej i nakłada o
 Screen ZIP i roleta zewnętrzna używają wspólnego renderera osłon okiennych. Każda sztuka ma osobną wnękę, ścianę, parapet, ramę i szybę; domyślny montaż `reveal` umieszcza kasetę lub skrzynkę oraz prowadnice we wnęce. Ściana i okno są kontekstem podglądu oznaczonym `arExclude`, dlatego eksport AR zachowuje samą osłonę. Parametr `unitCount` dopuszcza od 1 do 8 sąsiadujących osłon. Limit jest częścią definicji produktu, a nie stałą polityką interfejsu; w obecnym katalogu chroni czytelność i płynność sceny Stage 1. Powtarzalne lamele rolety zewnętrznej są łączone w `InstancedMesh`, a kamera zwiększa zakres dla szerokich zestawów. Starsza konfiguracja bez `unitCount` otrzymuje wartość 1 podczas walidacji kontraktu.
 
 Opublikowane seedy carportu, screenu i rolety zewnętrznej mają wersję 3. Przy aktualizacji istniejącego tenanta poprzednia opublikowana lub robocza wersja jest archiwizowana, natomiast zapisane projekty nadal wskazują swój niezmienny `productVersionId`. Jeżeli numer wersji seeda jest już zajęty przez wersję utworzoną lub opublikowaną przez administratora, inicjalizacja nie podmienia jej i nie tworzy konkurencyjnego draftu. Dane techniczne, zakresy, kompatybilność, ceny i BOM tych produktów nadal mają status `demoOnly`.
+
+### Edytor referencji geometrii 3D
+
+Chroniony panel administratora tworzy drugie, narzędziowe użycie wspólnego hosta Three.js i rejestru rendererów. Nie utrzymuje własnej kopii modeli. Nazwane grupy i meshe sceny można wskazać kursorem lub listą, a następnie opisać korektę jako lokalną deltę położenia w metrach, obrotu w stopniach i skali. Pomarańczowa ramka oraz osie wskazują zaznaczenie. Operacja nie modyfikuje definicji produktu, opublikowanej wersji ani zapisanego projektu.
+
+Eksport referencji składa się z oznaczonego PNG oraz dokumentu JSON w formacie `1.0`. Dokument zawiera `tenantSlug`, niezmienny `productVersionId`, numer wersji, autora, datę, układ współrzędnych, kamerę, transformację bazową, deltę i wynik dla każdego nazwanego obiektu. Edycja transformacji wymaga centralnego uprawnienia `products:write`; odczyt sceny i lokalny eksport mogą służyć roli tylko do odczytu. W Stage 1 oba pliki powstają wyłącznie w przeglądarce i administrator sam dołącza je do zgłoszenia.
+
+Ta granica jest celowo zgodna z przyszłym SaaS: dokument jest tenantowy i wersjonowany, nie zawiera ścieżek lokalnego dysku ani adresów storage. Późniejszy zapis może użyć osobnego tenantowego zasobu oraz portu object storage zgodnego z S3, z audytem autora i limitami liczby plików, rozmiaru oraz przestrzeni rozstrzyganymi przez centralne capabilities. Generowanie miniatur, walidację i cięższe przetwarzanie można przenieść do idempotentnego zadania workera bez zmiany formatu referencji ani rendererów produktów. Trwały endpoint uploadu, kolejka i limity planów nie są częścią Stage 1.
 
 ### API
 

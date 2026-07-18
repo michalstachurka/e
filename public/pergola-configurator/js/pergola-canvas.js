@@ -440,6 +440,234 @@ export function createPergolaCanvas(mountEl, initialParams) {
   let projectScene = null;
   let compositor = null;
 
+  // Edytor referencji w panelu administratora korzysta dokładnie z tej samej
+  // sceny co konfigurator. Operuje wyłącznie na transformacjach lokalnych
+  // istniejących obiektów i nie zmienia definicji produktu ani renderera.
+  const referenceSelectionBox = new THREE.Box3Helper(new THREE.Box3(), 0xb74926);
+  referenceSelectionBox.visible = false;
+  referenceSelectionBox.renderOrder = 999;
+  referenceSelectionBox.material.depthTest = false;
+  referenceSelectionBox.userData.arExclude = true;
+  const referenceAxes = new THREE.AxesHelper(0.62);
+  referenceAxes.visible = false;
+  referenceAxes.renderOrder = 1000;
+  referenceAxes.userData.arExclude = true;
+  for (const axesMaterial of Array.isArray(referenceAxes.material) ? referenceAxes.material : [referenceAxes.material]) {
+    axesMaterial.depthTest = false;
+  }
+  scene.add(referenceSelectionBox, referenceAxes);
+  const referenceObjects = new Map();
+  const referenceObjectIds = new WeakMap();
+  const referenceAdjustments = new Map();
+  let selectedReferenceObjectId = null;
+  let referenceGuidesVisible = true;
+
+  const roundReferenceNumber = (value, precision = 6) => Number(Number(value).toFixed(precision));
+  const referenceVector = (value, fallback) => ({
+    x: Number.isFinite(Number(value?.x)) ? Number(value.x) : fallback.x,
+    y: Number.isFinite(Number(value?.y)) ? Number(value.y) : fallback.y,
+    z: Number.isFinite(Number(value?.z)) ? Number(value.z) : fallback.z,
+  });
+  const emptyReferenceAdjustment = () => ({
+    positionM: { x: 0, y: 0, z: 0 },
+    rotationDeg: { x: 0, y: 0, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+  });
+  const transformSnapshot = (object) => ({
+    positionM: { x: roundReferenceNumber(object.position.x), y: roundReferenceNumber(object.position.y), z: roundReferenceNumber(object.position.z) },
+    rotationDeg: {
+      x: roundReferenceNumber(THREE.MathUtils.radToDeg(object.rotation.x), 4),
+      y: roundReferenceNumber(THREE.MathUtils.radToDeg(object.rotation.y), 4),
+      z: roundReferenceNumber(THREE.MathUtils.radToDeg(object.rotation.z), 4),
+    },
+    scale: { x: roundReferenceNumber(object.scale.x), y: roundReferenceNumber(object.scale.y), z: roundReferenceNumber(object.scale.z) },
+  });
+  const clearReferenceObjects = () => {
+    referenceObjects.clear();
+    referenceAdjustments.clear();
+    selectedReferenceObjectId = null;
+    referenceSelectionBox.visible = false;
+    referenceAxes.visible = false;
+  };
+  const objectPath = (object) => {
+    const path = [];
+    let current = object;
+    while (current && current !== group) {
+      path.unshift(current.parent?.children.indexOf(current) ?? -1);
+      current = current.parent;
+    }
+    return path.join(".");
+  };
+  const ensureReferenceObjects = () => {
+    if (referenceObjects.size) return;
+    const nameCounts = new Map();
+    group.traverse((object) => {
+      if (object === group || !object.name || (!object.isMesh && !object.isGroup)) return;
+      const index = (nameCounts.get(object.name) || 0) + 1;
+      nameCounts.set(object.name, index);
+      const id = objectPath(object);
+      const base = transformSnapshot(object);
+      const descriptor = {
+        id,
+        name: object.name,
+        occurrence: index,
+        kind: object.isInstancedMesh ? "INSTANCED_MESH" : object.isMesh ? "MESH" : "GROUP",
+        profileId: object.userData?.profileId || null,
+        parentName: object.parent && object.parent !== group ? object.parent.name || null : null,
+        object,
+        base,
+        rotationOrder: object.rotation.order,
+      };
+      referenceObjects.set(id, descriptor);
+      referenceObjectIds.set(object, id);
+      referenceAdjustments.set(id, emptyReferenceAdjustment());
+    });
+  };
+  const publicReferenceDescriptor = (descriptor) => ({
+    id: descriptor.id,
+    name: descriptor.name,
+    occurrence: descriptor.occurrence,
+    kind: descriptor.kind,
+    profileId: descriptor.profileId,
+    parentName: descriptor.parentName,
+  });
+  const listReferenceObjects = () => {
+    ensureReferenceObjects();
+    return [...referenceObjects.values()].map(publicReferenceDescriptor);
+  };
+  const updateReferenceGuides = () => {
+    ensureReferenceObjects();
+    const descriptor = referenceObjects.get(selectedReferenceObjectId);
+    if (!descriptor || !referenceGuidesVisible) {
+      referenceSelectionBox.visible = false;
+      referenceAxes.visible = false;
+      return;
+    }
+    descriptor.object.updateWorldMatrix(true, true);
+    const bounds = new THREE.Box3().setFromObject(descriptor.object);
+    if (bounds.isEmpty()) {
+      referenceSelectionBox.visible = false;
+    } else {
+      referenceSelectionBox.box.copy(bounds);
+      referenceSelectionBox.visible = true;
+    }
+    descriptor.object.getWorldPosition(referenceAxes.position);
+    descriptor.object.getWorldQuaternion(referenceAxes.quaternion);
+    referenceAxes.scale.setScalar(1);
+    referenceAxes.visible = true;
+  };
+  const selectReferenceObject = (id) => {
+    ensureReferenceObjects();
+    selectedReferenceObjectId = referenceObjects.has(id) ? id : null;
+    updateReferenceGuides();
+    return selectedReferenceObjectId ? publicReferenceDescriptor(referenceObjects.get(selectedReferenceObjectId)) : null;
+  };
+  const setReferenceGuidesVisible = (visibleGuides) => {
+    referenceGuidesVisible = Boolean(visibleGuides);
+    updateReferenceGuides();
+  };
+  const setReferenceObjectAdjustment = (id, nextAdjustment) => {
+    ensureReferenceObjects();
+    const descriptor = referenceObjects.get(id);
+    if (!descriptor) return null;
+    const adjustment = {
+      positionM: referenceVector(nextAdjustment?.positionM, { x: 0, y: 0, z: 0 }),
+      rotationDeg: referenceVector(nextAdjustment?.rotationDeg, { x: 0, y: 0, z: 0 }),
+      scale: referenceVector(nextAdjustment?.scale, { x: 1, y: 1, z: 1 }),
+    };
+    adjustment.positionM.x = THREE.MathUtils.clamp(adjustment.positionM.x, -20, 20);
+    adjustment.positionM.y = THREE.MathUtils.clamp(adjustment.positionM.y, -20, 20);
+    adjustment.positionM.z = THREE.MathUtils.clamp(adjustment.positionM.z, -20, 20);
+    adjustment.rotationDeg.x = THREE.MathUtils.clamp(adjustment.rotationDeg.x, -3600, 3600);
+    adjustment.rotationDeg.y = THREE.MathUtils.clamp(adjustment.rotationDeg.y, -3600, 3600);
+    adjustment.rotationDeg.z = THREE.MathUtils.clamp(adjustment.rotationDeg.z, -3600, 3600);
+    adjustment.scale.x = THREE.MathUtils.clamp(adjustment.scale.x, 0.01, 100);
+    adjustment.scale.y = THREE.MathUtils.clamp(adjustment.scale.y, 0.01, 100);
+    adjustment.scale.z = THREE.MathUtils.clamp(adjustment.scale.z, 0.01, 100);
+    const base = descriptor.base;
+    descriptor.object.position.set(
+      base.positionM.x + adjustment.positionM.x,
+      base.positionM.y + adjustment.positionM.y,
+      base.positionM.z + adjustment.positionM.z,
+    );
+    descriptor.object.rotation.set(
+      THREE.MathUtils.degToRad(base.rotationDeg.x + adjustment.rotationDeg.x),
+      THREE.MathUtils.degToRad(base.rotationDeg.y + adjustment.rotationDeg.y),
+      THREE.MathUtils.degToRad(base.rotationDeg.z + adjustment.rotationDeg.z),
+      descriptor.rotationOrder,
+    );
+    descriptor.object.scale.set(
+      base.scale.x * adjustment.scale.x,
+      base.scale.y * adjustment.scale.y,
+      base.scale.z * adjustment.scale.z,
+    );
+    descriptor.object.updateMatrixWorld(true);
+    referenceAdjustments.set(id, structuredClone(adjustment));
+    updateReferenceGuides();
+    renderer.render(scene, camera);
+    return structuredClone(adjustment);
+  };
+  const getReferenceObjectAdjustment = (id) => structuredClone(referenceAdjustments.get(id) || emptyReferenceAdjustment());
+  const resetReferenceObject = (id) => setReferenceObjectAdjustment(id, emptyReferenceAdjustment());
+  const resetReferenceScene = () => {
+    ensureReferenceObjects();
+    for (const id of referenceObjects.keys()) setReferenceObjectAdjustment(id, emptyReferenceAdjustment());
+  };
+  const applyReferenceSceneState = (objects = []) => {
+    ensureReferenceObjects();
+    for (const item of objects) {
+      if (item?.id && item.adjustment) setReferenceObjectAdjustment(item.id, item.adjustment);
+    }
+  };
+  const pickReferenceObject = (clientX, clientY) => {
+    ensureReferenceObjects();
+    const rect = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObjects(group.children, true).find(({ object }) => {
+      let current = object;
+      while (current && current !== group) {
+        if (referenceObjectIds.has(current)) return true;
+        current = current.parent;
+      }
+      return false;
+    });
+    if (!hit) return null;
+    let current = hit.object;
+    while (current && current !== group && !referenceObjectIds.has(current)) current = current.parent;
+    const id = current ? referenceObjectIds.get(current) : null;
+    return id && referenceObjects.has(id) ? publicReferenceDescriptor(referenceObjects.get(id)) : null;
+  };
+  const getReferenceSceneState = () => {
+    ensureReferenceObjects();
+    group.updateMatrixWorld(true);
+    return {
+      selectedObjectId: selectedReferenceObjectId,
+      coordinateSystem: { unit: "metre", upAxis: "+Y", frontAxis: "+Z", origin: "product-renderer-local" },
+      camera: {
+        positionM: { x: roundReferenceNumber(camera.position.x), y: roundReferenceNumber(camera.position.y), z: roundReferenceNumber(camera.position.z) },
+        targetM: { x: roundReferenceNumber(controls.target.x), y: roundReferenceNumber(controls.target.y), z: roundReferenceNumber(controls.target.z) },
+        fovDeg: roundReferenceNumber(camera.fov, 3),
+      },
+      objects: [...referenceObjects.values()].map((descriptor) => {
+        const adjustment = getReferenceObjectAdjustment(descriptor.id);
+        const edited = Object.values(adjustment.positionM).some((value) => Math.abs(value) > 1e-9)
+          || Object.values(adjustment.rotationDeg).some((value) => Math.abs(value) > 1e-9)
+          || Object.values(adjustment.scale).some((value) => Math.abs(value - 1) > 1e-9);
+        return {
+          ...publicReferenceDescriptor(descriptor),
+          edited,
+          base: structuredClone(descriptor.base),
+          adjustment,
+          resolved: transformSnapshot(descriptor.object),
+        };
+      }),
+    };
+  };
+
   const lightColor = (temperature) => {
     const t = THREE.MathUtils.clamp((temperature - 2500) / 7500, 0, 1);
     return new THREE.Color().lerpColors(new THREE.Color("#ffd2a1"), new THREE.Color("#dceaff"), t);
@@ -483,6 +711,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
     group = new THREE.Group();
     group.name = name;
     scene.add(group);
+    clearReferenceObjects();
     applyProjectView();
     return group;
   };
@@ -1095,6 +1324,7 @@ export function createPergolaCanvas(mountEl, initialParams) {
       controls.maxPolarAngle = Math.acos(Math.max(-0.995, Math.min(0.995, cosMax)));
       controls.autoRotate = paramsRef.spin && !spinPaused;
       controls.update();
+      if (selectedReferenceObjectId) updateReferenceGuides();
       if (onFrame) onFrame();
       // Ease the camera distance toward the frame that fits the structure
       const des = stateRef.desiredRadius;
@@ -1191,6 +1421,10 @@ export function createPergolaCanvas(mountEl, initialParams) {
     document.removeEventListener("visibilitychange", onVisibilityChange);
     controls.dispose();
     activeRenderer?.disposeScene(activeProductScene);
+    referenceSelectionBox.geometry.dispose();
+    referenceSelectionBox.material.dispose();
+    referenceAxes.geometry.dispose();
+    for (const axesMaterial of Array.isArray(referenceAxes.material) ? referenceAxes.material : [referenceAxes.material]) axesMaterial.dispose();
     pmrem.dispose();
     roofMaterial.dispose();
     fleeceTexture.dispose();
@@ -1334,5 +1568,31 @@ export function createPergolaCanvas(mountEl, initialParams) {
     renderer.render(scene, camera);
   }
 
-  return { update, destroy, snapshot, createExportClone, setPlacement, getFacingSide, cameraDir, project, setSpinPaused, setOnFrame, setView, setProjectView, setCompositor, rendererCanvas: renderer.domElement, registeredProducts: rendererRegistry.list() };
+  return {
+    update,
+    destroy,
+    snapshot,
+    createExportClone,
+    setPlacement,
+    getFacingSide,
+    cameraDir,
+    project,
+    setSpinPaused,
+    setOnFrame,
+    setView,
+    setProjectView,
+    setCompositor,
+    listReferenceObjects,
+    selectReferenceObject,
+    pickReferenceObject,
+    setReferenceObjectAdjustment,
+    getReferenceObjectAdjustment,
+    resetReferenceObject,
+    resetReferenceScene,
+    applyReferenceSceneState,
+    getReferenceSceneState,
+    setReferenceGuidesVisible,
+    rendererCanvas: renderer.domElement,
+    registeredProducts: rendererRegistry.list(),
+  };
 }

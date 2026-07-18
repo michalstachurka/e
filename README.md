@@ -38,6 +38,8 @@ Konfigurator ma jeden silnik i jeden format projektu. Widok publiczny działa po
 
 Carport używa parametrycznej blachy trapezowej z osobną, obowiązkową warstwą antykondensacyjną od spodu. Screen ZIP i roleta zewnętrzna są domyślnie osadzane w renderowanych wnękach okiennych; konfigurator pozwala zestawić do 8 osobnych rolet obok siebie. Wartość `unitCount` jest częścią wersjonowanej konfiguracji, a starsze zapisy bez tego pola są odczytywane jako jedna roleta. Wymiary, przekroje, kompatybilność i BOM tych produktów pozostają danymi `demoOnly` do zatwierdzenia przez producenta.
 
+Chroniony panel zawiera również „Edytor referencji 3D”. Administrator z uprawnieniem `products:write` może wskazać nazwany element tej samej sceny, którą widzi klient, i opisać oczekiwaną zmianę przez przesunięcie, obrót lub skalę. Panel pobiera lokalnie oznaczony PNG oraz wersjonowany JSON z tenantem, wersją produktu, kamerą i dokładnymi transformacjami. Pliki nie są w Stage 1 zapisywane na serwerze ani w systemie plików instancji.
+
 Zdjęcia JPG/PNG/WebP są sprawdzane po sygnaturze, obracane według EXIF, ponownie kodowane bez EXIF/GPS i zapisywane przez wymienny port prywatnego storage. Projekt zapisuje tylko identyfikatory zasobów i wersjonowane parametry sceny. Tryb doradcy udostępnia historię wersji, ręczną kalibrację, maskę, backendową kalkulację demo oraz eksport konstrukcji GLB i `project.json`.
 
 Kontrola: `npm test`, `npm run build` i `npm run test:e2e`. Szczegóły architektury znajdują się w `docs/configurator-architecture.md`, a kontrakt bezpiecznych profili SVG w `docs/svg-profile-assets.md`.

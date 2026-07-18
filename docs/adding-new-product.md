@@ -58,6 +58,7 @@ Zasady renderera:
 - nie twórz nowego `WebGLRenderer` przy zmianie produktu;
 - zwalniaj geometrie i materiały produktu;
 - wyłączaj elementy techniczne z AR przez `userData.arExclude`;
+- nadawaj istotnym grupom i meshom stabilne, opisowe `name`, aby chroniony edytor referencji 3D pozwalał wskazać je bez forka renderera;
 - trzymaj dół modelu na `Y = 0`;
 - zachowuj stabilny target i dystans kamery.
 

@@ -2,6 +2,7 @@ import { ConfiguratorApi } from "./core/configurator-api.js";
 import { hydrateProfileAssets, resolveProfileDefinitions } from "./core/profile-definitions.js";
 import { buildTenantUrl, resolveTenantContext } from "./core/tenant-context.js";
 import { createPergolaCanvas } from "./pergola-canvas.js";
+import { createReferenceSceneEditor } from "./reference-scene-editor.js";
 
 const config = window.__VISNEX_CONFIG__ || {};
 const provisionalTenantContext = resolveTenantContext({ runtimeConfig: config, locationLike: window.location });
@@ -25,6 +26,7 @@ const loginForm = document.getElementById("adminLoginForm");
 const loginStatus = document.getElementById("adminLoginStatus");
 const productsHost = document.getElementById("adminProducts");
 const profileStudioHost = document.getElementById("adminProfileStudio");
+const referenceSceneHost = document.getElementById("adminReferenceScene");
 const brandingForm = document.getElementById("brandingForm");
 const featureAvailabilityForm = document.getElementById("featureAvailabilityForm");
 const featureAvailabilitySection = document.getElementById("featureAvailabilitySection");
@@ -40,6 +42,7 @@ document.getElementById("adminTenantLabel").textContent = `Tenant · ${tenantSlu
 let products = [];
 let catalog = null;
 let profilePreview = null;
+let referenceSceneEditor = null;
 let activeStudioProduct = 0;
 let activeStudioProfile = 0;
 let profileAssets = [];
@@ -494,6 +497,16 @@ async function loadWorkspace(session) {
   renderProducts();
   showWorkspace(true);
   renderProfileStudio();
+  referenceSceneEditor?.destroy();
+  referenceSceneEditor = createReferenceSceneEditor({
+    host: referenceSceneHost,
+    products,
+    tenantSlug,
+    admin: currentAdmin,
+    canEdit: can("products:write"),
+    buildPreviewParams: buildProfilePreviewParams,
+    onMessage: showToast,
+  });
 }
 
 featureAvailabilityForm.addEventListener("submit", async (event) => {
@@ -703,6 +716,8 @@ logoutButton.addEventListener("click", async () => {
   await api.request("/api/admin/logout", { method: "POST" }).catch(() => {});
   profilePreview?.destroy();
   profilePreview = null;
+  referenceSceneEditor?.destroy();
+  referenceSceneEditor = null;
   showWorkspace(false);
 });
 
